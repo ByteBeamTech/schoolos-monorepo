@@ -24,8 +24,8 @@ model StaffProfile {
 model TeacherSubjectPreference {
   id        String   @id @default(cuid())
   tenantId  String
-  staffId   String   // StaffProfile.id
-  subjectId String   // Subject.id
+  staffId   String // StaffProfile.id
+  subjectId String // Subject.id
   createdAt DateTime @default(now())
 
   @@unique([tenantId, staffId, subjectId])

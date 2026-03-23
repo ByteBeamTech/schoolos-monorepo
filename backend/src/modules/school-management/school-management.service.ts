@@ -27,6 +27,7 @@ export class SchoolManagementService {
   }
 
   // ── 1. Profile ──────────────────────────────────────────────────────────────
+
   async getProfile(tenantId: string) { return this.resolveTenant(tenantId); }
 
   async updateProfile(tenantId: string, dto: UpdateSchoolProfileDto, actorId: string) {
@@ -56,6 +57,7 @@ export class SchoolManagementService {
   }
 
   // ── 2. Branches ─────────────────────────────────────────────────────────────
+
   async getBranches(tenantId: string) {
     return this.prisma.branch.findMany({ where: { tenantId }, orderBy: { name: 'asc' } });
   }
@@ -63,8 +65,20 @@ export class SchoolManagementService {
   async createBranch(tenantId: string, dto: CreateBranchDto, actorId: string) {
     const existing = await this.prisma.branch.findFirst({ where: { tenantId, name: dto.name } });
     if (existing) throw new ConflictException(`Branch "${dto.name}" already exists.`);
+
     const branch = await this.prisma.branch.create({
-      data: { tenantId, name: dto.name, code: dto.code ?? null, address: dto.address ?? null, city: dto.city ?? null, phone: dto.phone ?? null, email: dto.email ?? null, principal: dto.principal ?? null, isActive: true },
+      // Schema field is `branchCode`, not `code`
+      data: {
+        tenantId,
+        name:       dto.name,
+        branchCode: dto.code      ?? null,
+        address:    dto.address   ?? null,
+        city:       dto.city      ?? null,
+        phone:      dto.phone     ?? null,
+        email:      dto.email     ?? null,
+        principal:  dto.principal ?? null,
+        isActive:   true,
+      },
     });
     await this.audit.logCreate({ tenantId, actorId, entityType: 'Branch', entityId: branch.id, after: { name: branch.name } });
     return branch;
@@ -73,17 +87,19 @@ export class SchoolManagementService {
   async updateBranch(tenantId: string, id: string, dto: UpdateBranchDto, actorId: string) {
     const branch = await this.prisma.branch.findFirst({ where: { id, tenantId } });
     if (!branch) throw new NotFoundException(`Branch not found: ${id}`);
+
     const updated = await this.prisma.branch.update({
       where: { id },
       data: {
-        ...(dto.name      && { name:      dto.name      }),
-        ...(dto.code      && { code:      dto.code      }),
-        ...(dto.address   && { address:   dto.address   }),
-        ...(dto.city      && { city:      dto.city      }),
-        ...(dto.phone     && { phone:     dto.phone     }),
-        ...(dto.email     && { email:     dto.email     }),
-        ...(dto.principal && { principal: dto.principal }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(dto.name      !== undefined && { name:       dto.name      }),
+        // Schema field is `branchCode`, not `code`
+        ...(dto.code      !== undefined && { branchCode: dto.code      }),
+        ...(dto.address   !== undefined && { address:    dto.address   }),
+        ...(dto.city      !== undefined && { city:       dto.city      }),
+        ...(dto.phone     !== undefined && { phone:      dto.phone     }),
+        ...(dto.email     !== undefined && { email:      dto.email     }),
+        ...(dto.principal !== undefined && { principal:  dto.principal }),
+        ...(dto.isActive  !== undefined && { isActive:   dto.isActive  }),
       },
     });
     await this.audit.logUpdate({ tenantId, actorId, entityType: 'Branch', entityId: id, before: { name: branch.name }, after: dto });
@@ -99,9 +115,10 @@ export class SchoolManagementService {
   }
 
   // ── 3. Users ────────────────────────────────────────────────────────────────
+
   async getUsers(tenantId: string, filters: { role?: string; isActive?: boolean; search?: string } = {}) {
     const where: any = { tenantId };
-    if (filters.role) where.role = filters.role;
+    if (filters.role)     where.role     = filters.role;
     if (filters.isActive !== undefined) where.isActive = filters.isActive;
     if (filters.search) {
       where.OR = [
@@ -151,6 +168,7 @@ export class SchoolManagementService {
   }
 
   // ── 4. Academics ────────────────────────────────────────────────────────────
+
   async getAcademicStructure(tenantId: string) {
     const [classes, subjects] = await Promise.all([
       this.prisma.class.findMany({ where: { tenantId }, include: { sections: { orderBy: { name: 'asc' } } }, orderBy: { displayOrder: 'asc' } }),
@@ -186,10 +204,10 @@ export class SchoolManagementService {
     const updated = await this.prisma.section.update({
       where: { id },
       data: {
-        ...(dto.name           && { name:           dto.name           }),
-        ...(dto.classTeacherId && { classTeacherId: dto.classTeacherId }),
-        ...(dto.capacity       && { capacity:       dto.capacity       }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(dto.name           !== undefined && { name:           dto.name           }),
+        ...(dto.classTeacherId !== undefined && { classTeacherId: dto.classTeacherId }),
+        ...(dto.capacity       !== undefined && { capacity:       dto.capacity       }),
+        ...(dto.isActive       !== undefined && { isActive:       dto.isActive       }),
       },
     });
     await this.audit.logUpdate({ tenantId, actorId, entityType: 'Section', entityId: id, before: { name: section.name }, after: dto });
@@ -205,6 +223,7 @@ export class SchoolManagementService {
   }
 
   // ── 5. Fee Setup ────────────────────────────────────────────────────────────
+
   async getFeeSetup(tenantId: string) {
     const [feeTypes, feeStructures] = await Promise.all([
       this.prisma.feeType.findMany({ where: { tenantId }, orderBy: { name: 'asc' } }),
@@ -243,6 +262,7 @@ export class SchoolManagementService {
   }
 
   // ── 6. Transport ────────────────────────────────────────────────────────────
+
   async getTransportSetup(tenantId: string) {
     const routes = await this.prisma.transportRoute.findMany({
       where: { tenantId },
@@ -270,6 +290,7 @@ export class SchoolManagementService {
   }
 
   // ── 7. Branding ─────────────────────────────────────────────────────────────
+
   async getBranding(tenantId: string) {
     const b = await this.prisma.tenantBranding.findFirst({ where: { tenantId } });
     return b ?? { tenantId, primaryColor: '#1E40AF', secondaryColor: '#DBEAFE' };
@@ -280,12 +301,12 @@ export class SchoolManagementService {
       where:  { tenantId },
       create: { tenantId, ...dto },
       update: {
-        ...(dto.primaryColor   && { primaryColor:   dto.primaryColor   }),
-        ...(dto.secondaryColor && { secondaryColor: dto.secondaryColor }),
-        ...(dto.logoUrl        && { logoUrl:        dto.logoUrl        }),
-        ...(dto.faviconUrl     && { faviconUrl:     dto.faviconUrl     }),
-        ...(dto.portalTitle    && { portalTitle:    dto.portalTitle    }),
-        ...(dto.tagline        && { tagline:        dto.tagline        }),
+        ...(dto.primaryColor   !== undefined && { primaryColor:   dto.primaryColor   }),
+        ...(dto.secondaryColor !== undefined && { secondaryColor: dto.secondaryColor }),
+        ...(dto.logoUrl        !== undefined && { logoUrl:        dto.logoUrl        }),
+        ...(dto.faviconUrl     !== undefined && { faviconUrl:     dto.faviconUrl     }),
+        ...(dto.portalTitle    !== undefined && { portalTitle:    dto.portalTitle    }),
+        ...(dto.tagline        !== undefined && { tagline:        dto.tagline        }),
       },
     });
     await this.audit.logUpdate({ tenantId, actorId, entityType: 'TenantBranding', entityId: tenantId, before: {}, after: dto });
@@ -293,6 +314,7 @@ export class SchoolManagementService {
   }
 
   // ── 8. Security ─────────────────────────────────────────────────────────────
+
   async getSecuritySettings(tenantId: string) {
     const s = await this.prisma.tenantSecuritySettings.findFirst({ where: { tenantId } });
     return s ?? { tenantId, sessionTimeoutMinutes: 60, requireMfaForAdmins: false, maxLoginAttempts: 5, allowedIpRanges: [], enforcePasswordPolicy: false, passwordExpiryDays: 90 };
@@ -316,6 +338,7 @@ export class SchoolManagementService {
   }
 
   // ── Overview ────────────────────────────────────────────────────────────────
+
   async getOverview(tenantId: string) {
     const [profile, branches, users, classes, routes] = await Promise.all([
       this.prisma.tenant.findFirst({ where: { id: tenantId } }),

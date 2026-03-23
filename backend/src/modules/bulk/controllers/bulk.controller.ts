@@ -1,11 +1,11 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Headers } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { BulkService }       from '../services/bulk.service';
-import { BulkInvoiceDto }    from '../dto/bulk.dto';
-import { JwtGuard }          from '../../../core/auth/guards/jwt.guard';
-import { RolesGuard }        from '../../../core/roles/roles.guard';
-import { Roles }             from '../../../core/roles/roles.decorator';
-import { CurrentUser }       from '../../../core/auth/decorators/current-user.decorator';
+import { BulkService } from '../services/bulk.service';
+import { BulkInvoiceDto } from '../dto/bulk.dto';
+import { JwtGuard } from '../../../core/auth/guards/jwt.guard';
+import { RolesGuard } from '../../../core/roles/roles.guard';
+import { Roles } from '../../../core/roles/roles.decorator';
+import { CurrentUser } from '../../../core/auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../../core/auth/guards/jwt.strategy';
 
 @ApiTags('bulk')
@@ -18,9 +18,15 @@ export class BulkController {
 
   @Post('students/import')
   @ApiOperation({ summary: 'Import students from CSV text' })
-  importStudents(@Body('csv') csv: string, @CurrentUser() u: AuthenticatedUser) {
-    const rows = this.svc.parseStudentCsv(csv);
-    return this.svc.importStudents(u.tenantId, rows);
+  async importStudents(
+    @Body('csv') csv: string, 
+    @CurrentUser() u: AuthenticatedUser,
+    @Headers('x-branch-id') branchId: string
+  ) {
+    // Use the branchId from header, fallback to 'primary' if not provided
+    const targetBranch = branchId || 'primary';
+    const rows = this.svc.parseStudentCsv(csv, targetBranch);
+  return this.svc.importStudents(u.tenantId, rows, targetBranch);
   }
 
   @Post('invoices/generate-for-class')

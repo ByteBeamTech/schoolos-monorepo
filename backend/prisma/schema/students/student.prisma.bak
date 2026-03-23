@@ -1,18 +1,14 @@
 model Student {
-  id String @id @default(cuid())
 
-  tenantId String
-  branchId String
+  // ======== EXTENDED FIELDS (AUTO-ADDED) ========
+  // Aadhaar (secure)
+  aadharHash   String? @unique
+  aadharLast4  String?
 
   // Identity
   admissionNumber String @unique
-  firstName       String
-  lastName        String
-
-  // Aadhaar (secure)
-  aadharHash  String? @unique
-  aadharLast4 String?
-
+  @@index([tenantId, branchId])
+  @@index([admissionNumber])
   // Contact
   phone String?
   email String?
@@ -20,55 +16,56 @@ model Student {
   // Duplicate tracking
   isDuplicate Boolean @default(false)
 
+  // Family
+  familyId String?
+  family   Family? @relation(fields: [familyId], references: [id])
+
+  // Relations
+  relations   StudentRelationship[] @relation("StudentRelations")
+  relatedToMe StudentRelationship[] @relation("RelatedTo")
+
   // Academic
-  dateOfBirth    DateTime?
-  gender         Gender?
-  bloodGroup     String?
   previousSchool String?
   previousClass  String?
   admissionDate  DateTime?
-  academicYear   String
 
   // Health snapshot
   heightCm        Float?
   weightKg        Float?
   lastHealthCheck DateTime?
 
-  // Other details
-  photoUrl          String?
-  rollNumber        String?
-  sectionId         String?
-  isActive          Boolean   @default(true)
-  enrolledAt        DateTime  @default(now())
-  leftAt            DateTime?
-  address           Json?
-  metadata          Json?     @default("{}")
+  // Flexible data
   additionalDetails Json?
-
-  // Relations
-  familyId String?
-  family   Family? @relation(fields: [familyId], references: [id])
-
-  relations   StudentRelationship[] @relation("StudentRelations")
-  relatedToMe StudentRelationship[] @relation("RelatedTo")
-
+  id                  String               @id @default(cuid())
+  tenantId            String
+  admissionNumber     String
+  firstName           String
+  lastName            String
+  dateOfBirth         DateTime?
+  gender              Gender?
+  bloodGroup          String?
+  photoUrl            String?
+  sectionId           String?
+  rollNumber          String?
+  academicYear        String
+  isActive            Boolean              @default(true)
+  enrolledAt          DateTime             @default(now())
+  leftAt              DateTime?
+  address             Json?
+  metadata            Json?                @default("{}")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
   attendances         Attendance[]
   discounts           Discount[]
   feeAssignments      FeeAssignment[]
   guardianLinks       GuardianStudent[]
   invoices            Invoice[]
+  section             Section?             @relation(fields: [sectionId], references: [id])
+  tenant              Tenant               @relation(fields: [tenantId], references: [id])
   transportAssignment TransportAssignment?
 
-  section Section? @relation(fields: [sectionId], references: [id])
-  tenant  Tenant   @relation(fields: [tenantId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Indexes
   @@unique([tenantId, admissionNumber])
   @@index([tenantId])
-  @@index([tenantId, branchId])
   @@index([academicYear])
 }
 

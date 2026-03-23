@@ -32,26 +32,27 @@ model Tenant {
   students         Student[]
   subscription     TenantSubscription?
   users            User[]
-  
+
   // Access Control
-  rolePermissions  RolePermission[]
-  
+  rolePermissions RolePermission[]
+
   // HR Module
-  joiningRequests  JoiningRequest[]
-  workflowConfigs  ApprovalWorkflowConfig[]
-  
+  joiningRequests JoiningRequest[]
+  workflowConfigs ApprovalWorkflowConfig[]
+
   // Reception Module
-  complaints       Complaint[]
-  visitors         Visitor[]
-  
+  complaints Complaint[]
+  visitors   Visitor[]
+
   // Admission Module
-  promotionRules   PromotionRule[]
-  idCards          IDCard[]
-  idCardTemplates  IDCardTemplate[]
-  alumni           Alumni[]
+  promotionRules  PromotionRule[]
+  idCards         IDCard[]
+  idCardTemplates IDCardTemplate[]
+  alumni          Alumni[]
+  supportTickets  SupportTicket[]
+  License         License[]
 
   @@index([slug])
-  supportTickets   SupportTicket[]
   @@index([status])
   @@index([region])
 }

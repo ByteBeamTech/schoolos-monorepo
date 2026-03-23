@@ -1,7 +1,7 @@
 model Complaint {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   tenantId         String
-  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  tenant           Tenant    @relation(fields: [tenantId], references: [id])
   ticketNumber     String
   complainantName  String
   complainantPhone String?
@@ -12,14 +12,14 @@ model Complaint {
   category         String
   subject          String
   description      String
-  priority         String   @default("MEDIUM")
-  status           String   @default("OPEN")
+  priority         String    @default("MEDIUM")
+  status           String    @default("OPEN")
   assignedTo       String?
   resolution       String?
   resolvedAt       DateTime?
   createdBy        String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   activities ComplaintActivity[]
 

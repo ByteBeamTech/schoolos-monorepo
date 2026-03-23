@@ -16,3 +16,4 @@ export const ADMISSION_SOURCES = [
   'GOOGLE', 'REFERRAL', 'WALK_IN', 'SOCIAL_MEDIA', 'DIRECT', 'EVENT', 'OTHER',
 ] as const
 export type AdmissionSource = (typeof ADMISSION_SOURCES)[number]
+export * from './crm';

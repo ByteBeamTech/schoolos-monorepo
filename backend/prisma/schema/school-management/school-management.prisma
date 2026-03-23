@@ -1,21 +1,36 @@
 // School Management — models missing from original schema
 
 model Branch {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
-  code      String?
+  id                  String  @id @default(cuid())
+  tenantId            String
+  name                String
+  currentStudentCount Int     @default(0)
+  currentStaffCount   Int     @default(0)
+  branchCode          String?
+  slug                String?
+
   address   String?
   city      String?
   phone     String?
   email     String?
   principal String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  isActive Boolean      @default(true)
+  status   BranchStatus @default(ACTIVE)
+
+  licenseId   String?
+  activatedAt DateTime?
+  suspendedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  License   License[]
 
   @@unique([tenantId, name])
+  @@unique([tenantId, branchCode])
   @@index([tenantId])
+  @@index([tenantId, status])
 }
 
 model TenantBranding {
@@ -45,13 +60,13 @@ model TenantSecuritySettings {
 // FeeType and FeeStructure — simplified wrappers used by school-management setup
 // (The full billing system uses FeePlan/FeeItem — these are for the settings UI)
 model FeeType {
-  id          String         @id @default(cuid())
+  id          String   @id @default(cuid())
   tenantId    String
   name        String
   description String?
-  isMandatory Boolean        @default(false)
-  isRecurring Boolean        @default(true)
-  createdAt   DateTime       @default(now())
+  isMandatory Boolean  @default(false)
+  isRecurring Boolean  @default(true)
+  createdAt   DateTime @default(now())
 
   feeStructures FeeStructure[]
 
@@ -60,16 +75,16 @@ model FeeType {
 }
 
 model FeeStructure {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   tenantId  String
   name      String
   classId   String
-  class     Class       @relation(fields: [classId], references: [id])
+  class     Class    @relation(fields: [classId], references: [id])
   feeTypeId String?
-  feeType   FeeType?    @relation(fields: [feeTypeId], references: [id])
+  feeType   FeeType? @relation(fields: [feeTypeId], references: [id])
   frequency String
-  amount    Decimal     @db.Decimal(12, 2)
-  createdAt DateTime    @default(now())
+  amount    Decimal  @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
 
   @@index([tenantId])
 }

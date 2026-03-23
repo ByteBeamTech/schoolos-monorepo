@@ -272,3 +272,47 @@ enum AdmissionStatus {
   REJECTED
   WITHDRAWN
 }
+
+enum BranchStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+}
+
+enum LicenseType {
+  BRANCH
+  TENANT
+}
+
+enum LicenseStatus {
+  UNUSED
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum RelationType {
+  SIBLING
+  COUSIN
+  RELATIVE
+  OTHER
+}
+
+enum AdmissionMode {
+  CRM
+  DIRECT
+}
+
+enum ApplicationStatus {
+  PENDING
+  REVIEWED
+  APPROVED
+  REJECTED
+  CONVERTED
+}

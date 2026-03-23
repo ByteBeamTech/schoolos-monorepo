@@ -40,18 +40,18 @@ model SupportTicket {
   assignedTo   String?
 
   // SLA tracking
-  slaResponseDueAt   DateTime?   // When first response is due
-  slaResolutionDueAt DateTime?   // When ticket must be resolved
-  firstResponseAt    DateTime?   // When superadmin first replied
-  slaResponseBreached  Boolean   @default(false)
-  slaResolutionBreached Boolean  @default(false)
-  escalationLevel    Int         @default(0)  // 0=none, 1=first, 2=critical
-  lastEscalatedAt    DateTime?
+  slaResponseDueAt      DateTime? // When first response is due
+  slaResolutionDueAt    DateTime? // When ticket must be resolved
+  firstResponseAt       DateTime? // When superadmin first replied
+  slaResponseBreached   Boolean   @default(false)
+  slaResolutionBreached Boolean   @default(false)
+  escalationLevel       Int       @default(0) // 0=none, 1=first, 2=critical
+  lastEscalatedAt       DateTime?
 
   resolvedAt DateTime?
   createdBy  String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   messages SupportMessage[]
 

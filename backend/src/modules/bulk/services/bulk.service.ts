@@ -1,10 +1,16 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../infra/database/prisma.service';
 import { BulkInvoiceDto } from '../dto/bulk.dto';
 
 export interface BulkStudentRow {
-  firstName: string; lastName: string; admissionNumber: string;
-  academicYear: string; sectionId?: string; rollNumber?: string;
+  firstName:       string;
+  lastName:        string;
+  admissionNumber: string;
+  academicYear:    string;
+  branchId:        string;
+  sectionId?:      string;
+  rollNumber?:     string;
 }
 
 @Injectable()
@@ -14,11 +20,13 @@ export class BulkService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ── CSV Student Import ────────────────────────────────────────────────────
-  async importStudents(tenantId: string, rows: BulkStudentRow[]) {
-    const results = { created: 0, skipped: 0, errors: [] as string[] };
+
+  async importStudents(tenantId: string, rows: BulkStudentRow[], branchId: string) {
+  // Your logic to loop through rows and create students goes here  
+  const results = { created: 0, skipped: 0, errors: [] as string[] };
 
     for (const row of rows) {
-      if (!row.firstName || !row.lastName || !row.admissionNumber || !row.academicYear) {
+      if (!row.firstName || !row.lastName || !row.admissionNumber || !row.academicYear || !row.branchId) {
         results.errors.push(`Row missing required fields: ${JSON.stringify(row)}`);
         results.skipped++;
         continue;
@@ -37,14 +45,15 @@ export class BulkService {
         await this.prisma.student.create({
           data: {
             tenantId,
+            branchId:        row.branchId,
             firstName:       row.firstName.trim(),
             lastName:        row.lastName.trim(),
             admissionNumber: row.admissionNumber.trim(),
             academicYear:    row.academicYear.trim(),
-            sectionId:       row.sectionId   ?? null,
-            rollNumber:      row.rollNumber  ?? null,
+            sectionId:       row.sectionId  ?? null,
+            rollNumber:      row.rollNumber ?? null,
             isActive:        true,
-          },
+          } satisfies Prisma.StudentUncheckedCreateInput,
         });
         results.created++;
       } catch (err: any) {
@@ -58,6 +67,7 @@ export class BulkService {
   }
 
   // ── Bulk Invoice Generation ───────────────────────────────────────────────
+
   async generateInvoicesForClass(tenantId: string, dto: BulkInvoiceDto, _actorId: string) {
     const feePlan = await this.prisma.feePlan.findFirst({
       where:   { id: dto.feePlanId, tenantId },
@@ -111,8 +121,9 @@ export class BulkService {
   }
 
   // ── Parse CSV ─────────────────────────────────────────────────────────────
-  parseStudentCsv(csvText: string): BulkStudentRow[] {
-    const lines  = csvText.trim().split('\n');
+
+  parseStudentCsv(csvText: string, defaultBranchId: string): BulkStudentRow[] {
+    const lines = csvText.trim().split('\n');
     if (lines.length < 2) throw new BadRequestException('CSV must have header + at least one row');
 
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
@@ -123,12 +134,14 @@ export class BulkService {
       lines[i].split(',').forEach((val, j) => { cells[headers[j]] = val?.trim() ?? ''; });
 
       rows.push({
-        firstName:       cells['firstname']       || cells['first_name']      || '',
-        lastName:        cells['lastname']        || cells['last_name']       || '',
-        admissionNumber: cells['admissionnumber'] || cells['admission_number']|| cells['admno'] || '',
-        academicYear:    cells['academicyear']    || cells['academic_year']   || cells['year']  || '',
-        sectionId:       cells['sectionid']       || cells['section_id']      || undefined,
-        rollNumber:      cells['rollnumber']      || cells['roll_number']     || cells['roll']  || undefined,
+        firstName:       cells['firstname']       || cells['first_name']       || '',
+        lastName:        cells['lastname']        || cells['last_name']        || '',
+        admissionNumber: cells['admissionnumber'] || cells['admission_number'] || cells['admno'] || '',
+        academicYear:    cells['academicyear']    || cells['academic_year']    || cells['year']  || '',
+        // branchId can be in CSV or fall back to the caller-supplied default
+        branchId:        cells['branchid']        || cells['branch_id']        || defaultBranchId,
+        sectionId:       cells['sectionid']       || cells['section_id']       || undefined,
+        rollNumber:      cells['rollnumber']      || cells['roll_number']      || cells['roll']  || undefined,
       });
     }
 

@@ -1,5 +1,5 @@
 model Homework {
-  id          String    @id @default(cuid())
+  id          String               @id @default(cuid())
   tenantId    String
   sessionId   String
   classId     String
@@ -8,12 +8,12 @@ model Homework {
   teacherId   String
   title       String
   description String?
-  dueDate     DateTime  @db.Date
+  dueDate     DateTime             @db.Date
   maxMarks    Int?
   attachments Json?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  isActive    Boolean              @default(true)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
   submissions HomeworkSubmission[]
 
   @@index([tenantId])

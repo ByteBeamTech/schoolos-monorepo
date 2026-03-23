@@ -1,0 +1,15 @@
+{
+  "name": "schoolos-root",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "pnpm --recursive build",
+    "backend:dev": "pnpm --filter backend dev",
+    "backend:start": "pnpm --filter backend start"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  }
+}

@@ -69,12 +69,14 @@ export class PromotionService {
     if (!student) throw new NotFoundException('Student not found');
     if (!student.sectionId) throw new BadRequestException('Student not assigned to any section');
 
+    // Get current session
     const currentSession = await this.prisma.academicSession.findFirst({
       where: { tenantId, isCurrent: true },
     });
 
     if (!currentSession) throw new BadRequestException('No active academic session');
 
+    // Create promotion record
     const promotion = await this.prisma.studentPromotion.create({
       data: {
         tenantId,
@@ -90,6 +92,7 @@ export class PromotionService {
       },
     });
 
+    // If toSectionId provided, update student
     if (dto.toSectionId) {
       await this.prisma.student.update({
         where: { id: dto.studentId },
@@ -110,6 +113,7 @@ export class PromotionService {
   }
 
   async bulkPromote(tenantId: string, dto: BulkPromoteDto, userId: string) {
+    // Get students in the section
     let students = await this.prisma.student.findMany({
       where: {
         tenantId,
@@ -119,9 +123,13 @@ export class PromotionService {
       },
     });
 
+    // If minMarks filter provided, get student marks and filter
     if (dto.minMarks) {
-      if (students.length === 0) return { total: 0, success: 0, failed: [] };
+      if (students.length === 0) {
+        return { total: 0, success: 0, failed: [] };
+      }
 
+      // Get average marks from gradebook/exams
       const studentIds = students.map((s: { id: string }) => s.id);
       const placeholders = studentIds.map(() => '?').join(', ');
       const marksData = await this.prisma.$queryRawUnsafe(
@@ -142,6 +150,7 @@ export class PromotionService {
       students = students.filter((s: { id: string }) => eligibleIds.includes(s.id));
     }
 
+    // Promote each student
     const results = await Promise.all(
       students.map((student: { id: string }) =>
         this.promoteStudent(
@@ -202,8 +211,11 @@ export class PromotionService {
     });
 
     if (!migration) throw new NotFoundException('Migration request not found');
-    if (migration.status !== 'PENDING') throw new BadRequestException('Migration already processed');
+    if (migration.status !== 'PENDING') {
+      throw new BadRequestException('Migration already processed');
+    }
 
+    // Update migration status
     await this.prisma.studentMigration.update({
       where: { id },
       data: {
@@ -214,6 +226,7 @@ export class PromotionService {
       },
     });
 
+    // Mark student as inactive
     await this.prisma.student.update({
       where: { id: migration.studentId },
       data: {
@@ -222,6 +235,7 @@ export class PromotionService {
       },
     });
 
+    // Create alumni record
     const student = await this.prisma.student.findUnique({
       where: { id: migration.studentId },
       include: { section: { include: { class: true } } },
@@ -264,6 +278,7 @@ export class PromotionService {
   }
 
   private generateQRCode(data: any): string {
+    // Create encrypted QR data
     const payload = JSON.stringify(data);
     return Buffer.from(payload).toString('base64');
   }
@@ -271,6 +286,7 @@ export class PromotionService {
   async generateIDCard(tenantId: string, dto: GenerateIDCardDto, _userId: string) {
     const cardNumber = this.generateCardNumber();
 
+    // Get entity details
     let photoUrl: string | null = null;
     if (dto.entityType === 'STUDENT') {
       const student = await this.prisma.student.findFirst({
@@ -286,6 +302,7 @@ export class PromotionService {
       photoUrl = user.avatarUrl;
     }
 
+    // Generate QR code data
     const qrCode = this.generateQRCode({
       cardNumber,
       entityId: dto.entityId,
@@ -336,6 +353,7 @@ export class PromotionService {
     const card = await this.prisma.iDCard.findFirst({
       where: { id, tenantId },
     });
+
     if (!card) throw new NotFoundException('ID card not found');
     return card;
   }
@@ -362,6 +380,7 @@ export class PromotionService {
   // ========== ID CARD TEMPLATES ==========
 
   async createIDCardTemplate(tenantId: string, dto: IDCardTemplateDto, userId: string) {
+    // If setting as default, unset others
     if (dto.isDefault) {
       await this.prisma.iDCardTemplate.updateMany({
         where: { tenantId, type: dto.type as any, isDefault: true },
@@ -439,6 +458,7 @@ export class PromotionService {
     const alumni = await this.prisma.alumni.findFirst({
       where: { id, tenantId },
     });
+
     if (!alumni) throw new NotFoundException('Alumni not found');
     return alumni;
   }
@@ -458,12 +478,15 @@ export class PromotionService {
     });
 
     if (!admission) throw new NotFoundException('Admission not found');
-    if (admission.status === 'ENROLLED') throw new BadRequestException('Admission already enrolled');
+    if (admission.status === 'ENROLLED') {
+      throw new BadRequestException('Admission already enrolled');
+    }
 
+    // Create student record
     const admissionNumber = `ADM-${Date.now().toString(36).toUpperCase()}`;
     const student = await this.prisma.student.create({
-      data: {
-        tenantId: tenantId as any,
+      data: ({
+        tenantId,
         admissionNumber,
         firstName: admission.firstName,
         lastName: admission.lastName,
@@ -471,25 +494,28 @@ export class PromotionService {
         gender: admission.gender,
         sectionId: dto.assignedSectionId,
         academicYear: admission.academicYear,
-        isActive: true,
-        address: (admission.addressLine || admission.city) ? {
-          addressLine: admission.addressLine,
-          city: admission.city,
-          state: admission.state,
-          pincode: admission.pincode,
-        } : undefined,
+        address: admission.addressLine || admission.city || admission.state || admission.pincode
+          ? {
+              addressLine: admission.addressLine,
       } as any,
     });
-
-    if (admission.parentFirstName) {
-      const guardian = await this.prisma.guardian.create({
+  }
         data: {
-          tenantId: tenantId as any,
+          tenantId,
           firstName: admission.parentFirstName,
           lastName: admission.parentLastName ?? '',
           phone: admission.parentPhone,
+          altPhone: admission.alternatePhone ?? null,
           email: admission.parentEmail ?? null,
-        } as any,
+          address: admission.addressLine || admission.city || admission.state || admission.pincode
+            ? {
+                addressLine: admission.addressLine,
+                city: admission.city,
+                state: admission.state,
+                pincode: admission.pincode,
+              }
+            : undefined,
+        },
       });
 
       await this.prisma.guardianStudent.create({
@@ -498,42 +524,50 @@ export class PromotionService {
           studentId: student.id,
           relation: 'LEGAL_GUARDIAN',
           isPrimary: true,
-        } as any,
+        },
       });
     }
 
+    // Update admission status
     await this.prisma.admission.update({
       where: { id: admissionId },
       data: {
-        status: 'ENROLLED' as any,
+        status: 'ENROLLED',
         enrolledStudentId: student.id,
         notes: dto.notes,
       },
     });
 
+    // Log activity
     await this.prisma.admissionActivity.create({
       data: {
         admissionId,
         tenantId,
         actorId: userId,
-        action: 'APPROVED' as any,
+        action: 'APPROVED',
         note: dto.notes,
       },
     });
 
-    return { student };
+    this.logger.log(`Admission ${admissionId} approved, student ${student.id} created`);
+    const freshAdmission = await this.prisma.admission.findUniqueOrThrow({
+      where: { id: admissionId },
+      include: { activities: { orderBy: { createdAt: 'desc' } } },
+    });
+    return { admission: freshAdmission, student };
   }
 
   async rejectAdmission(tenantId: string, admissionId: string, dto: RejectAdmissionDto, userId: string) {
     const admission = await this.prisma.admission.findFirst({
       where: { id: admissionId, tenantId },
     });
+
     if (!admission) throw new NotFoundException('Admission not found');
 
     await this.prisma.admission.update({
       where: { id: admissionId },
       data: {
-        status: 'REJECTED' as any,
+        status: 'REJECTED',
         rejectionReason: dto.reason,
       },
     });
@@ -543,7 +577,7 @@ export class PromotionService {
         admissionId,
         tenantId,
         actorId: userId,
-        action: 'REJECTED' as any,
+        action: 'REJECTED',
         note: dto.reason,
       },
     });

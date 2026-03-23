@@ -4,6 +4,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../infra/database/prisma.service';
 import { AuditService }  from '../../../core/compliance/audit.service';
 import {
@@ -37,17 +38,18 @@ export class StudentsService {
     const student = await this.prisma.student.create({
       data: {
         tenantId,
+        branchId:        dto.branchId,
         admissionNumber: dto.admissionNumber,
         firstName:       dto.firstName,
         lastName:        dto.lastName,
         academicYear:    dto.academicYear,
         dateOfBirth:     dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
-        gender:          dto.gender      as any ?? null,
+        gender:          dto.gender      ?? null,
         bloodGroup:      dto.bloodGroup  ?? null,
         sectionId:       dto.sectionId   ?? null,
         rollNumber:      dto.rollNumber  ?? null,
         isActive:        true,
-      },
+      } satisfies Prisma.StudentUncheckedCreateInput,
       include: { section: { include: { class: true } } },
     });
 
@@ -66,13 +68,15 @@ export class StudentsService {
   async findAll(tenantId: string, filters: {
     academicYear?: string;
     sectionId?:    string;
+    branchId?:     string;
     isActive?:     boolean;
     search?:       string;
   } = {}) {
-    const where: any = { tenantId };
+    const where: Prisma.StudentWhereInput = { tenantId };
 
     if (filters.academicYear) where.academicYear = filters.academicYear;
     if (filters.sectionId)    where.sectionId    = filters.sectionId;
+    if (filters.branchId)     where.branchId     = filters.branchId;
     if (filters.isActive !== undefined) where.isActive = filters.isActive;
 
     if (filters.search) {
@@ -118,15 +122,15 @@ export class StudentsService {
     const updated = await this.prisma.student.update({
       where: { id },
       data: {
-        ...(dto.firstName   && { firstName:   dto.firstName   }),
-        ...(dto.lastName    && { lastName:    dto.lastName    }),
-        ...(dto.dateOfBirth && { dateOfBirth: new Date(dto.dateOfBirth) }),
-        ...(dto.gender      && { gender:      dto.gender as any }),
-        ...(dto.bloodGroup  && { bloodGroup:  dto.bloodGroup  }),
-        ...(dto.sectionId   && { sectionId:   dto.sectionId   }),
-        ...(dto.rollNumber  && { rollNumber:  dto.rollNumber  }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-      },
+        ...(dto.firstName   !== undefined && { firstName:   dto.firstName   }),
+        ...(dto.lastName    !== undefined && { lastName:    dto.lastName    }),
+        ...(dto.dateOfBirth !== undefined && { dateOfBirth: new Date(dto.dateOfBirth) }),
+        ...(dto.gender      !== undefined && { gender:      dto.gender      }),
+        ...(dto.bloodGroup  !== undefined && { bloodGroup:  dto.bloodGroup  }),
+        ...(dto.sectionId   !== undefined && { sectionId:   dto.sectionId   }),
+        ...(dto.rollNumber  !== undefined && { rollNumber:  dto.rollNumber  }),
+        ...(dto.isActive    !== undefined && { isActive:    dto.isActive    }),
+      } satisfies Prisma.StudentUncheckedUpdateInput,
       include: { section: { include: { class: true } } },
     });
 
@@ -186,7 +190,6 @@ export class StudentsService {
       throw new ConflictException('Guardian is already linked to this student.');
     }
 
-    // If setting as primary, unset existing primary for this student
     if (dto.isPrimary) {
       await this.prisma.guardianStudent.updateMany({
         where: { studentId, isPrimary: true },
@@ -198,7 +201,7 @@ export class StudentsService {
       data: {
         guardianId: dto.guardianId,
         studentId,
-        relation:   dto.relation as any,
+        relation:   dto.relation,
         isPrimary:  dto.isPrimary ?? false,
       },
       include: { guardian: true },

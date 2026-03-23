@@ -1,30 +1,40 @@
 model User {
-  id                String             @id @default(cuid())
-  tenantId          String
-  email             String
-  phone             String?
-  passwordHash      String?
-  firstName         String
-  lastName          String
-  role              UserRole
-  isActive          Boolean            @default(true)
-  isEmailVerified   Boolean            @default(false)
-  isPhoneVerified   Boolean            @default(false)
-  avatarUrl         String?
-  lastLoginAt       DateTime?
-  mfaEnabled        Boolean            @default(false)
-  mfaSecret         String?
-  preferences       Json?              @default("{}")
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  deletedAt         DateTime?
-  auditLogs         AuditLog[]
-  discountApprovals DiscountApproval[] @relation("Approver")
-  discountRequests  DiscountApproval[] @relation("Requester")
-  oauthAccounts     OAuthAccount[]
-  sessions          Session[]
-  staffProfile      StaffProfile?
-  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  id                   String                 @id @default(cuid())
+  tenantId             String
+  email                String
+  phone                String?
+  passwordHash         String?
+  firstName            String
+  lastName             String
+  role                 UserRole
+  isActive             Boolean                @default(true)
+  isEmailVerified      Boolean                @default(false)
+  isPhoneVerified      Boolean                @default(false)
+  avatarUrl            String?
+  lastLoginAt          DateTime?
+  mfaEnabled           Boolean                @default(false)
+  mfaSecret            String?
+  preferences          Json?                  @default("{}")
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  deletedAt            DateTime?
+  auditLogs            AuditLog[]
+  discountApprovals    DiscountApproval[]     @relation("Approver")
+  discountRequests     DiscountApproval[]     @relation("Requester")
+  oauthAccounts        OAuthAccount[]
+  sessions             Session[]
+  staffProfile         StaffProfile?
+  tenant               Tenant                 @relation(fields: [tenantId], references: [id])
+  // --- CRM & RBAC RELATIONS ---
+  roleId               String?
+  customRole           Role?                  @relation(fields: [roleId], references: [id])
+  assignedLeads        Lead[]                 @relation("AssignedLeads")
+  referredLeads        Lead[]                 @relation("ReferredLeads")
+  referredApplications AdmissionApplication[] @relation("ReferredApplications")
+  staffChildren        AdmissionApplication[] @relation("StaffChildren")
+  interactionLogs      InteractionLog[]
+  followUpTasks        FollowUpTask[]
+  applicationApprovals ApplicationApproval[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -58,6 +68,16 @@ model OAuthAccount {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   user           User      @relation(fields: [userId], references: [id])
+
+  // --- CRM & RBAC OPPOSITE RELATIONS ---
+
+  // RBAC Role Link
+
+  // Lead Management Links
+
+  // Application & Staff Links
+
+  // Logs & Tasks Links
 
   @@unique([provider, providerUserId])
   @@index([userId])

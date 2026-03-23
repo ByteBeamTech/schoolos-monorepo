@@ -1,16 +1,16 @@
 model Class {
-  id           String          @id @default(cuid())
-  tenantId     String
-  sessionId    String
-  name         String
-  displayOrder Int             @default(0)
-  isActive     Boolean         @default(true)
-  createdAt    DateTime        @default(now())
-  session      AcademicSession @relation(fields: [sessionId], references: [id])
-  sections     Section[]
+  id            String          @id @default(cuid())
+  tenantId      String
+  sessionId     String
+  name          String
+  displayOrder  Int             @default(0)
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  session       AcademicSession @relation(fields: [sessionId], references: [id])
+  sections      Section[]
+  feeStructures FeeStructure[]
 
   @@unique([tenantId, sessionId, name])
-  feeStructures  FeeStructure[]
   @@index([tenantId])
 }
 

@@ -2,8 +2,8 @@
 
 model Permission {
   id          String   @id @default(cuid())
-  module      String   // e.g., "students", "billing", "hr", "reception"
-  action      String   // e.g., "create", "read", "update", "delete", "approve"
+  module      String // e.g., "students", "billing", "hr", "reception"
+  action      String // e.g., "create", "read", "update", "delete", "approve"
   description String?
   createdAt   DateTime @default(now())
 
@@ -18,11 +18,11 @@ model RolePermission {
   tenantId     String
   role         UserRole // Which role gets this permission
   permissionId String
-  grantedBy    String   // User ID who granted this
+  grantedBy    String // User ID who granted this
   grantedAt    DateTime @default(now())
-  
-  permission   Permission @relation(fields: [permissionId], references: [id])
-  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+
+  permission Permission @relation(fields: [permissionId], references: [id])
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, role, permissionId])
   @@index([tenantId])

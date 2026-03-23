@@ -1,35 +1,35 @@
 model Admission {
-  id              String          @id @default(cuid())
-  tenantId        String
-  firstName       String
-  lastName        String
-  dateOfBirth     DateTime?
-  gender          Gender?
-  email           String?
-  phone           String
-  alternatePhone  String?
-  parentFirstName String?
-  parentLastName  String?
-  parentPhone     String?
-  parentEmail     String?
-  applyingForClass String
-  previousSchool  String?
-  addressLine     String?
-  city            String?
-  state           String?
-  pincode         String?
-  source          AdmissionSource @default(DIRECT)
-  status          AdmissionStatus @default(INQUIRY)
-  counsellorId    String?
-  notes           String?
-  followUpDate    DateTime?
-  rejectionReason String?
+  id                String          @id @default(cuid())
+  tenantId          String
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime?
+  gender            Gender?
+  email             String?
+  phone             String
+  alternatePhone    String?
+  parentFirstName   String?
+  parentLastName    String?
+  parentPhone       String?
+  parentEmail       String?
+  applyingForClass  String
+  previousSchool    String?
+  addressLine       String?
+  city              String?
+  state             String?
+  pincode           String?
+  source            AdmissionSource @default(DIRECT)
+  status            AdmissionStatus @default(INQUIRY)
+  counsellorId      String?
+  notes             String?
+  followUpDate      DateTime?
+  rejectionReason   String?
   enrolledStudentId String?
-  academicYear    String
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  academicYear      String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
-  activities      AdmissionActivity[]
+  activities AdmissionActivity[]
 
   @@index([tenantId])
   @@index([status])

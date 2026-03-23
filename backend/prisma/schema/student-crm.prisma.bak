@@ -1,0 +1,129 @@
+
+// ====================== FAMILY ======================
+
+model Family {
+  id           String    @id @default(cuid())
+  tenantId     String
+  branchId     String?
+
+  familyName   String?
+
+  students     Student[]
+  applications AdmissionApplication[]
+
+  createdAt    DateTime  @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, branchId])
+}
+
+
+// ====================== ADMISSION SOURCE ======================
+
+model AdmissionSource {
+  id        String   @id @default(cuid())
+  tenantId  String
+
+  name      String
+  isActive  Boolean  @default(true)
+
+  applications AdmissionApplication[]
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+
+// ====================== STUDENT RELATIONSHIP ======================
+
+model StudentRelationship {
+  id           String       @id @default(cuid())
+
+  tenantId     String
+  branchId     String?
+
+  studentId    String
+  relatedToId  String
+
+  student      Student @relation("StudentRelations", fields: [studentId], references: [id])
+  relatedTo    Student @relation("RelatedTo", fields: [relatedToId], references: [id])
+
+  type         RelationType
+  isVerified   Boolean      @default(false)
+
+  verifiedById String?
+  verifiedBy   Staff?       @relation(fields: [verifiedById], references: [id])
+
+  metadata     Json?
+  notes        String?
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([studentId, relatedToId])
+
+  @@index([tenantId])
+  @@index([tenantId, branchId, studentId])
+  @@index([tenantId, branchId, relatedToId])
+}
+
+
+// ====================== ADMISSION APPLICATION ======================
+
+model AdmissionApplication {
+  id                String            @id @default(cuid())
+
+  tenantId          String
+  branchId          String
+
+  // Identity
+  firstName         String
+  lastName          String
+  photoUrl          String?
+  dob               DateTime
+  gender            String
+
+  // Aadhaar (secure)
+  aadharHash        String?
+  aadharLast4       String?
+
+  // Contact (for duplicate detection)
+  phone             String?
+  email             String?
+
+  // System Identity
+  crmNo             String            @unique
+  admissionMode     AdmissionMode
+
+  // Source & Referral
+  sourceId          String?
+  source            AdmissionSource?  @relation(fields: [sourceId], references: [id])
+
+  referredByStaffId String?
+  referredByStaff   Staff?            @relation(fields: [referredByStaffId], references: [id])
+
+  // Family / Sibling
+  familyId          String?
+  family            Family?           @relation(fields: [familyId], references: [id])
+
+  linkedRelativeId  String?
+  relationType      RelationType?
+
+  // Duplicate tracking
+  duplicateOfId     String?
+
+  // Status
+  status            ApplicationStatus @default(PENDING)
+
+  // Flexible form data
+  formDetails       Json?
+  notes             Json?
+
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([tenantId, branchId])
+  @@index([tenantId, branchId, firstName])
+}
+

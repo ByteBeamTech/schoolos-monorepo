@@ -24,6 +24,10 @@ export enum GuardianRelation {
 }
 
 export class CreateStudentDto {
+  @ApiProperty({ description: 'Branch ID the student belongs to' })
+  @IsString() @IsNotEmpty()
+  branchId!: string;
+
   @ApiProperty({ example: 'ADM-2025-001' })
   @IsString() @IsNotEmpty()
   admissionNumber!: string;
