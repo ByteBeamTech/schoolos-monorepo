@@ -1,0 +1,60 @@
+import type { UserRole } from '@schoolos/types'
+import type { Permission } from './permissions'
+
+export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
+  superadmin: ['SUPERADMIN_ALL'],
+
+  'school-admin': [
+    'VIEW_STUDENTS', 'CREATE_STUDENT', 'EDIT_STUDENT', 'DELETE_STUDENT',
+    'VIEW_GRADES', 'EDIT_GRADES', 'PUBLISH_GRADES',
+    'VIEW_INVOICES', 'CREATE_INVOICE', 'VOID_INVOICE',
+    'VIEW_PAYMENTS', 'PROCESS_PAYMENT', 'REFUND_PAYMENT',
+    'APPROVE_DISCOUNT', 'APPROVE_DISCOUNT_UNLIMITED',
+    'VIEW_TRANSPORT', 'MANAGE_TRANSPORT',
+    'VIEW_REPORTS', 'EXPORT_REPORTS',
+    'MANAGE_USERS', 'MANAGE_ROLES',
+    'VIEW_AUDIT_LOG',
+    'MANAGE_FEE_PLANS', 'MANAGE_SETTINGS',
+    'VIEW_FRAUD_ALERTS',
+  ],
+
+  principal: [
+    'VIEW_STUDENTS', 'EDIT_STUDENT',
+    'VIEW_GRADES', 'EDIT_GRADES', 'PUBLISH_GRADES',
+    'VIEW_INVOICES',
+    'VIEW_PAYMENTS',
+    'APPROVE_DISCOUNT',
+    'VIEW_TRANSPORT',
+    'VIEW_REPORTS', 'EXPORT_REPORTS',
+    'VIEW_AUDIT_LOG',
+  ],
+
+  'finance-officer': [
+    'VIEW_STUDENTS',
+    'VIEW_INVOICES', 'CREATE_INVOICE', 'VOID_INVOICE',
+    'VIEW_PAYMENTS', 'PROCESS_PAYMENT', 'REFUND_PAYMENT',
+    'APPROVE_DISCOUNT',
+    'VIEW_REPORTS', 'EXPORT_REPORTS',
+  ],
+
+  accountant: [
+    'VIEW_STUDENTS',
+    'VIEW_INVOICES', 'CREATE_INVOICE',
+    'VIEW_PAYMENTS', 'PROCESS_PAYMENT',
+    'APPROVE_DISCOUNT',
+    'VIEW_REPORTS',
+  ],
+
+  'class-teacher': [
+    'VIEW_STUDENTS',
+    'VIEW_GRADES', 'EDIT_GRADES',
+    'VIEW_TRANSPORT',
+    'VIEW_REPORTS',
+  ],
+
+  parent: [
+    'VIEW_INVOICES',
+    'VIEW_PAYMENTS',
+    'VIEW_TRANSPORT',
+  ],
+}

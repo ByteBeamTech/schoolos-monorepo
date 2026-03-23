@@ -1,0 +1,15 @@
+{
+  "name": "@schoolos/iot-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hardware adapter pattern for biometric, RFID, GPS devices",
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@types/node": "20",
+    "typescript": "^5.4.0"
+  }
+}

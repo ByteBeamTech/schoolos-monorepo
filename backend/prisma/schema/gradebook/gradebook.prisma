@@ -1,0 +1,13 @@
+model GradeBoundary {
+  id        String   @id @default(cuid())
+  tenantId  String
+  sessionId String
+  grade     String
+  minMark   Decimal  @db.Decimal(5,2)
+  maxMark   Decimal  @db.Decimal(5,2)
+  remark    String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, sessionId])
+}

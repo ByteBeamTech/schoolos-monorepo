@@ -1,0 +1,88 @@
+model Complaint {
+  id               String   @id @default(cuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  ticketNumber     String
+  complainantName  String
+  complainantPhone String?
+  complainantEmail String?
+  complainantType  String
+  relatedStudentId String?
+  relatedStaffId   String?
+  category         String
+  subject          String
+  description      String
+  priority         String   @default("MEDIUM")
+  status           String   @default("OPEN")
+  assignedTo       String?
+  resolution       String?
+  resolvedAt       DateTime?
+  createdBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  activities ComplaintActivity[]
+
+  @@unique([tenantId, ticketNumber])
+  @@index([tenantId])
+  @@index([status])
+}
+
+model ComplaintActivity {
+  id          String    @id @default(cuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id])
+  action      String
+  comment     String?
+  actorId     String
+  createdAt   DateTime  @default(now())
+
+  @@index([complaintId])
+}
+
+model Visitor {
+  id               String    @id @default(cuid())
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id])
+  passNumber       String
+  visitorName      String
+  phone            String
+  email            String?
+  idType           String?
+  idNumber         String?
+  photoUrl         String?
+  company          String?
+  purpose          String
+  personToMeet     String
+  personToMeetId   String?
+  department       String?
+  expectedDuration Int?
+  vehicleNumber    String?
+  remarks          String?
+  checkIn          DateTime  @default(now())
+  checkOut         DateTime?
+  status           String    @default("CHECKED_IN")
+  createdBy        String
+  createdAt        DateTime  @default(now())
+
+  @@unique([tenantId, passNumber])
+  @@index([tenantId])
+  @@index([status])
+}
+
+model StaffAttendance {
+  id        String    @id @default(cuid())
+  tenantId  String
+  staffId   String
+  date      DateTime
+  status    String
+  checkIn   DateTime?
+  checkOut  DateTime?
+  remarks   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([tenantId, staffId, date])
+  @@index([tenantId])
+  @@index([staffId])
+}

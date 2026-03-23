@@ -1,0 +1,31 @@
+model TransportRoute {
+  id            String                @id @default(cuid())
+  tenantId      String
+  name          String
+  description   String?
+  status        TransportRouteStatus  @default(ACTIVE)
+  stops         Json?
+  vehicleNumber String?
+  driverName    String?
+  driverPhone   String?
+  feeAmount     Decimal               @default(0) @db.Decimal(12, 2)
+  currency      Currency              @default(INR)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  assignments   TransportAssignment[]
+
+  @@index([tenantId])
+}
+
+model TransportAssignment {
+  id           String         @id @default(cuid())
+  studentId    String         @unique
+  routeId      String
+  boardingStop String?
+  assignedAt   DateTime       @default(now())
+  endedAt      DateTime?
+  route        TransportRoute @relation(fields: [routeId], references: [id])
+  student      Student        @relation(fields: [studentId], references: [id])
+
+  @@index([routeId])
+}

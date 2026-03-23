@@ -1,0 +1,37 @@
+model Book {
+  id              String      @id @default(cuid())
+  tenantId        String
+  isbn            String?
+  title           String
+  author          String?
+  publisher       String?
+  subject         String?
+  totalCopies     Int         @default(1)
+  availableCopies Int         @default(1)
+  location        String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  issues          BookIssue[]
+
+  @@index([tenantId])
+  @@index([isbn])
+}
+
+model BookIssue {
+  id         String          @id @default(cuid())
+  tenantId   String
+  bookId     String
+  studentId  String
+  issuedAt   DateTime        @default(now())
+  dueDate    DateTime
+  returnedAt DateTime?
+  status     BookIssueStatus @default(ISSUED)
+  fine       Decimal?        @db.Decimal(10, 2)
+  finePaid   Boolean         @default(false)
+  issuedBy   String
+  book       Book            @relation(fields: [bookId], references: [id])
+
+  @@index([tenantId])
+  @@index([studentId])
+  @@index([status])
+}

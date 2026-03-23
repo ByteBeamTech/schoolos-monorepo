@@ -1,0 +1,274 @@
+enum UserRole {
+  SUPER_ADMIN
+  SCHOOL_OWNER
+  SCHOOL_ADMIN
+  PRINCIPAL
+  VICE_PRINCIPAL
+  ACCOUNTANT
+  TEACHER
+  CLASS_TEACHER
+  LIBRARIAN
+  NURSE
+  PARENT
+  STUDENT
+  STAFF
+  HR_MANAGER
+  RECEPTIONIST
+  TRANSPORT_MANAGER
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum Region {
+  IN
+  US
+  EU
+  UK
+  GLOBAL
+}
+
+enum Currency {
+  INR
+  USD
+  GBP
+  EUR
+  AED
+}
+
+enum PricingModel {
+  PER_STUDENT
+  SUBSCRIPTION
+  HYBRID
+}
+
+enum SubscriptionTier {
+  STARTER
+  GROWTH
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+enum PaymentGatewayProvider {
+  RAZORPAY
+  STRIPE
+  PAYPAL
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FLAT
+}
+
+enum DiscountCategory {
+  SIBLING
+  MERIT
+  STAFF_CHILD
+  FINANCIAL_HARDSHIP
+  PRINCIPAL_OVERRIDE
+  SCHOLARSHIP
+  EARLY_PAYMENT
+  CUSTOM
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  PUSH
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  APPROVE
+  REJECT
+  REVOKE
+  PAYMENT_INITIATED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  REFUND_INITIATED
+  DISCOUNT_APPLIED
+  INVOICE_GENERATED
+  RECEIPT_GENERATED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+  HOLIDAY
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ExamType {
+  UNIT_TEST
+  MID_TERM
+  FINAL
+  PRACTICAL
+  INTERNAL
+}
+
+enum BookIssueStatus {
+  ISSUED
+  RETURNED
+  OVERDUE
+  LOST
+}
+
+enum TransportRouteStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum FraudAlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum FraudAlertStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  FALSE_POSITIVE
+}
+
+enum DunningStatus {
+  SCHEDULED
+  SENT
+  SUCCESS
+  FAILED
+  EXHAUSTED
+}
+
+enum GuardianRelation {
+  FATHER
+  MOTHER
+  GRANDFATHER
+  GRANDMOTHER
+  UNCLE
+  AUNT
+  SIBLING
+  LEGAL_GUARDIAN
+  OTHER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum ResourceType {
+  CLASSROOM
+  LAB
+  AUDITORIUM
+  SPORTS_GROUND
+  MEETING_ROOM
+  LIBRARY_HALL
+  OTHER
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum ExpenseCategory {
+  UTILITIES
+  STATIONERY
+  MAINTENANCE
+  SALARIES
+  TRANSPORT
+  EVENTS
+  EQUIPMENT
+  PETTY_CASH
+  OTHER
+}
+
+enum CertificateType {
+  TRANSFER
+  BONAFIDE
+  CHARACTER
+  ACHIEVEMENT
+  MIGRATION
+  CONDUCT
+}
+
+enum AdmissionStatus {
+  INQUIRY
+  APPLIED
+  SCREENING
+  WAITLISTED
+  ENROLLED
+  REJECTED
+  WITHDRAWN
+}

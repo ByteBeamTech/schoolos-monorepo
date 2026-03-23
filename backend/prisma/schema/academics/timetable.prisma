@@ -1,0 +1,19 @@
+model TimetableSlot {
+  id           String   @id @default(cuid())
+  tenantId     String
+  sectionId    String
+  subjectId    String
+  teacherId    String
+  dayOfWeek    Int
+  periodNumber Int
+  startTime    String
+  endTime      String
+  roomId       String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  section      Section  @relation(fields: [sectionId], references: [id])
+
+  @@unique([tenantId, sectionId, dayOfWeek, periodNumber])
+  @@index([tenantId])
+  @@index([sectionId])
+}

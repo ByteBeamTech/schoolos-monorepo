@@ -1,0 +1,64 @@
+model User {
+  id                String             @id @default(cuid())
+  tenantId          String
+  email             String
+  phone             String?
+  passwordHash      String?
+  firstName         String
+  lastName          String
+  role              UserRole
+  isActive          Boolean            @default(true)
+  isEmailVerified   Boolean            @default(false)
+  isPhoneVerified   Boolean            @default(false)
+  avatarUrl         String?
+  lastLoginAt       DateTime?
+  mfaEnabled        Boolean            @default(false)
+  mfaSecret         String?
+  preferences       Json?              @default("{}")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+  auditLogs         AuditLog[]
+  discountApprovals DiscountApproval[] @relation("Approver")
+  discountRequests  DiscountApproval[] @relation("Requester")
+  oauthAccounts     OAuthAccount[]
+  sessions          Session[]
+  staffProfile      StaffProfile?
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([email])
+  @@index([role])
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  userId       String
+  refreshToken String    @unique
+  userAgent    String?
+  ipAddress    String?
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model OAuthAccount {
+  id             String    @id @default(cuid())
+  userId         String
+  provider       String
+  providerUserId String
+  accessToken    String?
+  refreshToken   String?
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+}

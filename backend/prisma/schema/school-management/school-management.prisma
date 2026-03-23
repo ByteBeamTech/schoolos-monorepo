@@ -1,0 +1,75 @@
+// School Management — models missing from original schema
+
+model Branch {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  code      String?
+  address   String?
+  city      String?
+  phone     String?
+  email     String?
+  principal String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model TenantBranding {
+  id             String   @id @default(cuid())
+  tenantId       String   @unique
+  primaryColor   String   @default("#1E40AF")
+  secondaryColor String   @default("#DBEAFE")
+  logoUrl        String?
+  faviconUrl     String?
+  portalTitle    String?
+  tagline        String?
+  updatedAt      DateTime @updatedAt
+}
+
+model TenantSecuritySettings {
+  id                    String   @id @default(cuid())
+  tenantId              String   @unique
+  sessionTimeoutMinutes Int      @default(60)
+  requireMfaForAdmins   Boolean  @default(false)
+  maxLoginAttempts      Int      @default(5)
+  allowedIpRanges       String[] @default([])
+  enforcePasswordPolicy Boolean  @default(false)
+  passwordExpiryDays    Int      @default(90)
+  updatedAt             DateTime @updatedAt
+}
+
+// FeeType and FeeStructure — simplified wrappers used by school-management setup
+// (The full billing system uses FeePlan/FeeItem — these are for the settings UI)
+model FeeType {
+  id          String         @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  isMandatory Boolean        @default(false)
+  isRecurring Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+
+  feeStructures FeeStructure[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model FeeStructure {
+  id        String      @id @default(cuid())
+  tenantId  String
+  name      String
+  classId   String
+  class     Class       @relation(fields: [classId], references: [id])
+  feeTypeId String?
+  feeType   FeeType?    @relation(fields: [feeTypeId], references: [id])
+  frequency String
+  amount    Decimal     @db.Decimal(12, 2)
+  createdAt DateTime    @default(now())
+
+  @@index([tenantId])
+}

@@ -1,0 +1,56 @@
+model Discount {
+  id             String             @id @default(cuid())
+  tenantId       String
+  studentId      String
+  category       DiscountCategory
+  type           DiscountType
+  value          Decimal            @db.Decimal(10, 2)
+  reason         String?
+  notes          String?
+  validFrom      DateTime
+  validUntil     DateTime?
+  approvalStatus ApprovalStatus     @default(PENDING)
+  invoiceId      String?
+  revokedAt      DateTime?
+  revokedBy      String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  student        Student            @relation(fields: [studentId], references: [id])
+  approvals      DiscountApproval[]
+
+  @@index([tenantId])
+  @@index([studentId])
+  @@index([approvalStatus])
+}
+
+model DiscountApproval {
+  id           String         @id @default(cuid())
+  discountId   String
+  requesterId  String
+  approverId   String?
+  status       ApprovalStatus @default(PENDING)
+  requestNote  String?
+  approvalNote String?
+  requestedAt  DateTime       @default(now())
+  decidedAt    DateTime?
+  approver     User?          @relation("Approver", fields: [approverId], references: [id])
+  discount     Discount       @relation(fields: [discountId], references: [id])
+  requester    User           @relation("Requester", fields: [requesterId], references: [id])
+
+  @@index([discountId])
+}
+
+model LateFee {
+  id          String    @id @default(cuid())
+  tenantId    String
+  invoiceId   String
+  amount      Decimal   @db.Decimal(12, 2)
+  daysOverdue Int
+  appliedAt   DateTime  @default(now())
+  waivedAt    DateTime?
+  waivedBy    String?
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id])
+
+  @@index([tenantId])
+  @@index([invoiceId])
+}

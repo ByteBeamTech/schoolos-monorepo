@@ -1,0 +1,77 @@
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SupportTicketCategory {
+  BILLING
+  TECHNICAL
+  FEATURE_REQUEST
+  ONBOARDING
+  BUG
+  OTHER
+}
+
+// SLA policy: response + resolution time in minutes
+// CRITICAL: respond 1h, resolve 4h
+// HIGH:     respond 4h, resolve 8h
+// MEDIUM:   respond 8h, resolve 24h
+// LOW:      respond 24h, resolve 72h
+model SupportTicket {
+  id           String                @id @default(cuid())
+  tenantId     String
+  tenant       Tenant                @relation(fields: [tenantId], references: [id])
+  title        String
+  description  String
+  category     SupportTicketCategory @default(OTHER)
+  priority     SupportTicketPriority @default(MEDIUM)
+  status       SupportTicketStatus   @default(OPEN)
+  ticketNumber String
+  assignedTo   String?
+
+  // SLA tracking
+  slaResponseDueAt   DateTime?   // When first response is due
+  slaResolutionDueAt DateTime?   // When ticket must be resolved
+  firstResponseAt    DateTime?   // When superadmin first replied
+  slaResponseBreached  Boolean   @default(false)
+  slaResolutionBreached Boolean  @default(false)
+  escalationLevel    Int         @default(0)  // 0=none, 1=first, 2=critical
+  lastEscalatedAt    DateTime?
+
+  resolvedAt DateTime?
+  createdBy  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  messages SupportMessage[]
+
+  @@unique([tenantId, ticketNumber])
+  @@index([tenantId])
+  @@index([status])
+  @@index([assignedTo])
+  @@index([slaResponseBreached])
+  @@index([slaResolutionBreached])
+}
+
+model SupportMessage {
+  id         String        @id @default(cuid())
+  ticketId   String
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id])
+  senderId   String
+  senderRole String
+  message    String
+  isInternal Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+
+  @@index([ticketId])
+}

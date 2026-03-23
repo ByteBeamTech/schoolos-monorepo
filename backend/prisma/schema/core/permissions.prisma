@@ -1,0 +1,45 @@
+// Permission & Access Control Schema
+
+model Permission {
+  id          String   @id @default(cuid())
+  module      String   // e.g., "students", "billing", "hr", "reception"
+  action      String   // e.g., "create", "read", "update", "delete", "approve"
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@unique([module, action])
+  @@index([module])
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  tenantId     String
+  role         UserRole // Which role gets this permission
+  permissionId String
+  grantedBy    String   // User ID who granted this
+  grantedAt    DateTime @default(now())
+  
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, role, permissionId])
+  @@index([tenantId])
+  @@index([role])
+}
+
+// Custom user-level permission overrides (for specific staff)
+model UserPermission {
+  id           String   @id @default(cuid())
+  tenantId     String
+  userId       String
+  permissionId String
+  granted      Boolean  @default(true) // true = grant, false = revoke
+  grantedBy    String
+  grantedAt    DateTime @default(now())
+
+  @@unique([tenantId, userId, permissionId])
+  @@index([tenantId])
+  @@index([userId])
+}

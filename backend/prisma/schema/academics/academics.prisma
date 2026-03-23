@@ -1,0 +1,75 @@
+model Class {
+  id           String          @id @default(cuid())
+  tenantId     String
+  sessionId    String
+  name         String
+  displayOrder Int             @default(0)
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  session      AcademicSession @relation(fields: [sessionId], references: [id])
+  sections     Section[]
+
+  @@unique([tenantId, sessionId, name])
+  feeStructures  FeeStructure[]
+  @@index([tenantId])
+}
+
+model Section {
+  id             String          @id @default(cuid())
+  classId        String
+  tenantId       String
+  name           String
+  capacity       Int             @default(40)
+  classTeacherId String?
+  roomId         String?
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  class          Class           @relation(fields: [classId], references: [id])
+  students       Student[]
+  timetableSlots TimetableSlot[]
+
+  @@unique([classId, name])
+  @@index([tenantId])
+}
+
+model Subject {
+  id              String           @id @default(cuid())
+  tenantId        String
+  name            String
+  code            String?
+  description     String?
+  isElective      Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  subjectMappings SubjectMapping[]
+  teacherMappings TeacherMapping[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model SubjectMapping {
+  id            String   @id @default(cuid())
+  tenantId      String
+  classId       String
+  subjectId     String
+  weeklyPeriods Int      @default(5)
+  createdAt     DateTime @default(now())
+  subject       Subject  @relation(fields: [subjectId], references: [id])
+
+  @@unique([tenantId, classId, subjectId])
+}
+
+model TeacherMapping {
+  id        String   @id @default(cuid())
+  tenantId  String
+  sectionId String
+  subjectId String
+  teacherId String
+  sessionId String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  subject   Subject  @relation(fields: [subjectId], references: [id])
+
+  @@unique([tenantId, sectionId, subjectId, sessionId])
+  @@index([tenantId])
+}

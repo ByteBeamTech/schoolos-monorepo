@@ -1,0 +1,49 @@
+model FeePlan {
+  id           String          @id @default(cuid())
+  tenantId     String
+  sessionId    String
+  name         String
+  description  String?
+  academicYear String
+  grade        String?
+  currency     Currency        @default(INR)
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  assignments  FeeAssignment[]
+  feeItems     FeeItem[]
+  session      AcademicSession @relation(fields: [sessionId], references: [id])
+
+  @@unique([tenantId, name, academicYear])
+  @@index([tenantId])
+}
+
+model FeeItem {
+  id           String        @id @default(cuid())
+  feePlanId    String
+  name         String
+  amount       Decimal       @db.Decimal(12, 2)
+  isOptional   Boolean       @default(false)
+  dueDate      DateTime?
+  gstRate      Decimal?      @db.Decimal(5, 2)
+  gstCode      String?
+  sortOrder    Int           @default(0)
+  createdAt    DateTime      @default(now())
+  feePlan      FeePlan       @relation(fields: [feePlanId], references: [id])
+  invoiceItems InvoiceItem[]
+}
+
+model FeeAssignment {
+  id           String   @id @default(cuid())
+  tenantId     String
+  studentId    String
+  feePlanId    String
+  academicYear String
+  assignedAt   DateTime @default(now())
+  assignedBy   String
+  feePlan      FeePlan  @relation(fields: [feePlanId], references: [id])
+  student      Student  @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, feePlanId, academicYear])
+  @@index([tenantId])
+}

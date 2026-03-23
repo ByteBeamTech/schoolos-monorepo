@@ -1,0 +1,57 @@
+model Exam {
+  id          String          @id @default(cuid())
+  tenantId    String
+  sessionId   String
+  name        String
+  type        ExamType
+  startDate   DateTime
+  endDate     DateTime
+  isPublished Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  session     AcademicSession @relation(fields: [sessionId], references: [id])
+  schedules   ExamSchedule[]
+  marks       Mark[]
+
+  @@index([tenantId])
+  @@index([sessionId])
+}
+
+model ExamSchedule {
+  id        String   @id @default(cuid())
+  examId    String
+  classId   String
+  subjectId String
+  date      DateTime
+  startTime String
+  endTime   String
+  hallId    String?
+  maxMarks  Decimal  @db.Decimal(6, 2)
+  passMarks Decimal  @db.Decimal(6, 2)
+  createdAt DateTime @default(now())
+  exam      Exam     @relation(fields: [examId], references: [id])
+  marks     Mark[]
+
+  @@unique([examId, classId, subjectId])
+  @@index([examId])
+}
+
+model Mark {
+  id            String       @id @default(cuid())
+  tenantId      String
+  examId        String
+  studentId     String
+  scheduleId    String
+  marksObtained Decimal?     @db.Decimal(6, 2)
+  isAbsent      Boolean      @default(false)
+  remarks       String?
+  enteredBy     String
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  exam          Exam         @relation(fields: [examId], references: [id])
+  schedule      ExamSchedule @relation(fields: [scheduleId], references: [id])
+
+  @@unique([examId, studentId, scheduleId])
+  @@index([tenantId])
+  @@index([studentId])
+}

@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "declaration": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2020", "DOM"],
+    "types": ["node", "react", "react-dom"]
+  },
+  "include": ["src/components/**/*", "src/hooks/**/*", "src/index.ts"],
+  "exclude": ["src/stories"]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@schoolos/store-logic",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared Zustand state stores — used by web and mobile",
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "immer": "^10.0.0",
+    "zustand": "^4.5.0"
+  },
+  "peerDependencies": {
+    "@schoolos/api-client": "workspace:*",
+    "@schoolos/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "20",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,173 @@
+// Student Promotion, Migration, ID Card & Alumni Schema
+
+model StudentPromotion {
+  id              String          @id @default(cuid())
+  tenantId        String
+  studentId       String
+  fromSessionId   String          // Academic session promoted from
+  toSessionId     String          // Academic session promoted to
+  fromSectionId   String
+  toSectionId     String?         // Can be null if not yet assigned
+  status          PromotionStatus @default(PENDING)
+  promotionType   PromotionType   // PROMOTED, DETAINED, MIGRATED
+  averageMarks    Float?          // Used for marks-based promotion
+  passingMarks    Float?          // Threshold configured
+  remarks         String?
+  processedBy     String          // User who processed
+  processedAt     DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([tenantId])
+  @@index([studentId])
+  @@index([fromSessionId])
+}
+
+model PromotionRule {
+  id              String    @id @default(cuid())
+  tenantId        String
+  sessionId       String    // Academic session this rule applies to
+  fromClassId     String    // From class
+  toClassId       String    // To class (next class)
+  passingMarks    Float     @default(33) // Minimum % to pass
+  requireAllPass  Boolean   @default(false) // Must pass all subjects
+  autoPromote     Boolean   @default(false) // Auto-promote if criteria met
+  createdBy       String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, sessionId, fromClassId])
+  @@index([tenantId])
+}
+
+model StudentMigration {
+  id                String          @id @default(cuid())
+  tenantId          String          // Source tenant
+  studentId         String
+  targetSchoolName  String          // Name of school migrating to
+  targetSchoolCode  String?         // If migrating to another SchoolOS tenant
+  migrationDate     DateTime
+  transferCertUrl   String?         // TC document URL
+  reason            String?
+  status            MigrationStatus @default(PENDING)
+  approvedBy        String?
+  approvedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([tenantId])
+  @@index([studentId])
+}
+
+model IDCard {
+  id              String      @id @default(cuid())
+  tenantId        String
+  entityType      IDCardType  // STUDENT, STAFF
+  entityId        String      // Student ID or User ID
+  cardNumber      String      // Unique card number
+  qrCode          String      // QR code data (encrypted)
+  issueDate       DateTime    @default(now())
+  expiryDate      DateTime
+  templateId      String?     // ID card template
+  photoUrl        String?
+  status          IDCardStatus @default(ACTIVE)
+  printedAt       DateTime?
+  printedBy       String?
+  replacedCardId  String?     // If this is a replacement
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  tenant          Tenant      @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, cardNumber])
+  @@index([tenantId])
+  @@index([entityType, entityId])
+  @@index([qrCode])
+}
+
+model IDCardTemplate {
+  id              String    @id @default(cuid())
+  tenantId        String
+  name            String
+  type            IDCardType
+  frontDesign     Json      // Layout config for front
+  backDesign      Json?     // Layout config for back
+  width           Int       @default(86)  // mm
+  height          Int       @default(54)  // mm (standard card size)
+  isDefault       Boolean   @default(false)
+  createdBy       String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+}
+
+model Alumni {
+  id              String    @id @default(cuid())
+  tenantId        String
+  studentId       String?   // Link to original student record if exists
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  graduationYear  Int
+  lastClass       String
+  lastSection     String?
+  dateOfBirth     DateTime?
+  gender          Gender?
+  photoUrl        String?
+  currentOccupation String?
+  currentCompany  String?
+  currentCity     String?
+  linkedInUrl     String?
+  achievements    Json?     // Array of achievements
+  isVerified      Boolean   @default(false)
+  verifiedBy      String?
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([graduationYear])
+  @@index([email])
+}
+
+enum PromotionStatus {
+  PENDING
+  PROMOTED
+  DETAINED
+  MIGRATED
+  CANCELLED
+}
+
+enum PromotionType {
+  PROMOTED
+  DETAINED
+  MIGRATED
+}
+
+enum MigrationStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+  CANCELLED
+}
+
+enum IDCardType {
+  STUDENT
+  STAFF
+}
+
+enum IDCardStatus {
+  ACTIVE
+  EXPIRED
+  LOST
+  REPLACED
+  CANCELLED
+}

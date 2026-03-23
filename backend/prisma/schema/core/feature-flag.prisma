@@ -1,0 +1,15 @@
+model FeatureFlag {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  isEnabled Boolean   @default(false)
+  config    Json?     @default("{}")
+  enabledAt DateTime?
+  enabledBy String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}

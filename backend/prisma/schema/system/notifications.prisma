@@ -1,0 +1,53 @@
+model Notification {
+  id          String              @id @default(cuid())
+  tenantId    String
+  recipientId String?
+  channel     NotificationChannel
+  status      NotificationStatus  @default(PENDING)
+  subject     String?
+  body        String
+  templateId  String?
+  data        Json?               @default("{}")
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  failReason  String?
+  createdAt   DateTime            @default(now())
+  tenant      Tenant              @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([recipientId])
+  @@index([status])
+}
+
+model FraudAlert {
+  id          String             @id @default(cuid())
+  tenantId    String
+  severity    FraudAlertSeverity
+  status      FraudAlertStatus   @default(OPEN)
+  ruleId      String
+  ruleName    String
+  description String
+  entityType  String
+  entityId    String
+  evidence    Json?
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  tenant      Tenant             @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([severity])
+}
+
+model StudentDailyCount {
+  id        String   @id @default(cuid())
+  tenantId  String
+  date      DateTime @db.Date
+  count     Int
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, date])
+  @@index([tenantId])
+}

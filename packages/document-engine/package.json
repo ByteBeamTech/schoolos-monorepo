@@ -1,0 +1,20 @@
+{
+  "name": "@schoolos/document-engine",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Centralized PDF and document generation engine",
+  "main": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@react-pdf/renderer": "^3.4.0",
+    "handlebars": "^4.7.8",
+    "sharp": "^0.33.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.37",
+    "typescript": "^5.4.0"
+  }
+}

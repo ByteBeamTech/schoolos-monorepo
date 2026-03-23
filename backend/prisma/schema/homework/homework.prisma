@@ -1,0 +1,47 @@
+model Homework {
+  id          String    @id @default(cuid())
+  tenantId    String
+  sessionId   String
+  classId     String
+  sectionId   String?
+  subjectId   String
+  teacherId   String
+  title       String
+  description String?
+  dueDate     DateTime  @db.Date
+  maxMarks    Int?
+  attachments Json?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  submissions HomeworkSubmission[]
+
+  @@index([tenantId])
+  @@index([classId])
+  @@index([dueDate])
+}
+
+model HomeworkSubmission {
+  id          String           @id @default(cuid())
+  tenantId    String
+  homeworkId  String
+  studentId   String
+  submittedAt DateTime?
+  status      SubmissionStatus @default(PENDING)
+  marksGiven  Int?
+  remarks     String?
+  createdAt   DateTime         @default(now())
+  homework    Homework         @relation(fields: [homeworkId], references: [id])
+
+  @@unique([homeworkId, studentId])
+  @@index([tenantId])
+  @@index([studentId])
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUBMITTED
+  LATE
+  GRADED
+  MISSING
+}
