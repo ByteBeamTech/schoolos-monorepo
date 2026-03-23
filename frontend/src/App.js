@@ -11,6 +11,15 @@ import {
   LogOut,
   Zap,
   ChevronRight,
+  Heart,
+  FlaskConical,
+  Megaphone,
+  Users,
+  Gift,
+  Tag,
+  Monitor,
+  Star,
+  ShieldAlert,
 } from 'lucide-react';
 
 // Pages
@@ -20,6 +29,16 @@ import TenantsPage from './pages/TenantsPage';
 import TenantDetailPage from './pages/TenantDetailPage';
 import PricingPage from './pages/PricingPage';
 import AnalyticsPage from './pages/AnalyticsPage';
+import FraudPage from './pages/FraudPage';
+import AnnouncementsPage from './pages/AnnouncementsPage';
+import CouponsPage from './pages/CouponsPage';
+import ReferralsPage from './pages/ReferralsPage';
+import HealthPage from './pages/HealthPage';
+import TrialsPage from './pages/TrialsPage';
+import CohortsPage from './pages/CohortsPage';
+import NpsPage from './pages/NpsPage';
+import MonitoringPage from './pages/MonitoringPage';
+import SettingsPage from './pages/SettingsPage';
 
 const NAV = [
   {
@@ -27,15 +46,39 @@ const NAV = [
     items: [
       { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
       { href: '/dashboard/analytics', label: 'Revenue', icon: TrendingUp },
+      { href: '/dashboard/cohorts', label: 'Cohorts', icon: BarChart3 },
+      { href: '/dashboard/health', label: 'Tenant Health', icon: Heart },
+      { href: '/dashboard/trials', label: 'Trial Funnel', icon: FlaskConical },
     ],
   },
   {
     group: 'Tenants',
-    items: [{ href: '/dashboard/tenants', label: 'All Schools', icon: Building2 }],
+    items: [
+      { href: '/dashboard/tenants', label: 'All Schools', icon: Building2 },
+    ],
   },
   {
     group: 'Revenue',
-    items: [{ href: '/dashboard/pricing', label: 'Pricing Plans', icon: BarChart3 }],
+    items: [
+      { href: '/dashboard/pricing', label: 'Pricing Plans', icon: BarChart3 },
+      { href: '/dashboard/coupons', label: 'Coupons', icon: Tag },
+      { href: '/dashboard/referrals', label: 'Referrals', icon: Gift },
+    ],
+  },
+  {
+    group: 'Operations',
+    items: [
+      { href: '/dashboard/fraud', label: 'Fraud Alerts', icon: ShieldAlert },
+      { href: '/dashboard/announcements', label: 'Announcements', icon: Megaphone },
+      { href: '/dashboard/nps', label: 'NPS', icon: Star },
+      { href: '/dashboard/monitoring', label: 'Monitoring', icon: Monitor },
+    ],
+  },
+  {
+    group: 'System',
+    items: [
+      { href: '/dashboard/settings', label: 'Settings', icon: Settings },
+    ],
   },
 ];
 
@@ -191,6 +234,106 @@ export default function App() {
           <ProtectedRoute>
             <PlatformLayout>
               <AnalyticsPage />
+            </PlatformLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/fraud"
+        element={
+          <ProtectedRoute>
+            <PlatformLayout>
+              <FraudPage />
+            </PlatformLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/announcements"
+        element={
+          <ProtectedRoute>
+            <PlatformLayout>
+              <AnnouncementsPage />
+            </PlatformLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/coupons"
+        element={
+          <ProtectedRoute>
+            <PlatformLayout>
+              <CouponsPage />
+            </PlatformLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/referrals"
+        element={
+          <ProtectedRoute>
+            <PlatformLayout>
+              <ReferralsPage />
+            </PlatformLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/health"
+        element={
+          <ProtectedRoute>
+            <PlatformLayout>
+              <HealthPage />
+            </PlatformLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/trials"
+        element={
+          <ProtectedRoute>
+            <PlatformLayout>
+              <TrialsPage />
+            </PlatformLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/cohorts"
+        element={
+          <ProtectedRoute>
+            <PlatformLayout>
+              <CohortsPage />
+            </PlatformLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/nps"
+        element={
+          <ProtectedRoute>
+            <PlatformLayout>
+              <NpsPage />
+            </PlatformLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/monitoring"
+        element={
+          <ProtectedRoute>
+            <PlatformLayout>
+              <MonitoringPage />
+            </PlatformLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard/settings"
+        element={
+          <ProtectedRoute>
+            <PlatformLayout>
+              <SettingsPage />
             </PlatformLayout>
           </ProtectedRoute>
         }
