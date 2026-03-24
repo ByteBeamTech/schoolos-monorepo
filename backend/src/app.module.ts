@@ -63,6 +63,7 @@ import { HomeworkModule }          from './modules/homework/homework.module';
 import { LibraryModule }          from './modules/library/library.module';
 import { InventoryModule }         from './modules/inventory/inventory.module';
 import { AccountingModule }       from './modules/accounting/accounting.module';
+import { CrmModule } from './modules/crm/crm.module';
 // import { VendorManagementModule }  from './modules/vendor-management/vendor-management.module';
 // import { ResourceBookingModule }   from './modules/resource-booking/resource-booking.module';
 import { CertificatesModule }      from './modules/certificates/certificates.module';
@@ -177,6 +178,7 @@ import { SupportModule }           from './modules/support/support.module';
         SuperadminModule,
     PayrollModule,
     AdmissionsModule,
+    CrmModule,
     // CurriculumModule,
     HomeworkModule,
     LibraryModule,
