@@ -14,6 +14,9 @@ importers:
 
   backend:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.80.0
+        version: 0.80.0(zod@3.25.76)
       '@aws-sdk/client-s3':
         specifier: ^3.1011.0
         version: 3.1011.0
@@ -113,6 +116,9 @@ importers:
       dayjs:
         specifier: ^1.11.10
         version: 1.11.20
+      dotenv:
+        specifier: ^17.3.1
+        version: 17.3.1
       firebase-admin:
         specifier: ^12.0.0
         version: 12.7.0
@@ -128,6 +134,9 @@ importers:
       multer:
         specifier: ^1.4.5-lts.1
         version: 1.4.5-lts.2
+      nestjs-cls:
+        specifier: ^6.2.0
+        version: 6.2.0(@nestjs/common@10.4.22)(@nestjs/core@10.4.22)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       nodemailer:
         specifier: ^6.9.12
         version: 6.10.1
@@ -643,6 +652,19 @@ packages:
     transitivePeerDependencies:
       - chokidar
     dev: true
+
+  /@anthropic-ai/sdk@0.80.0(zod@3.25.76):
+    resolution: {integrity: sha512-WeXLn7zNVk3yjeshn+xZHvld6AoFUOR3Sep6pSoHho5YbSi6HwcirqgPA5ccFuW8QTVJAAU7N8uQQC6Wa9TG+g==}
+    hasBin: true
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
+    dependencies:
+      json-schema-to-ts: 3.1.1
+      zod: 3.25.76
+    dev: false
 
   /@apideck/better-ajv-errors@0.3.6(ajv@8.18.0):
     resolution: {integrity: sha512-P+ZygBLZtkp0qqOAJJVX4oX/sFo5JR3eBWwwuqHHhK0GIgQOKWrAfiAaWX0aArHkRWHMuggFEgAZNxVPwPZYaA==}
@@ -9561,6 +9583,11 @@ packages:
     engines: {node: '>=12'}
     dev: false
 
+  /dotenv@17.3.1:
+    resolution: {integrity: sha512-IO8C/dzEb6O3F9/twg6ZLXz164a2fhTnEWb95H23Dm4OuN+92NmEAlTrupP9VW6Jm3sO26tQlqyvyi4CsnY9GA==}
+    engines: {node: '>=12'}
+    dev: false
+
   /dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
@@ -13048,6 +13075,14 @@ packages:
   /json-parse-even-better-errors@2.3.1:
     resolution: {integrity: sha512-xyFwyhro/JEof6Ghe2iz2NcXoj2sloNsWr/XsERDK/oiPCfaNhl5ONfp+jQdAZRQQ0IJWNzH9zIZF7li91kh2w==}
 
+  /json-schema-to-ts@3.1.1:
+    resolution: {integrity: sha512-+DWg8jCJG2TEnpy7kOm/7/AxaYoaRbjVB4LFZLySZlWn8exGs3A4OLJR966cVvU26N7X9TWxl+Jsw7dzAqKT6g==}
+    engines: {node: '>=16'}
+    dependencies:
+      '@babel/runtime': 7.29.2
+      ts-algebra: 2.0.0
+    dev: false
+
   /json-schema-traverse@0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}
 
@@ -13741,6 +13776,21 @@ packages:
 
   /neo-async@2.6.2:
     resolution: {integrity: sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==}
+
+  /nestjs-cls@6.2.0(@nestjs/common@10.4.22)(@nestjs/core@10.4.22)(reflect-metadata@0.2.2)(rxjs@7.8.2):
+    resolution: {integrity: sha512-b2Remha7gV5gId3ezjr2tupjqqgYK7/JqjqX6oZ0ZIDFATUggKH1/32+ul2lOe7FepnHasDONDoePuWEE64cug==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@nestjs/common': '>= 10 < 12'
+      '@nestjs/core': '>= 10 < 12'
+      reflect-metadata: '*'
+      rxjs: '>= 7'
+    dependencies:
+      '@nestjs/common': 10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core': 10.4.22(@nestjs/common@10.4.22)(@nestjs/platform-express@10.4.22)(@nestjs/websockets@10.4.22)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      reflect-metadata: 0.2.2
+      rxjs: 7.8.2
+    dev: false
 
   /next@14.2.35(react-dom@18.3.1)(react@18.3.1):
     resolution: {integrity: sha512-KhYd2Hjt/O1/1aZVX3dCwGXM1QmOV4eNM2UTacK5gipDdPN/oHHK/4oVGy7X8GMfPMsUTUEmGlsy0EY1YGAkig==}
@@ -17052,6 +17102,10 @@ packages:
 
   /tryer@1.0.1:
     resolution: {integrity: sha512-c3zayb8/kWWpycWYg87P71E1S1ZL6b6IJxfb5fvsUgsf0S2MVGaDhDXXjDMpdCpfWXqptc+4mXwmiy1ypXqRAA==}
+    dev: false
+
+  /ts-algebra@2.0.0:
+    resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
     dev: false
 
   /ts-api-utils@1.4.3(typescript@5.9.3):

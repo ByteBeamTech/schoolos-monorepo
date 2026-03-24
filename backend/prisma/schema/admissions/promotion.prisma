@@ -1,19 +1,17 @@
-// Student Promotion, Migration, ID Card & Alumni Schema
-
 model StudentPromotion {
   id            String          @id @default(cuid())
   tenantId      String
   studentId     String
-  fromSessionId String // Academic session promoted from
-  toSessionId   String // Academic session promoted to
+  fromSessionId String
+  toSessionId   String
   fromSectionId String
-  toSectionId   String? // Can be null if not yet assigned
+  toSectionId   String?
   status        PromotionStatus @default(PENDING)
-  promotionType PromotionType // PROMOTED, DETAINED, MIGRATED
-  averageMarks  Float? // Used for marks-based promotion
-  passingMarks  Float? // Threshold configured
+  promotionType PromotionType
+  averageMarks  Float?
+  passingMarks  Float?
   remarks       String?
-  processedBy   String // User who processed
+  processedBy   String
   processedAt   DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
@@ -26,17 +24,16 @@ model StudentPromotion {
 model PromotionRule {
   id             String   @id @default(cuid())
   tenantId       String
-  sessionId      String // Academic session this rule applies to
-  fromClassId    String // From class
-  toClassId      String // To class (next class)
-  passingMarks   Float    @default(33) // Minimum % to pass
-  requireAllPass Boolean  @default(false) // Must pass all subjects
-  autoPromote    Boolean  @default(false) // Auto-promote if criteria met
+  sessionId      String
+  fromClassId    String
+  toClassId      String
+  passingMarks   Float    @default(33)
+  requireAllPass Boolean  @default(false)
+  autoPromote    Boolean  @default(false)
   createdBy      String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, sessionId, fromClassId])
   @@index([tenantId])
@@ -44,12 +41,12 @@ model PromotionRule {
 
 model StudentMigration {
   id               String          @id @default(cuid())
-  tenantId         String // Source tenant
+  tenantId         String
   studentId        String
-  targetSchoolName String // Name of school migrating to
-  targetSchoolCode String? // If migrating to another SchoolOS tenant
+  targetSchoolName String
+  targetSchoolCode String?
   migrationDate    DateTime
-  transferCertUrl  String? // TC document URL
+  transferCertUrl  String?
   reason           String?
   status           MigrationStatus @default(PENDING)
   approvedBy       String?
@@ -64,22 +61,21 @@ model StudentMigration {
 model IDCard {
   id             String       @id @default(cuid())
   tenantId       String
-  entityType     IDCardType // STUDENT, STAFF
-  entityId       String // Student ID or User ID
-  cardNumber     String // Unique card number
-  qrCode         String // QR code data (encrypted)
+  entityType     IDCardType
+  entityId       String
+  cardNumber     String
+  qrCode         String
   issueDate      DateTime     @default(now())
   expiryDate     DateTime
-  templateId     String? // ID card template
+  templateId     String?
   photoUrl       String?
   status         IDCardStatus @default(ACTIVE)
   printedAt      DateTime?
   printedBy      String?
-  replacedCardId String? // If this is a replacement
+  replacedCardId String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, cardNumber])
   @@index([tenantId])
@@ -92,16 +88,15 @@ model IDCardTemplate {
   tenantId    String
   name        String
   type        IDCardType
-  frontDesign Json // Layout config for front
-  backDesign  Json? // Layout config for back
-  width       Int        @default(86) // mm
-  height      Int        @default(54) // mm (standard card size)
+  frontDesign Json
+  backDesign  Json?
+  width       Int        @default(86)
+  height      Int        @default(54)
   isDefault   Boolean    @default(false)
   createdBy   String
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant      Tenant     @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
 }
@@ -109,7 +104,7 @@ model IDCardTemplate {
 model Alumni {
   id                String    @id @default(cuid())
   tenantId          String
-  studentId         String? // Link to original student record if exists
+  studentId         String?
   firstName         String
   lastName          String
   email             String?
@@ -124,14 +119,13 @@ model Alumni {
   currentCompany    String?
   currentCity       String?
   linkedInUrl       String?
-  achievements      Json? // Array of achievements
+  achievements      Json?
   isVerified        Boolean   @default(false)
   verifiedBy        String?
   metadata          Json?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
   @@index([graduationYear])

@@ -1,15 +1,11 @@
-import { SupportModule } from '../../modules/support/support.module';
-import { Module }       from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
-import { BullModule }   from '@nestjs/bull';
-import { QUEUE_NAMES }  from '../../infra/queue/queue.module';
-import { CronEngine }   from './cron-engine.service';
+import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bull';
+import { QUEUE_NAMES } from '../../infra/queue/queue.module';
+import { CronEngine } from './cron-engine.service';
 import { ComplianceModule } from '../compliance/compliance.module';
 
 @Module({
   imports: [
-    SupportModule,
-    ScheduleModule.forRoot(),
     ComplianceModule,
     BullModule.registerQueue(
       { name: QUEUE_NAMES.BILLING_CYCLE },
@@ -20,6 +16,6 @@ import { ComplianceModule } from '../compliance/compliance.module';
     ),
   ],
   providers: [CronEngine],
-  exports:   [CronEngine],
+  exports: [CronEngine],
 })
 export class CronEngineModule {}

@@ -112,47 +112,35 @@ model DunningAttempt {
   @@index([scheduledAt])
 }
 
-// ====================== LICENSE ======================
-
 model License {
-  id  String @id @default(cuid())
-  key String @unique @default(uuid())
-
-  tenantId String?
-  branchId String?
-
-  tenant Tenant? @relation(fields: [tenantId], references: [id])
-  branch Branch? @relation(fields: [branchId], references: [id])
-
-  issuedById     String?
-  subscriptionId String?
-  orderId        String?
-
-  type    LicenseType
-  status  LicenseStatus @default(UNUSED)
-  version Int           @default(1)
-
-  maxStudents  Int?
-  maxStaff     Int?
-  maxBranches  Int?
-  storageLimit Int?
-
-  features Json?
-
-  domain       String?
-  hardwareHash String?
-  metadata     Json?
-
+  id               String        @id @default(cuid())
+  key              String        @unique @default(uuid())
+  tenantId         String?
+  branchId         String?
+  issuedById       String?
+  subscriptionId   String?
+  orderId          String?
+  type             LicenseType
+  status           LicenseStatus @default(UNUSED)
+  version          Int           @default(1)
+  maxStudents      Int?
+  maxStaff         Int?
+  maxBranches      Int?
+  storageLimit     Int?
+  features         Json?
+  domain           String?
+  hardwareHash     String?
+  metadata         Json?
   expiresAt        DateTime?
   usedAt           DateTime?
   revokedAt        DateTime?
   revocationReason String?
-
-  gracePeriod  Int     @default(7)
-  activatedVia String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  gracePeriod      Int           @default(7)
+  activatedVia     String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  branch           Branch?       @relation(fields: [branchId], references: [id])
+  tenant           Tenant?       @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
   @@index([branchId])
@@ -161,39 +149,28 @@ model License {
   @@index([key, status, expiresAt])
 }
 
-// ====================== LICENSE ORDER ======================
-
 model LicenseOrder {
-  id       String @id @default(cuid())
-  tenantId String
-
-  planId   String
-  quantity Int
-
-  status OrderStatus
-
-  amount   Float
-  currency String
-
-  createdAt DateTime @default(now())
+  id        String      @id @default(cuid())
+  tenantId  String
+  planId    String
+  quantity  Int
+  status    OrderStatus
+  amount    Float
+  currency  String
+  createdAt DateTime    @default(now())
 
   @@index([tenantId])
 }
 
-// ====================== USAGE TRACKING ======================
-
 model UsageRecord {
-  id       String  @id @default(cuid())
-  tenantId String
-  branchId String?
-
-  metric String
-  value  Float
-
+  id          String    @id @default(cuid())
+  tenantId    String
+  branchId    String?
+  metric      String
+  value       Float
   periodStart DateTime?
   periodEnd   DateTime?
-
-  recordedAt DateTime @default(now())
+  recordedAt  DateTime  @default(now())
 
   @@index([tenantId])
 }

@@ -1,45 +1,31 @@
-// ====================== FAMILY ======================
-
 model Family {
-  id       String  @id @default(cuid())
-  tenantId String
-  branchId String?
-
-  familyName String?
-
-  students     Student[]
+  id           String                 @id @default(cuid())
+  tenantId     String
+  branchId     String?
+  familyName   String?
+  createdAt    DateTime               @default(now())
   applications AdmissionApplication[]
-
-  createdAt DateTime @default(now())
+  students     Student[]
 
   @@index([tenantId])
   @@index([tenantId, branchId])
 }
 
-// ====================== STUDENT RELATIONSHIP ======================
-
 model StudentRelationship {
-  id String @id @default(cuid())
-
-  tenantId String
-  branchId String?
-
-  studentId   String
-  relatedToId String
-
-  student   Student @relation("StudentRelations", fields: [studentId], references: [id])
-  relatedTo Student @relation("RelatedTo", fields: [relatedToId], references: [id])
-
-  type       RelationType
-  isVerified Boolean      @default(false)
-
+  id           String       @id @default(cuid())
+  tenantId     String
+  branchId     String?
+  studentId    String
+  relatedToId  String
+  type         RelationType
+  isVerified   Boolean      @default(false)
   verifiedById String?
-
-  metadata Json?
-  notes    String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  metadata     Json?
+  notes        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  relatedTo    Student      @relation("RelatedTo", fields: [relatedToId], references: [id])
+  student      Student      @relation("StudentRelations", fields: [studentId], references: [id])
 
   @@unique([studentId, relatedToId])
   @@index([tenantId])
@@ -47,63 +33,38 @@ model StudentRelationship {
   @@index([tenantId, branchId, relatedToId])
 }
 
-// ====================== ADMISSION APPLICATION ======================
-
 model AdmissionApplication {
-  id String @id @default(cuid())
-
-  tenantId String
-  branchId String
-
-  firstName String
-  lastName  String
-  photoUrl  String?
-  dob       DateTime
-  gender    String
-
-  // Aadhaar (secure)
-  aadharHash  String?
-  aadharLast4 String?
-
-  // Contact
-  phone String?
-  email String?
-
-  // Identity
-  crmNo         String        @unique
-  admissionMode AdmissionMode
-
-  // Relations
+  id               String                @id @default(cuid())
+  tenantId         String
+  branchId         String
+  firstName        String
+  lastName         String
+  photoUrl         String?
+  dob              DateTime
+  gender           String
+  aadharHash       String?
+  aadharLast4      String?
+  phone            String?
+  email            String?
+  crmNo            String                @unique
+  admissionMode    AdmissionMode
   familyId         String?
   linkedRelativeId String?
   relationType     RelationType?
-
-  // Duplicate tracking
-  duplicateOfId String?
-
-  status ApplicationStatus @default(PENDING)
-
-  formDetails Json?
-  notes       Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  Family    Family?  @relation(fields: [familyId], references: [id])
-
-  referredById String?
-  referredBy   User?   @relation("ReferredApplications", fields: [referredById], references: [id])
-
-  isStaffWard   Boolean @default(false)
-  staffParentId String?
-  staffParent   User?   @relation("StaffChildren", fields: [staffParentId], references: [id])
-
-  // --- CRM OPPOSITE RELATIONS ---
-
-  // Link back to the Lead that converted into this application
-  lead Lead?
-
-  // Link to the multi-tier approval trail
-  approvals ApplicationApproval[]
+  duplicateOfId    String?
+  status           ApplicationStatus     @default(PENDING)
+  formDetails      Json?
+  notes            Json?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  isStaffWard      Boolean               @default(false)
+  referredById     String?
+  staffParentId    String?
+  Family           Family?               @relation(fields: [familyId], references: [id])
+  referredBy       User?                 @relation("ReferredApplications", fields: [referredById], references: [id])
+  staffParent      User?                 @relation("StaffChildren", fields: [staffParentId], references: [id])
+  approvals        ApplicationApproval[]
+  lead             Lead?
 
   @@index([tenantId, branchId])
 }

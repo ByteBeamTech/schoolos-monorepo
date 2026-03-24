@@ -18,23 +18,22 @@ model User {
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   deletedAt            DateTime?
+  roleId               String?
+  referredApplications AdmissionApplication[] @relation("ReferredApplications")
+  staffChildren        AdmissionApplication[] @relation("StaffChildren")
+  applicationApprovals ApplicationApproval[]
   auditLogs            AuditLog[]
   discountApprovals    DiscountApproval[]     @relation("Approver")
   discountRequests     DiscountApproval[]     @relation("Requester")
+  followUpTasks        FollowUpTask[]
+  interactionLogs      InteractionLog[]
+  assignedLeads        Lead[]                 @relation("AssignedLeads")
+  referredLeads        Lead[]                 @relation("ReferredLeads")
   oauthAccounts        OAuthAccount[]
   sessions             Session[]
   staffProfile         StaffProfile?
-  tenant               Tenant                 @relation(fields: [tenantId], references: [id])
-  // --- CRM & RBAC RELATIONS ---
-  roleId               String?
   customRole           Role?                  @relation(fields: [roleId], references: [id])
-  assignedLeads        Lead[]                 @relation("AssignedLeads")
-  referredLeads        Lead[]                 @relation("ReferredLeads")
-  referredApplications AdmissionApplication[] @relation("ReferredApplications")
-  staffChildren        AdmissionApplication[] @relation("StaffChildren")
-  interactionLogs      InteractionLog[]
-  followUpTasks        FollowUpTask[]
-  applicationApprovals ApplicationApproval[]
+  tenant               Tenant                 @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -68,16 +67,6 @@ model OAuthAccount {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   user           User      @relation(fields: [userId], references: [id])
-
-  // --- CRM & RBAC OPPOSITE RELATIONS ---
-
-  // RBAC Role Link
-
-  // Lead Management Links
-
-  // Application & Staff Links
-
-  // Logs & Tasks Links
 
   @@unique([provider, providerUserId])
   @@index([userId])

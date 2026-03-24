@@ -7,8 +7,8 @@ model Class {
   isActive      Boolean         @default(true)
   createdAt     DateTime        @default(now())
   session       AcademicSession @relation(fields: [sessionId], references: [id])
-  sections      Section[]
   feeStructures FeeStructure[]
+  sections      Section[]
 
   @@unique([tenantId, sessionId, name])
   @@index([tenantId])

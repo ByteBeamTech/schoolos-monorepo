@@ -1,56 +1,48 @@
 model Tenant {
-  id               String              @id @default(cuid())
+  id               String                   @id @default(cuid())
   name             String
-  slug             String              @unique
-  domain           String?             @unique
-  region           Region              @default(IN)
-  currency         Currency            @default(INR)
-  timezone         String              @default("Asia/Kolkata")
-  locale           String              @default("en-IN")
-  status           TenantStatus        @default(TRIAL)
+  slug             String                   @unique
+  domain           String?                  @unique
+  region           Region                   @default(IN)
+  currency         Currency                 @default(INR)
+  timezone         String                   @default("Asia/Kolkata")
+  locale           String                   @default("en-IN")
+  status           TenantStatus             @default(TRIAL)
   logoUrl          String?
   address          Json?
   contactEmail     String
   contactPhone     String?
   gstNumber        String?
   panNumber        String?
-  licenseKey       String?             @unique
+  licenseKey       String?                  @unique
   licenseExpiresAt DateTime?
-  maxStudents      Int                 @default(500)
-  featureTier      SubscriptionTier    @default(STARTER)
-  settings         Json?               @default("{}")
-  metadata         Json?               @default("{}")
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  maxStudents      Int                      @default(500)
+  featureTier      SubscriptionTier         @default(STARTER)
+  settings         Json?                    @default("{}")
+  metadata         Json?                    @default("{}")
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
   deletedAt        DateTime?
   academicSessions AcademicSession[]
+  alumni           Alumni[]
+  workflowConfigs  ApprovalWorkflowConfig[]
   auditLogs        AuditLog[]
+  complaints       Complaint[]
   featureFlags     FeatureFlag[]
   fraudAlerts      FraudAlert[]
   guardians        Guardian[]
+  idCards          IDCard[]
+  idCardTemplates  IDCardTemplate[]
+  joiningRequests  JoiningRequest[]
+  License          License[]
   notifications    Notification[]
+  promotionRules   PromotionRule[]
+  rolePermissions  RolePermission[]
   students         Student[]
+  supportTickets   SupportTicket[]
   subscription     TenantSubscription?
   users            User[]
-
-  // Access Control
-  rolePermissions RolePermission[]
-
-  // HR Module
-  joiningRequests JoiningRequest[]
-  workflowConfigs ApprovalWorkflowConfig[]
-
-  // Reception Module
-  complaints Complaint[]
-  visitors   Visitor[]
-
-  // Admission Module
-  promotionRules  PromotionRule[]
-  idCards         IDCard[]
-  idCardTemplates IDCardTemplate[]
-  alumni          Alumni[]
-  supportTickets  SupportTicket[]
-  License         License[]
+  visitors         Visitor[]
 
   @@index([slug])
   @@index([status])

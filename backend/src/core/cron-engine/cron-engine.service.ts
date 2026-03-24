@@ -4,7 +4,6 @@ import { Cron }               from '@nestjs/schedule';
 import { InjectQueue }        from '@nestjs/bull';
 import { Queue }              from 'bull';
 import { EVENTS } from '../events/events.constants';
-import { SupportService } from '../../modules/support/services/support.service';
 import { PrismaService }      from '../../infra/database/prisma.service';
 import { QUEUE_NAMES }        from '../../infra/queue/queue.module';
 
@@ -19,7 +18,6 @@ export class CronEngine {
     @InjectQueue(QUEUE_NAMES.NOTIFICATIONS)   private readonly notifQueue:    Queue,
     @InjectQueue(QUEUE_NAMES.BULK_OPERATIONS) private readonly bulkQueue:     Queue,
     private readonly emitter: EventEmitter2,
-    private readonly supportSvc: SupportService,
   ) {}
 
   // ── Job 1: Billing Cycle — 1st of month 00:01 ────────────────────────────
@@ -309,12 +307,6 @@ export class CronEngine {
 
 
   // ── Job: SLA Check — Every 30 minutes ────────────────────────────────────
-  @Cron('*/30 * * * *', { name: 'sla-check' })
-  async slaCheck() {
-    this.logger.log('CRON sla-check: checking SLA breaches and escalations');
-    const result = await this.supportSvc.runSLACheck();
-    this.logger.log(`sla-check: ${result.checked} tickets | ${result.breaches} breaches | ${result.escalations} escalations`);
-  }
 
   async getJobStatus() {
     const [billingJobs, dunningJobs, notifJobs] = await Promise.all([

@@ -19,13 +19,11 @@ model StaffProfile {
   @@index([tenantId])
 }
 
-// Which subjects a teacher is qualified/preferred to teach
-// Set at staff creation time; used to pre-filter dropdowns in academics
 model TeacherSubjectPreference {
   id        String   @id @default(cuid())
   tenantId  String
-  staffId   String // StaffProfile.id
-  subjectId String // Subject.id
+  staffId   String
+  subjectId String
   createdAt DateTime @default(now())
 
   @@unique([tenantId, staffId, subjectId])

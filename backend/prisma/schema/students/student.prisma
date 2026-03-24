@@ -1,71 +1,49 @@
 model Student {
-  id String @id @default(cuid())
-
-  tenantId String
-  branchId String
-
-  // Identity
-  admissionNumber String @unique
-  firstName       String
-  lastName        String
-
-  // Aadhaar (secure)
-  aadharHash  String? @unique
-  aadharLast4 String?
-
-  // Contact
-  phone String?
-  email String?
-
-  // Duplicate tracking
-  isDuplicate Boolean @default(false)
-
-  // Academic
-  dateOfBirth    DateTime?
-  gender         Gender?
-  bloodGroup     String?
-  previousSchool String?
-  previousClass  String?
-  admissionDate  DateTime?
-  academicYear   String
-
-  // Health snapshot
-  heightCm        Float?
-  weightKg        Float?
-  lastHealthCheck DateTime?
-
-  // Other details
-  photoUrl          String?
-  rollNumber        String?
-  sectionId         String?
-  isActive          Boolean   @default(true)
-  enrolledAt        DateTime  @default(now())
-  leftAt            DateTime?
-  address           Json?
-  metadata          Json?     @default("{}")
-  additionalDetails Json?
-
-  // Relations
-  familyId String?
-  family   Family? @relation(fields: [familyId], references: [id])
-
-  relations   StudentRelationship[] @relation("StudentRelations")
-  relatedToMe StudentRelationship[] @relation("RelatedTo")
-
+  id                  String                @id @default(cuid())
+  tenantId            String
+  admissionNumber     String                @unique
+  firstName           String
+  lastName            String
+  dateOfBirth         DateTime?
+  gender              Gender?
+  bloodGroup          String?
+  photoUrl            String?
+  sectionId           String?
+  rollNumber          String?
+  academicYear        String
+  isActive            Boolean               @default(true)
+  enrolledAt          DateTime              @default(now())
+  leftAt              DateTime?
+  address             Json?
+  metadata            Json?                 @default("{}")
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  aadharHash          String?               @unique
+  aadharLast4         String?
+  additionalDetails   Json?
+  admissionDate       DateTime?
+  branchId            String
+  email               String?
+  familyId            String?
+  heightCm            Float?
+  isDuplicate         Boolean               @default(false)
+  lastHealthCheck     DateTime?
+  phone               String?
+  previousClass       String?
+  previousSchool      String?
+  weightKg            Float?
   attendances         Attendance[]
   discounts           Discount[]
   feeAssignments      FeeAssignment[]
   guardianLinks       GuardianStudent[]
   invoices            Invoice[]
+  family              Family?               @relation(fields: [familyId], references: [id])
+  section             Section?              @relation(fields: [sectionId], references: [id])
+  tenant              Tenant                @relation(fields: [tenantId], references: [id])
+  relatedToMe         StudentRelationship[] @relation("RelatedTo")
+  relations           StudentRelationship[] @relation("StudentRelations")
   transportAssignment TransportAssignment?
 
-  section Section? @relation(fields: [sectionId], references: [id])
-  tenant  Tenant   @relation(fields: [tenantId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Indexes
   @@unique([tenantId, admissionNumber])
   @@index([tenantId])
   @@index([tenantId, branchId])
