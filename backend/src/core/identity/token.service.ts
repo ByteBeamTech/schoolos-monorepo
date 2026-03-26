@@ -1,3 +1,8 @@
+// core/identity/token.service.ts — updated for superadmin audience separation
+// Phase 1: issueTokens() now accepts an optional `isSuperadmin` flag.
+// Superadmin tokens get aud: SUPERADMIN_JWT_AUDIENCE and are signed with
+// SUPERADMIN_JWT_SECRET (falls back to JWT_SECRET if not set separately).
+
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -34,19 +39,29 @@ export class TokenService {
   ) {}
 
   async issueTokens(params: {
-    userId:   string;
-    tenantId: string;
-    role:     string;
-    email:    string;
+    userId:       string;
+    tenantId:     string;
+    role:         string;
+    email:        string;
+    isSuperadmin?: boolean;  // NEW: separate audience for superadmin tokens
   }): Promise<TokenPair> {
-    const { userId, tenantId, role, email } = params;
-    const audience = this.config.get<string>('TENANT_JWT_AUDIENCE', 'schoolos-tenant');
+    const { userId, tenantId, role, email, isSuperadmin = false } = params;
+
+    // Audience separation — superadmin tokens are rejected by tenant JwtStrategy
+    // and tenant tokens are rejected by JwtSuperadminStrategy
+    const audience = isSuperadmin
+      ? this.config.get<string>('SUPERADMIN_JWT_AUDIENCE', 'schoolos-superadmin')
+      : this.config.get<string>('TENANT_JWT_AUDIENCE',     'schoolos-tenant');
+
+    const secret = isSuperadmin
+      ? this.config.get<string>('SUPERADMIN_JWT_SECRET', this.config.get<string>('JWT_SECRET')!)
+      : this.config.get<string>('JWT_SECRET')!;
 
     const jti = randomUUID();
     const accessToken = this.jwt.sign(
       { sub: userId, tenantId, role, email, jti, aud: audience },
       {
-        secret:    this.config.get<string>('JWT_SECRET'),
+        secret,
         expiresIn: this.config.get<string>('JWT_EXPIRY', '15m'),
       },
     );
@@ -60,13 +75,12 @@ export class TokenService {
       },
     );
 
+    // Store refresh token in Redis with TTL
     await this.redis.set(
-      this.redis.refreshTokenKey(refreshJti),
+      `refresh:${refreshJti}`,
       JSON.stringify({ userId, tenantId, role, email }),
       REFRESH_TOKEN_TTL,
     );
-
-    this.logger.debug(`Tokens issued for user ${userId} in tenant ${tenantId}`);
 
     return {
       accessToken,
@@ -76,56 +90,46 @@ export class TokenService {
     };
   }
 
-  verifyAccessToken(token: string): JwtPayload {
-    try {
-      return this.jwt.verify<JwtPayload>(token, {
-        secret: this.config.get<string>('JWT_SECRET'),
-      });
-    } catch {
-      throw new UnauthorizedException('Invalid or expired access token.');
-    }
-  }
-
-  async rotateRefreshToken(refreshToken: string): Promise<TokenPair> {
+  async rotateRefreshToken(refreshToken: string): Promise<Omit<TokenPair, never>> {
     let payload: any;
     try {
       payload = this.jwt.verify(refreshToken, {
         secret: this.config.get<string>('REFRESH_TOKEN_SECRET'),
       });
     } catch {
-      throw new UnauthorizedException('Invalid or expired refresh token.');
+      throw new UnauthorizedException('Refresh token invalid or expired.');
     }
 
     if (payload.type !== 'refresh') {
-      throw new UnauthorizedException('Not a refresh token.');
+      throw new UnauthorizedException('Token is not a refresh token.');
     }
 
-    const stored = await this.redis.get(
-      this.redis.refreshTokenKey(payload.jti),
-    );
+    const stored = await this.redis.get(`refresh:${payload.jti}`);
     if (!stored) {
-      throw new UnauthorizedException(
-        'Refresh token has been revoked. Please log in again.',
-      );
+      throw new UnauthorizedException('Refresh token revoked or expired.');
     }
 
-    const { userId, tenantId, role, email } = JSON.parse(stored);
-    await this.redis.del(this.redis.refreshTokenKey(payload.jti));
+    // Revoke old refresh token (rotation)
+    await this.redis.del(`refresh:${payload.jti}`);
 
-    this.logger.debug(`Refresh token rotated for user ${userId}`);
-
-    return this.issueTokens({ userId, tenantId, role, email });
+    const data = JSON.parse(stored);
+    return this.issueTokens({
+      userId:       data.userId,
+      tenantId:     data.tenantId,
+      role:         data.role,
+      email:        data.email,
+      isSuperadmin: data.role === 'SUPER_ADMIN',
+    });
   }
 
   async revokeRefreshToken(refreshToken: string): Promise<void> {
     try {
-      const payload: any = this.jwt.verify(refreshToken, {
+      const payload = this.jwt.verify(refreshToken, {
         secret: this.config.get<string>('REFRESH_TOKEN_SECRET'),
-      });
-      await this.redis.del(this.redis.refreshTokenKey(payload.jti));
-      this.logger.debug(`Refresh token revoked: ${payload.jti}`);
+      }) as any;
+      await this.redis.del(`refresh:${payload.jti}`);
     } catch {
-      // Already invalid — nothing to do
+      // Already expired or invalid — safe to ignore
     }
   }
 }

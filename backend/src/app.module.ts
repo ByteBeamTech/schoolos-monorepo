@@ -1,3 +1,4 @@
+import { RawBodyMiddleware } from './common/middleware/raw-body.middleware';
 import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -5,7 +6,6 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { BullModule } from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ClsModule } from 'nestjs-cls';
-
 import { validate } from './core/config/env.validation';
 import { TenantMiddleware } from './core/tenants/tenant.middleware';
 
@@ -132,12 +132,20 @@ import { SupportModule } from './modules/support/support.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
+    // 1. RAW BODY MIDDLEWARE (Phase 1 Fix)
+    // Isko sabse upar rakhna hai taaki webhooks ka original data preserve ho sake
+    consumer
+      .apply(RawBodyMiddleware)
+      .forRoutes('webhooks/(.*)');
+
+    // 2. TENANT MIDDLEWARE (Standard logic)
+    // Ensure karna ki webhooks excluded rahein warna 'x-tenant-id' missing ka error aayega
     consumer
       .apply(TenantMiddleware)
       .exclude(
         { path: 'health', method: RequestMethod.GET },
         'auth/(.*)',
-        'webhooks/(.*)',
+        'webhooks/(.*)', // Webhooks tenant-agnostic hote hain, isliye exclude zaroori hai
       )
       .forRoutes('*');
   }

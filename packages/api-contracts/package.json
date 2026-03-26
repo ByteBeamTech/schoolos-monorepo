@@ -1,9 +1,15 @@
+
 {
   "name": "@schoolos/api-contracts",
   "version": "1.0.0",
   "private": true,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./pricing": "./src/pricing/index.ts",
+    "./*": "./src/*.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json"

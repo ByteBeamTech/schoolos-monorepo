@@ -4,10 +4,16 @@
   "engines": {
     "node": ">=18"
   },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "build": "pnpm --recursive build",
     "backend:dev": "pnpm --filter backend dev",
-    "backend:start": "pnpm --filter backend start"
+    "backend:start": "pnpm --filter backend start",
+    "superadmin:dev": "pnpm --filter superadmin dev",
+    "superadmin:build": "pnpm --filter superadmin build"
   },
   "dependencies": {
     "zod": "^4.3.6"

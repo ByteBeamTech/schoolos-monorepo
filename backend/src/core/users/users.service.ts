@@ -102,9 +102,14 @@ export class UsersService {
     return user as SafeUser;
   }
 
-  async updateLastLogin(userId: string): Promise<void> {
+  // BUG 7 FIX: Always pass explicit tenantId + id in the where clause.
+  // The $use CLS middleware injects tenantId automatically on request-scoped
+  // calls, but updateLastLogin is also called from auth flows where auth/(.*)
+  // is excluded from TenantMiddleware, meaning CLS may be empty.
+  // Explicit tenantId here makes this safe in ALL contexts.
+  async updateLastLogin(userId: string, tenantId: string): Promise<void> {
     await this.prisma.user.update({
-      where: { id: userId },
+      where: { id: userId, tenantId },
       data:  { lastLoginAt: new Date() },
     });
   }
@@ -118,10 +123,10 @@ export class UsersService {
     return bcrypt.compare(plain, hash);
   }
 
-  async updatePassword(userId: string, newPassword: string): Promise<void> {
+  async updatePassword(userId: string, tenantId: string, newPassword: string): Promise<void> {
     const hash = await this.hashPassword(newPassword);
     await this.prisma.user.update({
-      where: { id: userId },
+      where: { id: userId, tenantId },  // explicit tenantId here too
       data:  { passwordHash: hash },
     });
   }

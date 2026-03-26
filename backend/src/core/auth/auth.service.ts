@@ -20,6 +20,10 @@ export class AuthService {
     ipAddress: string,
     userAgent: string,
   ): Promise<AuthResponseDto> {
+    // BUG 2 NOTE: findByEmailWithPassword queries WHERE tenantId AND email.
+    // The tenant must exist in the DB and the user must belong to that tenant.
+    // If the seed has not been run, or ran against a different DB, this returns
+    // null and we fall through to the timing-safe fake check + 401.
     const user = await this.users.findByEmailWithPassword(tenantId, dto.email);
 
     if (!user) {
@@ -33,9 +37,16 @@ export class AuthService {
       );
     }
 
+    // Guard: passwordHash must exist — social/SSO accounts have no hash
+    if (!user.passwordHash) {
+      throw new UnauthorizedException(
+        'Password login is not enabled for this account. Use SSO to sign in.',
+      );
+    }
+
     const isValid = await this.users.validatePassword(
       dto.password,
-      (user as any).passwordHash,
+      user.passwordHash,
     );
 
     if (!isValid) {
@@ -51,7 +62,9 @@ export class AuthService {
       userId: user.id, tenantId: user.tenantId, role: user.role, email: user.email,
     });
 
-    await this.users.updateLastLogin(user.id);
+    // BUG 7 FIX: pass tenantId explicitly — auth routes are excluded from
+    // TenantMiddleware so CLS has no tenantId at this point in the request.
+    await this.users.updateLastLogin(user.id, user.tenantId);
 
     await this.audit.log({
       tenantId, actorId: user.id, actorRole: user.role as any,
@@ -74,21 +87,21 @@ export class AuthService {
 
   private getRoleBasedRedirect(role: string): string {
     const redirectMap: Record<string, string> = {
-      SUPER_ADMIN: '/dashboard',
-      SCHOOL_OWNER: '/dashboard',
-      SCHOOL_ADMIN: '/dashboard',
-      PRINCIPAL: '/dashboard',
-      VICE_PRINCIPAL: '/dashboard',
-      ACCOUNTANT: '/dashboard/billing',
-      TEACHER: '/dashboard/academics',
-      CLASS_TEACHER: '/dashboard/attendance',
-      LIBRARIAN: '/dashboard/library',
-      NURSE: '/dashboard/health',
-      PARENT: '/parent',
-      STUDENT: '/student',
-      STAFF: '/dashboard',
-      HR_MANAGER: '/dashboard/hr',
-      RECEPTIONIST: '/dashboard/reception',
+      SUPER_ADMIN:       '/dashboard',
+      SCHOOL_OWNER:      '/dashboard',
+      SCHOOL_ADMIN:      '/dashboard',
+      PRINCIPAL:         '/dashboard',
+      VICE_PRINCIPAL:    '/dashboard',
+      ACCOUNTANT:        '/dashboard/billing',
+      TEACHER:           '/dashboard/academics',
+      CLASS_TEACHER:     '/dashboard/attendance',
+      LIBRARIAN:         '/dashboard/library',
+      NURSE:             '/dashboard/health',
+      PARENT:            '/parent',
+      STUDENT:           '/student',
+      STAFF:             '/dashboard',
+      HR_MANAGER:        '/dashboard/hr',
+      RECEPTIONIST:      '/dashboard/reception',
       TRANSPORT_MANAGER: '/dashboard/transport',
     };
     return redirectMap[role] || '/dashboard';

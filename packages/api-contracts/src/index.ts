@@ -117,3 +117,4 @@ export interface ApproveAdmissionResponse {
     isActive: boolean;
   };
 }
+export * from './pricing';

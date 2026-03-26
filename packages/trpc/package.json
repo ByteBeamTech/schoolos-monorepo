@@ -8,6 +8,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
+    "@schoolos/api-contracts": "workspace:^",
     "@trpc/server": "^11.0.0",
     "zod": "^3.22.0"
   },

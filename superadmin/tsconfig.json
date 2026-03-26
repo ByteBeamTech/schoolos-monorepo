@@ -1,3 +1,4 @@
+
 {
   "compilerOptions": {
     "target": "ES2017",
@@ -14,7 +15,11 @@
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "@schoolos/api-contracts": ["../../packages/api-contracts/src/index.ts"],
+      "@schoolos/api-contracts/*": ["../../packages/api-contracts/src/*"]
+    }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
