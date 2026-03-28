@@ -1,0 +1,55 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "ES2022"
+    ],
+    "jsx": "preserve",
+    "incremental": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@schoolos/types": [
+        "../../packages/types/src"
+      ],
+      "@schoolos/ui": [
+        "../../packages/ui/src"
+      ],
+      "@schoolos/constants": [
+        "../../packages/constants/src"
+      ],
+      "@schoolos/utils": [
+        "../../packages/utils/src"
+      ],
+      "@schoolos/api-client": [
+        "../packages/api-client/src"
+      ],
+      "@schoolos/store-logic": [
+        "../packages/store-logic/src"
+      ]
+    },
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "allowJs": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "src/**/*",
+    "next-env.d.ts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

@@ -42,4 +42,29 @@ export class SuperadminController {
   @Get('monitoring')
   @ApiOperation({ summary: 'System monitoring snapshot' })
   monitoring() { return this.svc.getSystemMonitoring(); }
+@Get('tenants/:tenantId/billing')
+  @ApiOperation({ summary: 'Billing history for a single tenant — invoices + payments' })
+  tenantBilling(@Param('tenantId') tenantId: string) {
+    return this.svc.getTenantBillingHistory(tenantId);
+  }
+ 
+  @Get('audit')
+  @ApiOperation({ summary: 'Platform-wide audit log with filters' })
+  auditLog(
+    @Query('tenantId')   tenantId?:   string,
+    @Query('action')     action?:     string,
+    @Query('actorId')    actorId?:    string,
+    @Query('entityType') entityType?: string,
+    @Query('from')       from?:       string,
+    @Query('to')         to?:         string,
+    @Query('page')       page?:       string,
+    @Query('limit')      limit?:      string,
+  ) {
+    return this.svc.getPlatformAuditLog({
+      tenantId, action, actorId, entityType, from, to,
+      page:  page  ? parseInt(page)  : 1,
+      limit: limit ? parseInt(limit) : 50,
+    });
+  }
+
 }

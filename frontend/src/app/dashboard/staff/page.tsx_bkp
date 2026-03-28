@@ -1,0 +1,221 @@
+"use client";
+import { useState }       from "react";
+import { useRouter }       from "next/navigation";
+import { UserCheck, Plus, Search } from "lucide-react";
+import { PageHeader }     from "@/components/ui/page-header";
+import { Badge }          from "@/components/ui/badge";
+import { EmptyState }     from "@/components/ui/empty-state";
+import { useApi }         from "@/lib/hooks";
+import { apiClient }      from "@/lib/api";
+
+interface StaffMember {
+  id: string; employeeId: string; designation: string;
+  department?: string; isActive: boolean; dateOfJoining: string;
+  user: { id: string; firstName: string; lastName: string; email: string; phone?: string; role: string };
+}
+
+const ROLES = ["TEACHER","CLASS_TEACHER","PRINCIPAL","ACCOUNTANT","LIBRARIAN","NURSE","STAFF"];
+const DEPARTMENTS = ["Academics","Administration","Finance","Sports","Library","Health","Transport","IT","Other"];
+
+export default function StaffPage() {
+  const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [dept,   setDept]   = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [step, setStep] = useState<"idle"|"saving_user"|"saving_staff">("idle");
+
+  const url = `/staff?${dept ? `department=${dept}&` : ""}${search ? `search=${encodeURIComponent(search)}` : ""}`;
+  const { data: staff, loading, refetch } = useApi<StaffMember[]>(url, [search, dept]);
+
+  const [form, setForm] = useState({
+    firstName:"", lastName:"", email:"", phone:"", role:"TEACHER",
+    employeeId:"", designation:"", department:"", dateOfJoining:"",
+    qualification:"", experience:"",
+  });
+  const f = (k: string) => (e: any) => setForm(p => ({ ...p, [k]: e.target.value }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      setStep("saving_user");
+      const userRes = await apiClient.post("/users", {
+        firstName: form.firstName, lastName: form.lastName,
+        email: form.email, phone: form.phone || undefined,
+        role: form.role, password: "School@123",
+      });
+      const userId = (userRes as any).id ?? (userRes as any).data?.id;
+
+      setStep("saving_staff");
+      await apiClient.post("/staff", {
+        userId, employeeId: form.employeeId, designation: form.designation,
+        department:    form.department    || undefined,
+        dateOfJoining: form.dateOfJoining,
+        qualification: form.qualification || undefined,
+        experience:    form.experience    ? parseInt(form.experience) : undefined,
+      });
+
+      setShowForm(false);
+      setForm({ firstName:"", lastName:"", email:"", phone:"", role:"TEACHER",
+        employeeId:"", designation:"", department:"", dateOfJoining:"", qualification:"", experience:"" });
+      refetch();
+    } catch (err: any) {
+      alert(err?.response?.data?.message ?? `Failed at: ${step}`);
+    } finally {
+      setSaving(false); setStep("idle");
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Staff"
+        subtitle={`${Array.isArray(staff) ? staff.length : 0} staff members`}
+        action={
+          <button onClick={() => setShowForm(p => !p)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <Plus className="w-4 h-4" /> Add Staff
+          </button>
+        }
+      />
+
+      {showForm && (
+        <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-6 mb-6">
+          <h3 className="font-semibold text-slate-900 mb-1">Add New Staff Member</h3>
+          <p className="text-xs text-slate-500 mb-5">
+            Default password: <code className="bg-slate-100 px-1.5 py-0.5 rounded">School@123</code>
+          </p>
+          <form onSubmit={handleSubmit}>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Personal Info</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+              {[
+                { label:"First Name *", key:"firstName", required:true },
+                { label:"Last Name *",  key:"lastName",  required:true },
+                { label:"Email *",      key:"email",     required:true, type:"email" },
+                { label:"Phone",        key:"phone" },
+              ].map(({ label, key, required, type }) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
+                  <input type={type ?? "text"} required={required} value={(form as any)[key]} onChange={f(key)}
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              ))}
+            </div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Employment</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Role *</label>
+                <select required value={form.role} onChange={f("role")}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {ROLES.map(r => <option key={r}>{r}</option>)}
+                </select>
+              </div>
+              {[
+                { label:"Employee ID *", key:"employeeId", required:true, placeholder:"EMP-001" },
+                { label:"Designation *", key:"designation", required:true, placeholder:"Mathematics Teacher" },
+              ].map(({ label, key, required, placeholder }) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
+                  <input required={required} type="text" placeholder={placeholder} value={(form as any)[key]} onChange={f(key)}
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              ))}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Department</label>
+                <select value={form.department} onChange={f("department")}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">Select...</option>
+                  {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Date of Joining *</label>
+                <input required type="date" value={form.dateOfJoining} onChange={f("dateOfJoining")}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Qualification</label>
+                <input type="text" placeholder="B.Ed, M.Sc" value={form.qualification} onChange={f("qualification")}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Experience (yrs)</label>
+                <input type="number" min="0" value={form.experience} onChange={f("experience")}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button type="submit" disabled={saving}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors flex items-center gap-2">
+                {saving && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                {saving ? (step === "saving_user" ? "Creating account..." : "Creating profile...") : "Add Staff Member"}
+              </button>
+              <button type="button" onClick={() => setShowForm(false)}
+                className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm rounded-lg transition-colors">Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="flex gap-3 mb-5 flex-wrap">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input type="text" placeholder="Search by name, ID, designation..."
+            value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <select value={dept} onChange={e => setDept(e.target.value)}
+          className="px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">All Departments</option>
+          {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
+        </select>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-100">
+              {["Staff Member","Employee ID","Designation","Department","Role","Status"].map(h => (
+                <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {loading ? [...Array(5)].map((_, i) => (
+              <tr key={i}>{[...Array(6)].map((_, j) => (
+                <td key={j} className="px-5 py-4"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>
+              ))}</tr>
+            )) : !staff || staff.length === 0 ? (
+              <tr><td colSpan={6}>
+                <EmptyState title="No staff members yet" message="Add your first staff member above."
+                  icon={<UserCheck className="w-12 h-12" />} />
+              </td></tr>
+            ) : staff.map(s => (
+              <tr key={s.id}
+                className="hover:bg-slate-50 transition-colors cursor-pointer"
+                onClick={() => router.push(`/dashboard/staff/${s.id}`)}>
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 text-xs font-bold flex-shrink-0">
+                      {s.user.firstName[0]}{s.user.lastName[0]}
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-900">{s.user.firstName} {s.user.lastName}</p>
+                      <p className="text-xs text-slate-400">{s.user.email}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-5 py-4 font-mono text-xs text-slate-600">{s.employeeId}</td>
+                <td className="px-5 py-4 text-slate-700">{s.designation}</td>
+                <td className="px-5 py-4 text-slate-500">{s.department ?? "—"}</td>
+                <td className="px-5 py-4"><Badge label={s.user.role} variant="info" /></td>
+                <td className="px-5 py-4"><Badge label={s.isActive ? "Active" : "Inactive"} variant={s.isActive ? "success" : "neutral"} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

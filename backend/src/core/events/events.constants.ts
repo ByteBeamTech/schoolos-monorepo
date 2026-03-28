@@ -33,6 +33,65 @@ export const EVENTS = {
   // ── Alerts ────────────────────────────────────────────────────────────────
   ALERT_FEE_DROP:                'alert.fee.drop',
   ALERT_ATTENDANCE_DROP:         'alert.attendance.drop',
+ // ── Feature Flags ─────────────────────────────────────────────────────────
+  FLAG_OVERRIDE_REQUESTED:       'flag.override.requested',
+  FLAG_OVERRIDE_APPROVED:        'flag.override.approved',
+  FLAG_OVERRIDE_REJECTED:        'flag.override.rejected',
+  FLAG_OVERRIDE_REVOKED:         'flag.override.revoked',
+  FLAG_OVERRIDE_EXPIRED:         'flag.override.expired',
+  FLAG_UPGRADE_NUDGE:            'flag.upgrade.nudge',
+  FLAG_GRACE_PERIOD_STARTED:     'flag.grace.started',
+  FLAG_GRACE_PERIOD_ENDED:       'flag.grace.ended',
+  FLAG_SLA_BREACH:               'flag.sla.breach',
+
 } as const;
+
+export interface FlagOverrideRequestedEvent {
+  requestId:     string;
+  flagName:      string;
+  flagLabel:     string;
+  targetType:    string;
+  targetId:      string;
+  targetName:    string;
+  requestedBy:   string;
+  requestReason: string;
+  activationMode: string;
+}
+
+export interface FlagOverrideApprovedEvent {
+  requestId:   string;
+  flagName:    string;
+  flagLabel:   string;
+  targetId:    string;
+  targetName:  string;
+  approvedBy:  string;
+  approverNote?: string;
+  expiresAt?:  Date;
+}
+
+export interface FlagOverrideRevokedEvent {
+  requestId:    string;
+  flagName:     string;
+  targetId:     string;
+  targetName:   string;
+  revokedBy:    string;
+  revokeReason: string;
+}
+
+export interface FlagUpgradeNudgeEvent {
+  tenantId:   string;
+  flagName:   string;
+  flagLabel:  string;
+  currentTier: string;
+  requiredTier: string;
+  callCount:  number;
+}
+
+export interface FlagSlaBreachEvent {
+  requestId:   string;
+  flagName:    string;
+  requestedBy: string;
+  hoursElapsed: number;
+}
 
 export type SchoolOSEvent = typeof EVENTS[keyof typeof EVENTS];

@@ -30,7 +30,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-
+import { ConfigService } from '@nestjs/config'; 
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -40,6 +40,11 @@ export class PrismaService
 
   constructor() {
     super({
+	    datasources: {
+		            db: {
+				               // 👈 Claude ne yahi bola tha karne ko!
+					              },
+						            },
       log: [
         { emit: 'event', level: 'error' },
         { emit: 'event', level: 'warn' },

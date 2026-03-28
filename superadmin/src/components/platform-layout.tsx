@@ -2,65 +2,83 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSAStore } from "@/lib/store";
+import { useApi } from "@/lib/use-api"; // सुनिश्चित करें कि useApi सही पाथ से इम्पोर्टेड है
 import {
   LayoutDashboard, Building2, CreditCard, ShieldAlert,
-  Settings, LogOut, Zap, ChevronRight, BarChart3,
+  Settings, Inbox, LogOut, Shield, Zap, ChevronRight, BarChart3,
   TrendingUp, Heart, FlaskConical, Megaphone, Users,
   Gift, MessageSquare, Tag, Monitor, Network, Star,
   KeyRound,
 } from "lucide-react";
 
-const NAV = [
-  {
-    group: "Platform",
-    items: [
-      { href: "/dashboard",                  label: "Overview",        icon: LayoutDashboard },
-      { href: "/dashboard/analytics",        label: "Revenue",         icon: TrendingUp      },
-      { href: "/dashboard/analytics/cohorts",label: "Cohorts",         icon: BarChart3       },
-      { href: "/dashboard/health",           label: "Tenant Health",   icon: Heart           },
-      { href: "/dashboard/trials",           label: "Trial Funnel",    icon: FlaskConical    },
-    ],
-  },
-  {
-    group: "Tenants",
-    items: [
-      { href: "/dashboard/tenants",          label: "All Schools",     icon: Building2       },
-      { href: "/dashboard/knowledge",        label: "Query Builder",   icon: Network         },
-      { href: "/dashboard/impersonate",      label: "Shadow Login",    icon: KeyRound        },
-      { href: "/dashboard/feature-flags",    label: "Feature Flags",   icon: FlaskConical    },
-    ],
-  },
-  {
-    group: "Revenue",
-    items: [
-      { href: "/dashboard/billing",          label: "SaaS Billing",    icon: CreditCard      },
-      { href: "/dashboard/pricing",          label: "Pricing Plans",   icon: BarChart3       },
-      { href: "/dashboard/coupons",          label: "Coupons",         icon: Tag             },
-      { href: "/dashboard/referrals",        label: "Referrals",       icon: Gift            },
-    ],
-  },
-  {
-    group: "Operations",
-    items: [
-      { href: "/dashboard/fraud",            label: "Fraud Alerts",    icon: ShieldAlert     },
-      { href: "/dashboard/announcements",    label: "Announcements",   icon: Megaphone       },
-      { href: "/dashboard/support",          label: "Customer Success",icon: Users           },
-      { href: "/dashboard/nps",              label: "NPS",             icon: Star            },
-      { href: "/dashboard/monitoring",       label: "Monitoring",      icon: Monitor         },
-    ],
-  },
-  {
-    group: "System",
-    items: [
-      { href: "/dashboard/settings",         label: "Settings",        icon: Settings        },
-    ],
-  },
-];
-
 export function PlatformLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router   = useRouter();
+  const router = useRouter();
   const { logout, user } = useSAStore();
+
+ 
+
+
+// ─── LIVE DATA FETCHING ───
+// हम 'any' टाइप का उपयोग कर रहे हैं ताकि बैकएंड के अलग-अलग स्ट्रक्चर को हैंडल कर सकें
+const { data: pendingData, loading } = useApi<any>('/flags/requests/pending');
+
+// Defensive Logic: पहले check करो कि count सीधा मिल रहा है या 'data' ऑब्जेक्ट के अंदर
+const pendingCount = pendingData?.data?.count ?? pendingData?.count ?? 0;
+
+  const NAV = [
+    {
+      group: "Platform",
+      items: [
+        { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+        { href: "/dashboard/analytics", label: "Revenue", icon: TrendingUp },
+        { href: "/dashboard/analytics/cohorts", label: "Cohorts", icon: BarChart3 },
+        { href: "/dashboard/health", label: "Tenant Health", icon: Heart },
+        { href: "/dashboard/trials", label: "Trial Funnel", icon: FlaskConical },
+      ],
+    },
+    {
+      group: "Tenants",
+      items: [
+        { href: "/dashboard/tenants", label: "All Schools", icon: Building2 },
+        { href: "/dashboard/knowledge", label: "Query Builder", icon: Network },
+        { href: "/dashboard/impersonate", label: "Shadow Login", icon: KeyRound },
+        { href: "/dashboard/feature-flags", label: "Feature Flags", icon: FlaskConical },
+        // ─── UPDATED NAV ITEM WITH BADGE ───
+        { 
+          href: "/dashboard/approvals", 
+          label: `Approvals${pendingCount > 0 ? ` (${pendingCount})` : ""}`, 
+          icon: Inbox 
+        },
+      ],
+    },
+    {
+      group: "Revenue",
+      items: [
+        { href: "/dashboard/billing", label: "SaaS Billing", icon: CreditCard },
+        { href: "/dashboard/pricing", label: "Pricing Plans", icon: BarChart3 },
+        { href: "/dashboard/coupons", label: "Coupons", icon: Tag },
+        { href: "/dashboard/referrals", label: "Referrals", icon: Gift },
+      ],
+    },
+    {
+      group: "Operations",
+      items: [
+        { href: "/dashboard/fraud", label: "Fraud Alerts", icon: ShieldAlert },
+        { href: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
+        { href: "/dashboard/support", label: "Customer Success", icon: Users },
+        { href: "/dashboard/nps", label: "NPS", icon: Star },
+        { href: "/dashboard/monitoring", label: "Monitoring", icon: Monitor },
+      ],
+    },
+    {
+      group: "System",
+      items: [
+        { href: "/dashboard/audit", label: "Audit Log", icon: Shield },
+        { href: "/dashboard/settings", label: "Settings", icon: Settings },
+      ],
+    },
+  ];
 
   return (
     <div className="flex min-h-screen bg-slate-950">

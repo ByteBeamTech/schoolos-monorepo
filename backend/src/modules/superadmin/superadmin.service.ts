@@ -393,4 +393,193 @@ export class SuperadminService {
 
     return { count: results.length, results };
   }
+
+// ─── ADD THESE TWO METHODS TO superadmin.service.ts ──────────────────────────
+// Paste them at the bottom of the SuperadminService class, before the closing }
+
+  // ── Tenant Billing History ────────────────────────────────────────────────
+  // Returns all SaaS invoices for a single tenant, with subscription and
+  // payment details. Used by the Tenant Detail billing history tab.
+  async getTenantBillingHistory(tenantId: string) {
+    const subscription = await this.prisma.tenantSubscription.findFirst({
+      where:   { tenantId },
+      include: { plan: true },
+    });
+
+    if (!subscription) {
+      return { subscription: null, invoices: [], totalPaid: 0, totalOutstanding: 0 };
+    }
+
+    const invoices = await this.prisma.saasInvoice.findMany({
+      where:   { subscriptionId: subscription.id },
+      include: { saasPayments: true },
+      orderBy: { createdAt: 'desc' },
+      take:    24, // last 2 years of monthly invoices
+    });
+
+    let totalPaid        = 0;
+    let totalOutstanding = 0;
+
+    const mapped = invoices.map((inv) => {
+      const total = Number(inv.totalAmount);
+      const paid  = inv.saasPayments
+        .filter((p: any) => p.status === 'SUCCESS')
+        .reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+      const due = Math.max(0, total - paid);
+
+      if (inv.status === 'PAID') totalPaid        += total;
+      else                       totalOutstanding  += due;
+
+      return {
+        id:            inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        status:        inv.status,
+        currency:      inv.currency,
+        subtotal:      Number(inv.subtotal),
+        taxAmount:     Number(inv.taxAmount),
+        totalAmount:   total,
+        paidAmount:    paid,
+        dueAmount:     due,
+        periodStart:   inv.periodStart,
+        periodEnd:     inv.periodEnd,
+        studentCount:  inv.studentCount,
+        dueDate:       inv.dueDate,
+        paidAt:        inv.paidAt,
+        pdfUrl:        inv.pdfUrl,
+        lineItems:     inv.lineItems,
+        payments:      inv.saasPayments.map((p: any) => ({
+          id:       p.id,
+          gateway:  p.gateway,
+          amount:   Number(p.amount),
+          status:   p.status,
+          paidAt:   p.paidAt,
+        })),
+        createdAt:     inv.createdAt,
+      };
+    });
+
+    return {
+      subscription: {
+        id:                   subscription.id,
+        model:                subscription.model,
+        status:               subscription.status,
+        currency:             subscription.currency,
+        currentPeriodStart:   subscription.currentPeriodStart,
+        currentPeriodEnd:     subscription.currentPeriodEnd,
+        trialEndsAt:          subscription.trialEndsAt,
+        studentCountAtBilling: subscription.studentCountAtBilling,
+        customPerStudentRate: subscription.customPerStudentRate
+          ? Number(subscription.customPerStudentRate)
+          : null,
+        customBaseFee: subscription.customBaseFee
+          ? Number(subscription.customBaseFee)
+          : null,
+        plan: {
+          name:            subscription.plan.name,
+          tier:            subscription.plan.tier,
+          model:           subscription.plan.model,
+          perStudentRate:  subscription.plan.perStudentRate
+            ? Number(subscription.plan.perStudentRate)
+            : null,
+          baseFee: subscription.plan.baseFee
+            ? Number(subscription.plan.baseFee)
+            : null,
+        },
+      },
+      invoices:         mapped,
+      totalPaid:        Math.round(totalPaid),
+      totalOutstanding: Math.round(totalOutstanding),
+      totalInvoices:    mapped.length,
+    };
+  }
+
+  // ── Platform Audit Log ────────────────────────────────────────────────────
+  // Cross-tenant audit log for superadmin visibility. Supports filtering by
+  // tenantId, action, actorId, entityType, and date range.
+  async getPlatformAuditLog(filters: {
+    tenantId?:   string;
+    action?:     string;
+    actorId?:    string;
+    entityType?: string;
+    from?:       string;
+    to?:         string;
+    page?:       number;
+    limit?:      number;
+  }) {
+    const page  = Math.max(1, filters.page  ?? 1);
+    const limit = Math.min(100, filters.limit ?? 50);
+    const skip  = (page - 1) * limit;
+
+    const where: any = {};
+    if (filters.tenantId)   where.tenantId   = filters.tenantId;
+    if (filters.action)     where.action      = filters.action;
+    if (filters.actorId)    where.actorId     = filters.actorId;
+    if (filters.entityType) where.entityType  = filters.entityType;
+    if (filters.from || filters.to) {
+      where.createdAt = {};
+      if (filters.from) where.createdAt.gte = new Date(filters.from);
+      if (filters.to)   where.createdAt.lte = new Date(filters.to);
+    }
+
+    const [logs, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        include: {
+          tenant: { select: { name: true, slug: true } },
+          actor:  { select: { email: true, firstName: true, lastName: true, role: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take:    limit,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    // Action breakdown for the current filter set (top 10)
+    const actionBreakdown = await this.prisma.auditLog.groupBy({
+      by:     ['action'],
+      where,
+      _count: true,
+      orderBy: { _count: { action: 'desc' } },
+      take:   10,
+    });
+
+    return {
+      logs: logs.map((log) => ({
+        id:         log.id,
+        tenantId:   log.tenantId,
+        tenantName: (log as any).tenant?.name  ?? '—',
+        tenantSlug: (log as any).tenant?.slug  ?? '—',
+        actorId:    log.actorId,
+        actorEmail: (log as any).actor?.email  ?? 'system',
+        actorName:  (log as any).actor
+          ? `${(log as any).actor.firstName} ${(log as any).actor.lastName}`.trim()
+          : 'System',
+        actorRole:  (log as any).actor?.role   ?? log.actorRole ?? '—',
+        action:     log.action,
+        entityType: log.entityType,
+        entityId:   log.entityId,
+        ipAddress:  log.ipAddress,
+        metadata:   log.metadata,
+        after:      log.after,
+        createdAt:  log.createdAt,
+      })),
+      meta: {
+        total,
+        page,
+        limit,
+        lastPage: Math.ceil(total / limit),
+      },
+      actionBreakdown: actionBreakdown.map((r: any) => ({
+        action: r.action,
+        count:  r._count,
+      })),
+    };
+  }
+
+
+
+
+
+
 }
