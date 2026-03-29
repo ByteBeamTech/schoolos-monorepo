@@ -195,7 +195,7 @@ export interface BulkCapabilitiesResponse {
   canAccessBulkPage:  boolean;
 }
 export interface BulkInvoiceGenerateRequest {
-  studentIds: string[];
+  studentIds?: string[];
   academicYear: string;
   month?: string;
   dueDate?: string;

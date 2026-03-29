@@ -24,8 +24,8 @@ export function useApi<T>(url: string, deps: any[] = []) {
     if (!url) { setLoading(false); setData(null); return; }
     setLoading(true); setError(null);
     try {
-      const res = await apiClient.get<T>(url);
-      setData(res.data);
+      const res = await apiClient.get(url);
+      setData(res.data as T);
     } catch (e: any) {
       setError(e?.response?.data?.message ?? "Failed to load");
     } finally {
