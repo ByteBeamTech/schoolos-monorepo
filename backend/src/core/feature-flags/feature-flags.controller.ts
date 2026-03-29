@@ -1,19 +1,17 @@
-// core/feature-flags/feature-flags.controller.ts — FULL REPLACEMENT
+// path: apps/schoolos/backend/src/core/feature-flags/feature-flags.controller.ts
+
 import {
   Controller, Get, Post, Patch, Delete, Param, Body,
-  Query, UseGuards, Req, ForbiddenException,
+  Query, UseGuards, Req,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { Request }             from 'express';
-import { JwtGuard }            from '../auth/guards/jwt.guard';
-import { RolesGuard }          from '../roles/roles.guard';
-import { Roles }               from '../roles/roles.decorator';
-import { CurrentUser }         from '../auth/decorators/current-user.decorator';
-import { AuthenticatedUser }   from '../auth/guards/jwt.strategy';
-import { FeatureFlagService }  from './feature-flags.service';
-
-// Roles that can approve override requests
-const APPROVER_ROLES = ['SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER'];
+import { Request }              from 'express';
+import { JwtGuard }             from '../auth/guards/jwt.guard';
+import { RolesGuard }           from '../roles/roles.guard';
+import { Roles }                from '../roles/roles.decorator';
+import { CurrentUser }          from '../auth/decorators/current-user.decorator';
+import { AuthenticatedUser }    from '../auth/guards/jwt.strategy';
+import { FeatureFlagService }   from './feature-flags.service';
 
 @ApiTags('feature-flags')
 @ApiBearerAuth('access-token')
@@ -22,12 +20,11 @@ const APPROVER_ROLES = ['SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER'];
 export class FeatureFlagsController {
   constructor(private readonly svc: FeatureFlagService) {}
 
-  // ── Evaluation endpoints (used by frontend to gate UI) ─────────────────────
+  // ── Evaluation endpoints ──────────────────────────────────────────────────
 
   @Get()
   @ApiOperation({ summary: 'Get resolved flag map for current user context' })
   async getMyFlags(@CurrentUser() user: AuthenticatedUser, @Req() req: Request) {
-    // Fetch tenant's plan tier for tier gate
     const planTier = (req as any).tenantPlanTier ?? undefined;
     return this.svc.getAllForContext({
       tenantId:  user.tenantId,
@@ -38,7 +35,7 @@ export class FeatureFlagsController {
   }
 
   @Get('modules')
-  @ApiOperation({ summary: 'Get only MODULE flags for current tenant — used by sidebar' })
+  @ApiOperation({ summary: 'Get only MODULE flags for current tenant' })
   async getModuleFlags(@CurrentUser() user: AuthenticatedUser, @Req() req: Request) {
     const planTier = (req as any).tenantPlanTier ?? undefined;
     const all = await this.svc.getAllForContext({
@@ -47,13 +44,12 @@ export class FeatureFlagsController {
       role:     user.role,
       planTier,
     });
-    // Return only MODULE_ prefixed flags
     return Object.fromEntries(
       Object.entries(all).filter(([k]) => k.startsWith('MODULE_'))
     );
   }
 
-  // ── Tenant self-service (tenant admin controls their own allowed flags) ─────
+  // ── Tenant self-service ──────────────────────────────────────────────────
 
   @Get('tenant/controllable')
   @UseGuards(RolesGuard)
@@ -75,25 +71,24 @@ export class FeatureFlagsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: { flagName: string; isEnabled: boolean },
   ) {
-    // Verify the flag is tenant-controllable before allowing
     await this.svc.setOverride({
-      flagName:              body.flagName,
+      flagName:               body.flagName,
       targetType:            'TENANT',
       targetId:              user.tenantId,
-      isEnabled:             body.isEnabled,
-      actorId:               user.id,
-      tenantId:              user.tenantId,
-      tenantControllableOnly: true, // service will throw if flag is not tenant-controllable
+      isEnabled:              body.isEnabled,
+      actorId:                user.id,
+      tenantId:               user.tenantId,
+      tenantControllableOnly: true,
     });
     return { ok: true };
   }
 
-  // ── Superadmin: direct override (no approval needed for superadmin role) ───
+  // ── Superadmin: direct override ───────────────────────────────────────────
 
   @Post('override')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN')
-  @ApiOperation({ summary: 'Superadmin: set a flag override directly (no approval)' })
+  @ApiOperation({ summary: 'Superadmin: set a flag override directly' })
   async setOverride(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: {
@@ -125,26 +120,15 @@ export class FeatureFlagsController {
     return { ok: true };
   }
 
-  // ── Override request workflow ───────────────────────────────────────────────
+  // ── Override request workflow ──────────────────────────────────────────────
 
   @Post('requests')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
-  @ApiOperation({ summary: 'Submit a flag override request for approval' })
+  @ApiOperation({ summary: 'Submit a flag override request' })
   async createRequest(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: {
-      flagName:                    string;
-      targetType:                  string;
-      targetId:                    string;
-      targetName?:                 string;
-      isEnabled:                   boolean;
-      requestReason:               string;
-      activationMode:              string;
-      activatesAt?:                string;
-      trialDays?:                  number;
-      autoRevokeIfNotUpgradedDays?: number;
-    },
+    @Body() body: any,
   ) {
     return this.svc.createOverrideRequest({
       ...body,
@@ -156,7 +140,7 @@ export class FeatureFlagsController {
   @Get('requests')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
-  @ApiOperation({ summary: 'List override requests with filters' })
+  @ApiOperation({ summary: 'List override requests' })
   async listRequests(
     @CurrentUser() user: AuthenticatedUser,
     @Query('status')      status?:      string,
@@ -179,8 +163,7 @@ export class FeatureFlagsController {
   @Get('requests/pending')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
-  @ApiOperation({ summary: 'Get pending approval requests — used for badge count' })
-  async getPendingCount(@CurrentUser() user: AuthenticatedUser) {
+  async getPendingCount() {
     const requests = await this.svc.getPendingRequests();
     return { count: requests.length, requests };
   }
@@ -188,18 +171,15 @@ export class FeatureFlagsController {
   @Patch('requests/:id/approve')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
-  @ApiOperation({ summary: 'Approve an override request' })
   async approveRequest(
     @Param('id')          requestId: string,
     @CurrentUser()        user:      AuthenticatedUser,
     @Body() body: { approverNote?: string },
   ) {
-    // Account managers cannot approve their own requests
-    const request = await this.svc.getAllRequests({ page: 1, limit: 1 });
-    // Full self-approval check happens in service
     return this.svc.approveRequest({
       requestId,
       approvedBy:   user.id,
+      approverRole: user.role,
       approverNote: body.approverNote,
       tenantId:     user.tenantId,
     });
@@ -208,7 +188,6 @@ export class FeatureFlagsController {
   @Patch('requests/:id/reject')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
-  @ApiOperation({ summary: 'Reject an override request' })
   async rejectRequest(
     @Param('id')   requestId: string,
     @CurrentUser() user:      AuthenticatedUser,
@@ -225,7 +204,6 @@ export class FeatureFlagsController {
   @Patch('requests/:id/cancel')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
-  @ApiOperation({ summary: 'Cancel your own pending request' })
   async cancelRequest(
     @Param('id')   requestId: string,
     @CurrentUser() user:      AuthenticatedUser,
@@ -240,7 +218,6 @@ export class FeatureFlagsController {
   @Patch('requests/:id/revoke')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER')
-  @ApiOperation({ summary: 'Revoke an approved override (immediately disables the feature)' })
   async revokeOverride(
     @Param('id')   requestId: string,
     @CurrentUser() user:      AuthenticatedUser,
@@ -254,12 +231,11 @@ export class FeatureFlagsController {
     });
   }
 
-  // ── Admin: view all flags + overrides ──────────────────────────────────────
+  // ── Admin: view all ───────────────────────────────────────────────────────
 
   @Get('admin/all')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER')
-  @ApiOperation({ summary: 'Get all flag definitions with their current overrides' })
   async getAllFlags() {
     return this.svc.getAllFlags();
   }
@@ -267,7 +243,6 @@ export class FeatureFlagsController {
   @Get('admin/tenant/:tenantId')
   @UseGuards(RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
-  @ApiOperation({ summary: 'Get resolved flags for a specific tenant (superadmin view)' })
   async getTenantResolved(
     @Param('tenantId') tenantId: string,
     @Query('planTier') planTier?: string,
@@ -275,4 +250,3 @@ export class FeatureFlagsController {
     return this.svc.getAllForContext({ tenantId, planTier });
   }
 }
-

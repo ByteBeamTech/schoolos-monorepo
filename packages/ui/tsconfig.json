@@ -3,11 +3,16 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
+    "module": "ESNext",
+    "moduleResolution": "node",
     "declaration": true,
     "jsx": "react-jsx",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "lib": ["ES2020", "DOM"],
-    "types": ["node", "react", "react-dom"]
+    "types": ["node", "react", "react-dom"],
+    "skipLibCheck": true
   },
-  "include": ["src/components/**/*", "src/hooks/**/*", "src/index.ts"],
-  "exclude": ["src/stories"]
+  "include": ["src/**/*", "src/index.ts"],
+  "exclude": ["node_modules", "dist", "src/stories"]
 }

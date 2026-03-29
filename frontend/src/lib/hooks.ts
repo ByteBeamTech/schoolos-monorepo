@@ -467,7 +467,9 @@ export function useBulkActions() {
     },
     generateInvoicesForClass: (data: BulkInvoiceGenerateRequest) =>
       bulkApi.generateInvoicesForClass(data),
-    downloadStudentTemplate: (format: BulkTemplateFormat) =>
-      bulkApi.downloadStudentTemplate(format),
+    
+      downloadStudentTemplate: (format: "csv" | "excel") => 
+  bulkApi.downloadStudentTemplate(format),
+      
   };
 }

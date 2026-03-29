@@ -1,3 +1,5 @@
+// path: apps/schoolos/backend/src/modules/notifications/services/notification.service.ts
+
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue }        from '@nestjs/bull';
 import { Queue }              from 'bull';
@@ -22,7 +24,7 @@ export class NotificationService {
     private readonly queue:  Queue,
   ) {}
 
-  async send(tenantId: string, dto: SendNotificationDto, _actorId: string) {
+  async send(tenantId: string, dto: SendNotificationDto, actorId: string) {
     let to = dto.email ?? dto.phone ?? '';
 
     if (!to && dto.recipientId) {
@@ -58,8 +60,8 @@ export class NotificationService {
         recipientId: dto.recipientId ?? null,
         channel:     dto.channel     as any,
         status:      'PENDING' as any,
-        subject:     subject         ?? null,
-        body,
+        subject:     subject          ?? null,
+        body:        body ?? '',
         templateId:  dto.templateId  ?? null,
         data:        dto.data        ?? {},
       },
@@ -77,6 +79,30 @@ export class NotificationService {
       backoff:          { type: 'exponential', delay: 2000 },
       removeOnComplete: true,
       removeOnFail:     false,
+    });
+
+    // --- Audit Logging (Async via setImmediate) ---
+    setImmediate(async () => {
+      try {
+        await this.prisma.communicationLog.create({
+          data: {
+            tenantId,
+            initiatedBy:   actorId ?? 'system',
+            channel:       dto.channel as any,
+            templateId:    dto.templateId ?? null,
+            subject:       subject ?? null,
+            bodyPreview:   (body ?? '').slice(0, 200),
+            recipientType: (dto as any).recipientType ?? 'GUARDIAN',
+            recipientId:   dto.recipientId ?? null,
+            recipientRef:  to,
+            triggerType:   (dto as any).triggerType ?? 'MANUAL',
+            status:        'QUEUED',
+            queuedAt:      new Date(),
+          },
+        });
+      } catch (err) {
+        this.logger.error('CommunicationLog write failed', err);
+      }
     });
 
     this.logger.log(`Notification queued: ${dto.channel} to ${to}`);
@@ -155,12 +181,7 @@ export class NotificationService {
     return { ...results, date: dto.date, total: absentees.length };
   }
 
-  async sendArrivalNotifications(
-    tenantId:  string,
-    date:      string,
-    sectionId: string,
-    actorId:   string,
-  ) {
+  async sendArrivalNotifications(tenantId: string, date: string, sectionId: string, actorId: string) {
     const d = new Date(date);
     d.setUTCHours(0, 0, 0, 0);
 
@@ -268,11 +289,7 @@ export class NotificationService {
     return { ...results, invoiceCount: invoices.length, daysBeforeDue };
   }
 
-  async findAll(tenantId: string, filters: {
-    recipientId?: string;
-    channel?:     string;
-    status?:      string;
-  } = {}) {
+  async findAll(tenantId: string, filters: any = {}) {
     return this.prisma.notification.findMany({
       where: {
         tenantId,

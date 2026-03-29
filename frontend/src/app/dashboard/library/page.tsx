@@ -1,3 +1,5 @@
+// path: apps/schoolos/frontend/src/app/dashboard/library/page.tsx
+
 "use client";
 import { useState }   from "react";
 import { BookOpen, Plus, Search, RotateCcw } from "lucide-react";
@@ -15,15 +17,19 @@ type Tab = "catalog" | "overdue";
 export default function LibraryPage() {
   const [tab, setTab] = useState<Tab>("catalog");
   const searchParams  = useSearchParams();
+  
+  // --- FIX: Add search state ---
+  const [search, setSearch] = useState("");
+  
   const { getParam }  = useFilterParams();
   const [showAdd,    setShowAdd]     = useState(false);
   const [showIssue,  setShowIssue]   = useState(false);
-  const [saving,     setSaving]      = useState(false);
+  const [saving,      setSaving]      = useState(false);
 
   const qs    = searchParams.toString();
-  const { data: books,   loading: bLoad, refetch: refetchBooks  } = useApi<any[]>(`/library/books${qs ? "?" + qs : ""}`, [qs]);
+  const { data: books,    loading: bLoad, refetch: refetchBooks  } = useApi<any[]>(`/library/books${qs ? "?" + qs : ""}`, [qs]);
   const { data: overdue, loading: oLoad, refetch: refetchOverdue } = useApi<any[]>("/library/overdue");
-  const { data: stats,   loading: sLoad, refetch: refetchStats  } = useApi<any>("/library/stats");
+  const { data: stats,    loading: sLoad, refetch: refetchStats  } = useApi<any>("/library/stats");
   const { data: students }                                          = useApi<any>("/students?limit=500");
 
   const [bookForm, setBookForm] = useState({ title:"", author:"", isbn:"", subject:"", location:"", totalCopies:"1" });
@@ -58,11 +64,11 @@ export default function LibraryPage() {
     } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
   };
 
-
   const LIBRARY_SCHEMA = {
     module: "LIBRARY", searchField: "search",
     fields: [{ id: "search", label: "Book", type: "text" as const, placeholder: "Search title, author, ISBN\u2026" }],
   };
+
   return (
     <div>
       <PageHeader title="Library" subtitle="Book catalog, issues and returns"

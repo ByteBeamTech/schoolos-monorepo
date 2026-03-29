@@ -1,7 +1,9 @@
+// path: apps/schoolos/backend/prisma/schema/students/student.prisma
+
 model Student {
   id                  String                @id @default(cuid())
   tenantId            String
-  admissionNumber     String                @unique
+  admissionNumber     String                @unique // Note: Global uniqueness check
   firstName           String
   lastName            String
   dateOfBirth         DateTime?
@@ -32,6 +34,8 @@ model Student {
   previousClass       String?
   previousSchool      String?
   weightKg            Float?
+
+  // Relations
   attendances         Attendance[]
   discounts           Discount[]
   feeAssignments      FeeAssignment[]
@@ -44,10 +48,12 @@ model Student {
   relations           StudentRelationship[] @relation("StudentRelations")
   transportAssignment TransportAssignment?
 
+  // Indexes for 12GB RAM Optimization
   @@unique([tenantId, admissionNumber])
   @@index([tenantId])
   @@index([tenantId, branchId])
   @@index([academicYear])
+  @@index([firstName, lastName]) // Speed up student search by name
 }
 
 model Guardian {
@@ -56,7 +62,7 @@ model Guardian {
   firstName    String
   lastName     String
   email        String?
-  phone        String
+  phone        String            // Removed global uniqueness if any
   altPhone     String?
   occupation   String?
   address      Json?
@@ -64,8 +70,12 @@ model Guardian {
   isActive     Boolean           @default(true)
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
+  
+  // Relations
   tenant       Tenant            @relation(fields: [tenantId], references: [id])
   studentLinks GuardianStudent[]
+
+  @@unique([tenantId, phone]) 
 
   @@index([tenantId])
   @@index([phone])
@@ -78,9 +88,13 @@ model GuardianStudent {
   relation   GuardianRelation
   isPrimary  Boolean          @default(false)
   createdAt  DateTime         @default(now())
+  
+  // Relations
   guardian   Guardian         @relation(fields: [guardianId], references: [id])
   student    Student          @relation(fields: [studentId], references: [id])
 
+  // Prevent duplicate linking of the same guardian to the same student
   @@unique([guardianId, studentId])
   @@index([studentId])
+  @@index([guardianId]) // Crucial for "Find all children of this parent" queries
 }

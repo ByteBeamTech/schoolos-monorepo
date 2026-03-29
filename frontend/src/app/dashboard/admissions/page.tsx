@@ -41,7 +41,6 @@ const EMPTY_APPROVE_FORM: ApproveAdmissionRequest = {
   pincode: "",
   notes: "",
 };
-
 export default function AdmissionsPage() {
   const { getParam, setFilter } = useFilterParams();
   const statusFilter = getParam("status");
@@ -173,12 +172,11 @@ export default function AdmissionsPage() {
     }
   };
 
-  const nextStatus = (current: string) => {
-    const idx = STATUSES.indexOf(current);
-    if (idx === -1 || idx >= STATUSES.indexOf("ENROLLED")) return null;
-    return STATUSES[idx + 1];
-  };
-
+const nextStatus = (current: string) => {
+  const idx = STATUSES.indexOf(current as AdmissionStatus);
+  if (idx === -1 || idx >= STATUSES.indexOf("ENROLLED")) return null;
+  return STATUSES[idx + 1];
+};
   return (
     <div>
       <PageHeader
@@ -368,7 +366,7 @@ export default function AdmissionsPage() {
               <div className="flex flex-wrap gap-2 mb-4">
                 {detail?.status !== "ENROLLED" && detail?.status !== "REJECTED" && (
                   <button
-                    onClick={() => openApproveForm(detail)}
+                    onClick={() => detail && openApproveForm(detail)}
                     className="text-xs px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors"
                   >
                     Prepare Enrollment
@@ -376,7 +374,7 @@ export default function AdmissionsPage() {
                 )}
                 {detail?.status !== "REJECTED" && (
                   <button
-                    onClick={() => rejectSelected(detail)}
+                    onClick={() =>  detail && rejectSelected(detail)}
                     className="text-xs px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
                   >
                     Reject With Reason

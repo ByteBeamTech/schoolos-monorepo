@@ -97,8 +97,31 @@ export interface AddAdmissionNoteRequest {
 }
 
 export interface ApproveAdmissionRequest {
-  notes?: string;
-  assignedSectionId?: string;
+  // Section assignment
+  assignedSectionId: string;
+  admissionNumber:   string;
+  rollNumber?:       string;
+
+  // Student personal details (filled at enrollment time)
+  dateOfBirth:       string;
+  gender:            'MALE' | 'FEMALE' | 'OTHER' | 'PREFER_NOT_TO_SAY' | '';
+  bloodGroup?:       string;
+
+  // Guardian details (created alongside the student record)
+  guardianFirstName: string;
+  guardianLastName:  string;
+  guardianPhone:     string;
+  guardianEmail?:    string;
+  guardianRelation:  'FATHER' | 'MOTHER' | 'GUARDIAN' | 'OTHER';
+
+  // Address
+  addressLine?:      string;
+  city?:             string;
+  state?:            string;
+  pincode?:          string;
+
+  // Misc
+  notes?:            string;
 }
 
 export interface RejectAdmissionRequest {
@@ -117,4 +140,75 @@ export interface ApproveAdmissionResponse {
     isActive: boolean;
   };
 }
+
+
+export interface BehaviorRecord {
+  id:                string;
+  studentId:         string;
+  tenantId:          string;
+  type:              'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  category:          string;
+  title?:            string;
+  description:       string;
+  points?:           number;
+  severity?:         'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  actionTaken?:      string;
+  parentNotified?:   boolean;
+  followUpRequired?: boolean;
+  status:            'OPEN' | 'RESOLVED' | 'ESCALATED';
+  reportedBy?:       string;
+  incidentDate:      string;
+  resolvedAt?:       string;
+  resolvedBy?:       string;
+  resolutionNote?:   string;
+  createdAt:         string;
+  updatedAt:         string;
+}
+
+export interface CreateBehaviorRecordRequest {
+  studentId?:        string;
+  type:              'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  category:          string;
+  title?:            string;
+  description:       string;
+  points?:           number;
+  reportedBy?:       string;
+  incidentDate:      string;
+  severity?:         'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  actionTaken?:      string;
+  parentNotified?:   boolean;
+  followUpRequired?: boolean;
+}
+
+// /apps/schoolos/packages/api-contracts/src/index.ts के अंत में जोड़ें
+
+export interface BulkCapabilitiesResponse {
+  supportedEntities: string[];
+  maxBatchSize:      number;
+  features: {
+    import:   boolean;
+    export:   boolean;
+    generate: boolean;
+  };
+  canImportStudents:  boolean;
+  canGenerateInvoices: boolean;
+  canAccessBulkPage:  boolean;
+}
+export interface BulkInvoiceGenerateRequest {
+  studentIds: string[];
+  academicYear: string;
+  month?: string;
+  dueDate?: string;
+  feePlanId?:    string;     // 🚀 Added: Target by Fee Plan
+  classId?:      string;     // 🚀 Added: Target by Class
+}
+
+export interface BulkTemplateFormat {
+  id: string;
+  name: string;
+  columns: string[];
+}
+
+
+
 export * from './pricing';

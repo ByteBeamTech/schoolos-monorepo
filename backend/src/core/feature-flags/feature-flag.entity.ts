@@ -64,9 +64,9 @@ export class FeatureFlagService {
           OR: [
             { targetType: 'GLOBAL',  targetId: 'global'       },
             { targetType: 'TENANT',  targetId: ctx.tenantId   },
-            ...(ctx.userId   ? [{ targetType: 'USER',   targetId: ctx.userId   }] : []),
-            ...(ctx.role     ? [{ targetType: 'ROLE',   targetId: ctx.role     }] : []),
-            ...(ctx.branchId ? [{ targetType: 'BRANCH', targetId: ctx.branchId }] : []),
+            ...(ctx.userId   ? [{ targetType: 'USER' as any,   targetId: ctx.userId   }] : []),
+            ...(ctx.role     ? [{ targetType: 'ROLE' as any,   targetId: ctx.role     }] : []),
+            ...(ctx.branchId ? [{ targetType: 'BRANCH' as any, targetId: ctx.branchId }] : []),
           ],
         },
       }),

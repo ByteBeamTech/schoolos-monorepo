@@ -318,20 +318,21 @@ export class CronEngine {
     return { billing: billingJobs, dunning: dunningJobs, notifications: notifJobs };
   }
 
-  @Cron('* * * * *', { name: 'feature-flag-orchestrator' })
-  async featureFlagOrchestrator() {
-    try {
-      const result = await this.featureFlags.processSchedules();
-      if (result.executed > 0 || result.expired > 0 || result.revoked > 0 || result.slaBreaches > 0) {
-        this.logger.log(
-          `feature-flag-orchestrator: executed=${result.executed} ` +
-          `expired=${result.expired} revoked=${result.revoked} slaBreaches=${result.slaBreaches}`
-        );
-      }
-    } catch (err) {
-      this.logger.error('feature-flag-orchestrator failed:', err);
-    }
-  }
-
+@Cron('* * * * *', { name: 'feature-flag-orchestrator' })
+ async featureFlagOrchestrator() {
+   try {
+     const result = await this.featureFlags.processSchedules();
+     
+     // FIX: Removed result.expired check
+     if (result.executed > 0 || result.revoked > 0 || result.slaBreaches > 0) {
+       this.logger.log(
+         `feature-flag-orchestrator: executed=${result.executed} ` +
+         `revoked=${result.revoked} slaBreaches=${result.slaBreaches}` // Removed expired
+       );
+     }
+   } catch (err) {
+     this.logger.error('feature-flag-orchestrator failed:', err);
+   }
+ }
 
 }

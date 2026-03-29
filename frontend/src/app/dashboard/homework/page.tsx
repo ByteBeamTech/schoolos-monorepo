@@ -10,7 +10,7 @@ import { apiClient }   from "@/lib/api";
 export default function HomeworkPage() {
   const { data: stats,  loading: sLoad            } = useApi<any>("/homework/stats");
   const { data: list,   loading: lLoad, refetch    } = useApi<any[]>("/homework");
-  const { sessions }                                  = useAcademicSessions();
+  const { data: sessions }                                  = useAcademicSessions();
   const { data: classes }                             = useApi<any>("/academics/classes");
   const { data: subjects }                            = useApi<any[]>("/academics/subjects");
   const [showNew, setShowNew] = useState(false);

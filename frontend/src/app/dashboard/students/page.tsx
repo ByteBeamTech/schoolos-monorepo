@@ -75,10 +75,12 @@ export default function StudentsPage() {
       }
 
       setShowForm(false);
+      
       setForm({ firstName:"", lastName:"", admissionNumber:"", dateOfBirth:"", gender:"MALE",
-        sectionId:"", academicYear: currentSession?.id ?? "",
-        guardianFirstName:"", guardianLastName:"", guardianPhone:"", guardianEmail:"", guardianRelation:"FATHER" });
-      refetch();
+  sectionId:"", academicYear: currentSession?.id ?? "",
+  guardianFirstName:"", guardianLastName:"", guardianPhone:"", guardianEmail:"", guardianRelation:"FATHER",
+  guardianAadhaar:"", studentAadhaar:"" });
+	refetch();
     } catch (err: any) {
       alert(err?.response?.data?.message ?? "Failed to add student");
     } finally {

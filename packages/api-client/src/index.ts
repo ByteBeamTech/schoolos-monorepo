@@ -24,3 +24,5 @@ export * from './endpoints/sessions';
 export * from './endpoints/support';
 export * from './interceptors';
 export * from './types';
+export * from './endpoints/behavior'; // behaviorApi के लिए
+export * from './endpoints/bulk';

@@ -46,7 +46,8 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
   const [savingBehavior, setSavingBehavior] = useState(false);
   const [editForm, setEditForm] = useState({ rollNumber: "", status: "" });
   const [behaviorForm, setBehaviorForm] = useState<CreateBehaviorRecordRequest>({
-    title: "",
+    type:             "NEGATIVE",                            // Required in contract
+  title:            "",
     category: "DISCIPLINE",
     incidentDate: new Date().toISOString().split("T")[0],
     severity: "MEDIUM",
@@ -55,6 +56,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     points: 0,
     parentNotified: false,
     followUpRequired: false,
+    reportedBy:       "",
   });
 
   const startEdit = () => {
@@ -79,19 +81,24 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     e.preventDefault();
     setSavingBehavior(true);
     try {
-      await behaviorApi.createForStudent(id, behaviorForm);
+      await behaviorApi.create({ ...behaviorForm, studentId: id });
+	    //await behaviorApi.createForStudent(id, behaviorForm);
       setShowBehaviorForm(false);
-      setBehaviorForm({
-        title: "",
-        category: "DISCIPLINE",
-        incidentDate: new Date().toISOString().split("T")[0],
-        severity: "MEDIUM",
-        description: "",
-        actionTaken: "",
-        points: 0,
-        parentNotified: false,
-        followUpRequired: false,
-      });
+      // लाइन 86 के आसपास, सेव होने के बाद का रिसेट ब्लॉक
+setBehaviorForm({
+  type:             "NEGATIVE",
+  title:            "",
+  category:         "DISCIPLINE",
+  incidentDate:     new Date().toISOString().split("T")[0],
+  severity:         "MEDIUM",
+  description:      "",
+  actionTaken:      "",
+  points:           0,
+  parentNotified:   false,
+  followUpRequired: false,
+  reportedBy:       "", // इनिशियल स्टेट से मैच करने के लिए यहाँ भी जोड़ दिया
+});
+
       refetchBehavior();
     } catch (err: any) {
       alert(err?.response?.data?.message ?? "Failed to save behavior record");
@@ -397,8 +404,8 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
                     <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Severity</label>
                     <select
                       value={behaviorForm.severity}
-                      onChange={(e) => setBehaviorForm((prev) => ({ ...prev, severity: e.target.value }))}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      onChange={(e) => setBehaviorForm((prev) => ({ ...prev, severity: e.target.value as any }))}
+		      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((severity) => (
                         <option key={severity} value={severity}>{severity}</option>

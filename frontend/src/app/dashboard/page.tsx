@@ -1,3 +1,5 @@
+// path: apps/schoolos/frontend/src/app/dashboard/page.tsx
+
 "use client";
 import Link from "next/link";
 import {
@@ -22,7 +24,6 @@ function formatCurrency(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
-// ── Mini sparkline bar ─────────────────────────────────────────────────────────
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   return (
@@ -38,7 +39,6 @@ export default function DashboardPage() {
   const currentSession     = sessions?.find(s => s.isCurrent);
   const today              = new Date().toISOString().split("T")[0];
 
-  // Stats hooks
   const { stats, loading: statsLoading } = useDashboardStats(currentSession?.id);
   const { data: examStats }    = useExamStats(currentSession?.id ?? "");
   const { data: admStats  }    = useAdmissionStats();
@@ -52,7 +52,6 @@ export default function DashboardPage() {
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const name     = user?.firstName ?? "Admin";
 
-  // Next 3 upcoming exams
   const nextExams = (upcomingExams ?? [])
     .filter((e: any) => new Date(e.startDate) >= new Date())
     .slice(0, 3);
@@ -70,7 +69,6 @@ export default function DashboardPage() {
         })}
       />
 
-      {/* Active session banner */}
       {currentSession && (
         <div className="mb-6 flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
           <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
@@ -87,7 +85,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         <StatCard
           label="Total Students"
@@ -119,22 +116,19 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* ── Row 2: Quick actions + Live snapshot ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-
-        {/* Quick actions */}
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
           <div className="px-5 py-4 border-b border-slate-100">
             <h2 className="font-semibold text-slate-900 text-sm">Quick Actions</h2>
           </div>
           <div className="p-4 grid grid-cols-2 gap-2.5">
             {[
-              { href: "/dashboard/students",     label: "Add Student",     icon: Users,         c: "bg-blue-50   text-blue-700",   show: isAcademic || isFinance },
-              { href: "/dashboard/billing",       label: "Create Invoice",  icon: CreditCard,    c: "bg-green-50  text-green-700",  show: isFinance },
+              { href: "/dashboard/students",      label: "Add Student",      icon: Users,          c: "bg-blue-50   text-blue-700",   show: isAcademic || isFinance },
+              { href: "/dashboard/billing",       label: "Create Invoice",  icon: CreditCard,     c: "bg-green-50  text-green-700",  show: isFinance },
               { href: "/dashboard/attendance",    label: "Mark Attendance", icon: ClipboardCheck,c: "bg-purple-50 text-purple-700", show: isAcademic },
-              { href: "/dashboard/notifications", label: "Send Alert",      icon: Bell,          c: "bg-amber-50  text-amber-700",  show: true },
-              { href: "/dashboard/homework",      label: "Assign Homework", icon: BookOpen,      c: "bg-indigo-50 text-indigo-700", show: isAcademic },
-              { href: "/dashboard/admissions",    label: "New Admission",   icon: Users,         c: "bg-rose-50   text-rose-700",   show: isFinance || isAcademic },
+              { href: "/dashboard/notifications", label: "Send Alert",       icon: Bell,           c: "bg-amber-50  text-amber-700",  show: true },
+              { href: "/dashboard/homework",      label: "Assign Homework", icon: BookOpen,       c: "bg-indigo-50 text-indigo-700", show: isAcademic },
+              { href: "/dashboard/admissions",    label: "New Admission",    icon: Users,          c: "bg-rose-50   text-rose-700",   show: isFinance || isAcademic },
             ]
               .filter(a => a.show)
               .slice(0, 6)
@@ -151,14 +145,12 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Live snapshot — role-aware metrics */}
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
             <Activity className="w-4 h-4 text-slate-400" />
             <h2 className="font-semibold text-slate-900 text-sm">Today's Snapshot</h2>
           </div>
           <div className="p-4 space-y-3">
-            {/* Attendance */}
             <div>
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-500 font-medium">Attendance</span>
@@ -190,18 +182,17 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Metric chips */}
             <div className="grid grid-cols-2 gap-2 pt-1">
               {[
                 isAcademic && { label: "Upcoming Exams",  value: examStats?.upcoming ?? "—",         icon: GraduationCap, color: "text-indigo-600" },
                 isAcademic && { label: "Homework Due",    value: hwStats?.dueSoon    ?? "—",         icon: BookOpen,      color: "text-amber-600"  },
-                isFinance  && { label: "Pending Invoices",value: invStats?.draftCount ?? "—",        icon: CreditCard,    color: "text-red-600"    },
-                             { label: "Transport Routes", value: tpStats?.routes     ?? "—",         icon: Bus,           color: "text-teal-600"   },
-                isAcademic && { label: "Pending Admissions",value: admStats?.pending ?? "—",         icon: Users,         color: "text-violet-600" },
+                isFinance  && { label: "Pending Invoices",value: invStats?.draftCount ?? "—",         icon: CreditCard,    color: "text-red-600"    },
+                              { label: "Transport Routes", value: tpStats?.routes     ?? "—",         icon: Bus,           color: "text-teal-600"   },
+                // --- FIX: Access pending from byStatus.PENDING ---
+                isAcademic && { label: "Pending Admissions", value: admStats?.byStatus?.APPLIED ?? "—", icon: Users, color: "text-violet-600" },
+			      //isAcademic && { label: "Pending Admissions",value: admStats?.byStatus?.PENDING ?? "—", icon: Users,          color: "text-violet-600" },
               ]
                 .filter(Boolean)
-                .filter(m => m)
-                .slice(0, 4)
                 .map((m: any) => (
                   <div key={m.label} className="bg-slate-50 rounded-lg p-2.5 flex items-center gap-2">
                     <m.icon className={`w-4 h-4 ${m.color}`} />
@@ -215,7 +206,6 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* System Status */}
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
             <Activity className="w-4 h-4 text-slate-400" />
@@ -223,10 +213,10 @@ export default function DashboardPage() {
           </div>
           <div className="p-4 space-y-2.5">
             {[
-              { label: "API Server",     ok: true,  detail: "< 80ms"         },
-              { label: "Database",       ok: true,  detail: "Healthy"        },
-              { label: "Redis / Queues", ok: true,  detail: "Active"         },
-              { label: "Notifications",  ok: true,  detail: "Delivery 94%"   },
+              { label: "API Server",     ok: true,  detail: "< 80ms"          },
+              { label: "Database",        ok: true,  detail: "Healthy"         },
+              { label: "Redis / Queues", ok: true,  detail: "Active"          },
+              { label: "Notifications",  ok: true,  detail: "Delivery 94%"    },
               { label: "File Storage",   ok: false, detail: "Not configured" },
               { label: "Email Service",  ok: false, detail: "Not configured" },
             ].map(({ label, ok, detail }) => (
@@ -245,10 +235,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Row 3: Upcoming Exams + Pending Fees ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-
-        {/* Upcoming Exams */}
         {isAcademic && (
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -300,7 +287,6 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Fee dues alert */}
         {isFinance && invStats && invStats.overdueCount > 0 && (
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -314,9 +300,9 @@ export default function DashboardPage() {
             </div>
             <div className="p-5 space-y-4">
               {[
-                { label: "Total Invoiced",  value: formatCurrency(invStats.totalAmount),     color: "text-slate-700",  bg: "bg-slate-50"   },
-                { label: "Collected",       value: formatCurrency(invStats.collectedAmount), color: "text-emerald-700",bg: "bg-emerald-50"  },
-                { label: "Outstanding",     value: formatCurrency(invStats.totalAmount - invStats.collectedAmount), color: "text-red-700", bg: "bg-red-50" },
+                { label: "Total Invoiced",  value: formatCurrency(invStats.totalAmount),       color: "text-slate-700",  bg: "bg-slate-50"   },
+                { label: "Collected",        value: formatCurrency(invStats.collectedAmount), color: "text-emerald-700",bg: "bg-emerald-50"  },
+                { label: "Outstanding",      value: formatCurrency(invStats.totalAmount - invStats.collectedAmount), color: "text-red-700", bg: "bg-red-50" },
                 { label: "Overdue Invoices",value: invStats.overdueCount,                   color: "text-amber-700",  bg: "bg-amber-50"   },
               ].map(({ label, value, color, bg }) => (
                 <div key={label} className={`flex items-center justify-between rounded-lg px-4 py-2.5 ${bg}`}>
@@ -329,7 +315,6 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* ── Platform Progress ── */}
       {["SCHOOL_ADMIN", "PRINCIPAL"].includes(role) && (
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">

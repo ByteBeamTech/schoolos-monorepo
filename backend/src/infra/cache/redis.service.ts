@@ -81,4 +81,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try { return (await this.client.ping()) === 'PONG'; }
     catch { return false; }
   }
+  async incr(key: string): Promise<number> {
+  return this.client.incr(key);
+}
 }
