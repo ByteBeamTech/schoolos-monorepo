@@ -147,4 +147,27 @@ export class BulkService {
 
     return rows;
   }
+
+ // ── Student CSV Template ──────────────────────────────────────────────────
+
+generateStudentTemplate(format: 'csv' | 'excel'): { buffer: Buffer; filename: string; mimeType: string } {
+  const headers = [
+    'firstName', 'lastName', 'admissionNumber', 'academicYear',
+    'sectionId', 'rollNumber', 'phone', 'email'
+  ];
+  const sample = [
+    'Rahul', 'Sharma', 'ADM-001', '2025-2026',
+    '', '', '9876543210', 'rahul@example.com'
+  ];
+
+  const csv = [headers.join(','), sample.join(',')].join('\n');
+  const buffer = Buffer.from(csv, 'utf-8');
+
+  return {
+    buffer,
+    filename: `students_template.${format === 'excel' ? 'csv' : 'csv'}`,
+    mimeType: 'text/csv',
+  };
+}
+
 }

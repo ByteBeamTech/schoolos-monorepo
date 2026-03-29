@@ -56,6 +56,7 @@ import { AccessControlModule } from './modules/access-control/access-control.mod
 import { HRModule } from './modules/hr/hr.module';
 import { ReceptionModule } from './modules/reception/reception.module';
 import { SupportModule } from './modules/support/support.module';
+import { BehaviorModule } from './modules/behavior/behavior.module';
 
 @Module({
   imports: [
@@ -128,6 +129,7 @@ import { SupportModule } from './modules/support/support.module';
     HRModule,
     ReceptionModule,
     SupportModule,
+    BehaviorModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -43,7 +43,8 @@ model Tenant {
   subscription     TenantSubscription?
   users            User[]
   visitors         Visitor[]
-  communicationLogs    CommunicationLog[]
+ behaviorRecords BehaviorRecord[] 
+communicationLogs    CommunicationLog[]
   bulkNotificationJobs BulkNotificationJob[]
   @@index([slug])
   @@index([status])
