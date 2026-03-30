@@ -28,6 +28,7 @@ export default function StudentsPage() {
 
   // For the add student form
   const { data: sessions }  = useAcademicSessions();
+  const { data: branches }  = useApi<any[]>("/school-management/branches");
   const currentSession      = sessions?.find(s => s.isCurrent) ?? sessions?.[0];
   const { data: classes }   = useClasses(currentSession?.id ?? "");
   const allSections = classes?.flatMap((c: any) =>
@@ -38,6 +39,7 @@ export default function StudentsPage() {
     firstName: "", lastName: "", admissionNumber: "",
     dateOfBirth: "", gender: "MALE", sectionId: "",
     academicYear: currentSession?.id ?? "",
+    branchId: "",
     // Guardian
     guardianFirstName: "", guardianLastName: "",
     guardianPhone: "", guardianEmail: "", guardianRelation: "FATHER", guardianAadhaar: "", studentAadhaar: "",
@@ -56,6 +58,7 @@ export default function StudentsPage() {
         gender:          form.gender,
         sectionId:       form.sectionId   || undefined,
         academicYear:    form.academicYear || currentSession?.id,
+        branchId:        form.branchId || (branches && branches[0]?.id) || '',
       });
       const studentId = (res as any).id ?? (res as any).data?.id;
 

@@ -104,4 +104,19 @@ export class LibraryService {
       orderBy: { issuedAt: 'desc' },
     });
   }
+
+  async listIssues(tenantId: string, status?: string) {
+    const where: any = { tenantId };
+    if (status) where.status = status;
+    return this.prisma.bookIssue.findMany({
+      where,
+      include: {
+        book:    { select: { title: true, isbn: true, author: true } },
+        student: { select: { firstName: true, lastName: true, admissionNumber: true } },
+      },
+      orderBy: { issuedAt: 'desc' },
+      take: 200,
+    });
+  }
+
 }

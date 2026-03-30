@@ -299,15 +299,22 @@ export class AlumniQueryDto {
 // ========== ADMISSION APPROVAL ==========
 
 export class ApproveAdmissionDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  notes?: string;
-
-  @ApiPropertyOptional({ example: 'section_abc' })
-  @IsOptional()
-  @IsString()
-  assignedSectionId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() notes?:             string;
+  @ApiPropertyOptional() @IsOptional() @IsString() assignedSectionId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() admissionNumber?:   string;
+  @ApiPropertyOptional() @IsOptional() @IsString() rollNumber?:        string;
+  @ApiPropertyOptional() @IsOptional() @IsString() dateOfBirth?:       string;
+  @ApiPropertyOptional() @IsOptional() @IsString() gender?:            string;
+  @ApiPropertyOptional() @IsOptional() @IsString() bloodGroup?:        string;
+  @ApiPropertyOptional() @IsOptional() @IsString() guardianFirstName?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() guardianLastName?:  string;
+  @ApiPropertyOptional() @IsOptional() @IsString() guardianPhone?:     string;
+  @ApiPropertyOptional() @IsOptional() @IsString() guardianEmail?:     string;
+  @ApiPropertyOptional() @IsOptional() @IsString() guardianRelation?:  string;
+  @ApiPropertyOptional() @IsOptional() @IsString() addressLine?:       string;
+  @ApiPropertyOptional() @IsOptional() @IsString() city?:              string;
+  @ApiPropertyOptional() @IsOptional() @IsString() state?:             string;
+  @ApiPropertyOptional() @IsOptional() @IsString() pincode?:           string;
 }
 
 export class RejectAdmissionDto {

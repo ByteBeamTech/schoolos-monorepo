@@ -138,7 +138,7 @@ export default function BillingPage() {
 
   const sendInvoice = async (id: string) => {
     try {
-      await apiClient.post(`/billing/invoices/${id}/send`, {});
+      await apiClient.patch(`/billing/invoices/${id}/send`, {});
       refetchInvoices();
     } catch (err: any) {
       alert(err?.response?.data?.message ?? "Failed to send invoice");

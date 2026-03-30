@@ -61,4 +61,18 @@ export class BulkController {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
   }
+
+  @Get('capabilities')
+  @ApiOperation({ summary: 'Get bulk capabilities for tenant' })
+  capabilities(@CurrentUser() u: AuthenticatedUser) {
+    return {
+      supportedEntities:   ['students', 'staff', 'fees'],
+      maxBatchSize:        500,
+      canImportStudents:   true,
+      canGenerateInvoices: true,
+      canAccessBulkPage:   true,
+      features: { import: true, export: true, generate: true },
+    };
+  }
+
 }

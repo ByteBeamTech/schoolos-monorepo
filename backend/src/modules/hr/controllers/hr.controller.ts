@@ -158,4 +158,16 @@ export class HRController {
   ) {
     return this.hrService.getLeaveBalances(req.tenantId, staffId, parseInt(year));
   }
+
+  @Get('leave/balances')
+  @ApiOperation({ summary: 'Get leave balances (flat, current year)' })
+  async getLeaveBalancesFlat(
+    @Req() req: any,
+    @Query('staffId') staffId?: string,
+  ) {
+    if (!staffId) return [];
+    const year = new Date().getFullYear();
+    return this.hrService.getLeaveBalances(req.tenantId, staffId, year);
+  }
+
 }

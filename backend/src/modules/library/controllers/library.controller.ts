@@ -49,4 +49,14 @@ export class LibraryController {
   studentHistory(@Param('studentId') sid: string, @CurrentUser() u: AuthenticatedUser) {
     return this.svc.studentHistory(u.tenantId, sid);
   }
+
+  @Get('issues')
+  @ApiQuery({ name: 'status', required: false })
+  listIssues(
+    @CurrentUser() u: AuthenticatedUser,
+    @Query('status') status?: string,
+  ) {
+    return this.svc.listIssues(u.tenantId, status);
+  }
+
 }
