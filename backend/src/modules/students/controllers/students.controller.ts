@@ -41,8 +41,12 @@ export class StudentsController {
     @Query('academicYear') academicYear?: string,
     @Query('sectionId')    sectionId?:   string,
     @Query('search')       search?:      string,
+    @Query('page')         page?:        string,
+    @Query('limit')        limit?:       string,
   ) {
-    return this.service.findAll(user.tenantId, { academicYear, sectionId, search });
+    return this.service.findAll(user.tenantId, {
+      page:  page  ? +page  : 1,
+      limit: limit ? +limit : 20, academicYear, sectionId, search });
   }
 
   @Get('stats')

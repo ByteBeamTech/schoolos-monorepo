@@ -71,14 +71,17 @@ export class StudentsService {
     branchId?:     string;
     isActive?:     boolean;
     search?:       string;
+     page?:         number;
+  limit?:        number;
   } = {}) {
+	  const page  = filters.page  ?? 1;
+  const limit = filters.limit ?? 20;
     const where: Prisma.StudentWhereInput = { tenantId };
 
     if (filters.academicYear) where.academicYear = filters.academicYear;
     if (filters.sectionId)    where.sectionId    = filters.sectionId;
     if (filters.branchId)     where.branchId     = filters.branchId;
     if (filters.isActive !== undefined) where.isActive = filters.isActive;
-
     if (filters.search) {
       where.OR = [
         { firstName:       { contains: filters.search, mode: 'insensitive' } },
@@ -87,14 +90,23 @@ export class StudentsService {
       ];
     }
 
-    return this.prisma.student.findMany({
+
+
+    const [data, total] = await Promise.all([
+    this.prisma.student.findMany({
       where,
       include: {
         section:       { include: { class: true } },
         guardianLinks: { include: { guardian: true } },
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
-    });
+      skip:  (page - 1) * limit,
+      take:  limit,
+    }),
+    this.prisma.student.count({ where }),
+  ]);
+
+  return { data, meta: { total, page, limit, lastPage: Math.ceil(total / limit) } };
   }
 
   // ── Find by ID ────────────────────────────────────────────────────────────
