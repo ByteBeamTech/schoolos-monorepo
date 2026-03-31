@@ -26,7 +26,7 @@ interface NavGroup {
 
 // ── Role constants (match enums.prisma exactly) ────────────────────────────────
 const ALL_ROLES: string[] = []; // sentinel: visible to everyone
-const ADMIN_ROLES  = ["SCHOOL_ADMIN", "PRINCIPAL", "VICE_PRINCIPAL"];
+const ADMIN_ROLES  = ["SUPER_ADMIN", "SCHOOL_ADMIN", "PRINCIPAL", "VICE_PRINCIPAL"];
 const FINANCE_ROLES = [...ADMIN_ROLES, "ACCOUNTANT"];
 const ACADEMIC_ROLES = [...ADMIN_ROLES, "TEACHER", "CLASS_TEACHER"];
 
@@ -105,6 +105,7 @@ function filterNavByRole(role: string | undefined): NavGroup[] {
 // ── Role display helpers ───────────────────────────────────────────────────────
 const ROLE_LABELS: Record<string, string> = {
   SCHOOL_ADMIN:      "School Admin",
+SUPER_ADMIN:       "Platform Admin",
   PRINCIPAL:         "Principal",
   VICE_PRINCIPAL:    "Vice Principal",
   ACCOUNTANT:        "Accountant",

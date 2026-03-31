@@ -1,52 +1,6 @@
-model Asset {
-  id              String           @id @default(cuid())
-  tenantId        String
-  name            String
-  category        String
-  serialNumber    String?
-  purchaseDate    DateTime?
-  purchasePrice   Decimal?         @db.Decimal(12, 2)
-  location        String?
-  condition       String           @default("GOOD")
-  assignedTo      String?
-  isActive        Boolean          @default(true)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  maintenanceLogs MaintenanceLog[]
-
-  @@index([tenantId])
-  @@index([category])
-}
-
 model StockItem {
-  id          String   @id @default(cuid())
-  tenantId    String
-  name        String
-  category    String
-  unit        String
-  quantity    Int      @default(0)
-  minQuantity Int      @default(0)
-  unitCost    Decimal? @db.Decimal(10, 2)
-  location    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([tenantId])
-  @@index([category])
-}
-
-model MaintenanceLog {
-  id          String    @id @default(cuid())
-  tenantId    String
-  assetId     String
-  description String
-  cost        Decimal?  @db.Decimal(10, 2)
-  performedBy String?
-  performedAt DateTime  @default(now())
-  nextDueDate DateTime?
-  createdAt   DateTime  @default(now())
-  asset       Asset     @relation(fields: [assetId], references: [id])
-
-  @@index([tenantId])
-  @@index([assetId])
+  id String @id @default(cuid())
+  name String
+  quantity Int @default(0)
+  tenantId String
 }

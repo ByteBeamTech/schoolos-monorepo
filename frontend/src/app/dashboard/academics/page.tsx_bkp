@@ -1,370 +1,304 @@
 "use client";
-import { useState }      from "react";
-import { BookOpen, Users, Layers, Plus } from "lucide-react";
-import { PageHeader }    from "@/components/ui/page-header";
-import { StatCard }      from "@/components/ui/stat-card";
-import { Badge }         from "@/components/ui/badge";
-import { useApi }        from "@/lib/hooks";
-import { apiClient }     from "@/lib/api";
+import React, { useState, useEffect } from "react";
+import {
+  BookOpen, Users, Layers, Plus, ChevronDown, ChevronRight,
+  X, Check, Link, UserCheck, Sparkles, Power,
+} from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard }   from "@/components/ui/stat-card";
+import { Badge }      from "@/components/ui/badge";
+import { useApi }     from "@/lib/hooks";
+import { apiClient }  from "@/lib/api";
 
-type Tab = "classes" | "subjects";
+// FIX: Define Tab type before the component
+type Tab = "classes" | "subjects" | "mappings" | "appointments";
+
+const CLASS_PRESETS = [
+  ["Nursery","LKG","UKG"],
+  ["Class 1","Class 2","Class 3","Class 4","Class 5"],
+  ["Class 6","Class 7","Class 8"],
+  ["Class 9","Class 10"],
+  ["Class 11","Class 12"],
+];
+
+const SUBJECT_PRESETS = [
+  { name:"Mathematics",       code:"MATH", isElective:false },
+  { name:"English",           code:"ENG",  isElective:false },
+  { name:"Hindi",             code:"HIN",  isElective:false },
+  { name:"Science",           code:"SCI",  isElective:false },
+  { name:"Social Studies",    code:"SST",  isElective:false },
+  { name:"Physics",           code:"PHY",  isElective:false },
+  { name:"Chemistry",         code:"CHEM", isElective:false },
+  { name:"Biology",           code:"BIO",  isElective:false },
+  { name:"Computer Science",  code:"CS",   isElective:false },
+  { name:"Physical Education",code:"PE",   isElective:false },
+  { name:"Art & Craft",       code:"ART",  isElective:true  },
+  { name:"Music",             code:"MUS",  isElective:true  },
+  { name:"Economics",         code:"ECO",  isElective:false },
+  { name:"Accountancy",       code:"ACC",  isElective:false },
+  { name:"Business Studies",  code:"BST",  isElective:false },
+];
+
+function toSectionName(raw: string) {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
 
 export default function AcademicsPage() {
-  const { data: sessions }  = useApi<any[]>("/academic-sessions");
-  const currentSession      = sessions?.find((s: any) => s.isCurrent) ?? sessions?.[0];
+  const { data: sessions } = useApi<any[]>("/academic-sessions");
+  const currentSession     = sessions?.find((s:any) => s.isCurrent) ?? sessions?.[0];
   const [sessionId, setSessionId] = useState("");
   const activeSession = sessionId || currentSession?.id || "";
 
-  const { data: classes,  loading: cLoading, refetch: refetchClasses }   = useApi<any[]>(
+  const { data: classes,  loading: cLoading, refetch: refetchClasses  } = useApi<any[]>(
     activeSession ? `/academics/classes?sessionId=${activeSession}` : "", [activeSession]
   );
   const { data: subjects, loading: sLoading, refetch: refetchSubjects } = useApi<any[]>("/academics/subjects");
+  const { data: mappings, refetch: refetchMappings } = useApi<any[]>(
+    activeSession ? `/academics/subject-mappings?sessionId=${activeSession}` : "", [activeSession]
+  );
+  const { data: staff } = useApi<any[]>("/staff");
 
   const [tab, setTab] = useState<Tab>("classes");
+  const [expanded, setExpanded] = useState<Record<string,boolean>>({});
+  const toggle = (id:string) => setExpanded(p => ({ ...p, [id]: !p[id] }));
 
-  // ── Class form ──
+  // Forms State
   const [showClassForm, setShowClassForm] = useState(false);
-  const [classForm, setClassForm] = useState({ name: "", displayOrder: "0" });
-  const [savingClass, setSavingClass] = useState(false);
+  const [classForm, setClassForm]         = useState({ name:"", displayOrder:"0" });
+  const [savingClass, setSavingClass]     = useState(false);
+  const [togglingClass, setTogglingClass] = useState<string|null>(null);
 
-  // ── Section form ──
-  const [showSectionForm, setShowSectionForm] = useState<string | null>(null); // classId
-  const [sectionForm, setSectionForm] = useState({ name: "", capacity: "40" });
-  const [savingSection, setSavingSection] = useState(false);
+  const [showSectionForm, setShowSectionForm] = useState<string|null>(null);
+  const [sectionName, setSectionName]         = useState("");
+  const [sectionCap, setSectionCap]           = useState("40");
+  const [savingSection, setSavingSection]     = useState(false);
 
-  // ── Subject form ──
   const [showSubjectForm, setShowSubjectForm] = useState(false);
-  const [subjectForm, setSubjectForm] = useState({ name: "", code: "", isElective: false });
-  const [savingSubject, setSavingSubject] = useState(false);
+  const [subjectForm, setSubjectForm]         = useState({ name:"", code:"", isElective:false });
+  const [savingSubject, setSavingSubject]     = useState(false);
+  const [bulkProgress, setBulkProgress]       = useState("");
 
-  const totalSections = classes?.reduce((s: number, c: any) => s + (c.sections?.length ?? 0), 0) ?? 0;
+  const [showMapForm, setShowMapForm] = useState<string|null>(null);
+  const [mapSubjects, setMapSubjects] = useState<string[]>([]);
+  const [savingMap, setSavingMap]     = useState(false);
 
+  const [showTeacherForm, setShowTeacherForm] = useState<string|null>(null);
+  const [teacherForm, setTeacherForm]         = useState({ subjectId:"", teacherId:"" });
+  const [savingTeacher, setSavingTeacher]     = useState(false);
+
+  const [savingAppointment, setSavingAppointment] = useState<string|null>(null);
+  const { data: appointments, refetch: refetchAppointments } = useApi<any[]>(
+    activeSession ? `/academics/class-teacher-appointments?sessionId=${activeSession}` : "",
+    [activeSession, tab]
+  );
+
+  const totalSections = classes?.reduce((s:number,c:any) => s + (c.sections?.length ?? 0), 0) ?? 0;
+
+  // --- Functions ---
   const createClass = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeSession) { alert("Select a session first"); return; }
+    if (!activeSession) return;
     setSavingClass(true);
     try {
       await apiClient.post("/academics/classes", {
-        sessionId:    activeSession,
-        name:         classForm.name,
+        sessionId: activeSession, name: classForm.name,
         displayOrder: parseInt(classForm.displayOrder),
       });
-      setShowClassForm(false);
-      setClassForm({ name: "", displayOrder: "0" });
-      refetchClasses();
-    } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
-    } finally {
-      setSavingClass(false);
-    }
+      setShowClassForm(false); setClassForm({ name:"", displayOrder:"0" }); refetchClasses();
+    } catch (err:any) { alert("Failed to create class"); }
+    finally { setSavingClass(false); }
   };
 
   const createSection = async (e: React.FormEvent, classId: string) => {
     e.preventDefault();
+    const name = toSectionName(sectionName);
+    if (!name) return;
     setSavingSection(true);
     try {
-      await apiClient.post("/academics/sections", {
-        classId,
-        name:     sectionForm.name,
-        capacity: parseInt(sectionForm.capacity),
-      });
-      setShowSectionForm(null);
-      setSectionForm({ name: "", capacity: "40" });
-      refetchClasses();
-    } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
-    } finally {
-      setSavingSection(false);
-    }
+      await apiClient.post("/academics/sections", { classId, name, capacity: parseInt(sectionCap) });
+      setShowSectionForm(null); setSectionName(""); setSectionCap("40"); refetchClasses();
+    } catch (err:any) { alert("Failed to create section"); }
+    finally { setSavingSection(false); }
+  };
+
+  const quickAddSection = async (classId: string, name: string) => {
+    await apiClient.post("/academics/sections", { classId, name, capacity: 40 }).catch(() => {});
+    refetchClasses();
   };
 
   const createSubject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingSubject(true);
+    e.preventDefault(); setSavingSubject(true);
     try {
-      await apiClient.post("/academics/subjects", {
-        name:       subjectForm.name,
-        code:       subjectForm.code || undefined,
-        isElective: subjectForm.isElective,
-      });
-      setShowSubjectForm(false);
-      setSubjectForm({ name: "", code: "", isElective: false });
-      refetchSubjects();
-    } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
-    } finally {
-      setSavingSubject(false);
-    }
+      await apiClient.post("/academics/subjects", subjectForm);
+      setShowSubjectForm(false); setSubjectForm({ name:"", code:"", isElective:false }); refetchSubjects();
+    } catch (err:any) { alert("Failed to create subject"); }
+    finally { setSavingSubject(false); }
   };
 
+  const appointClassTeacher = async (sectionId: string, teacherId: string | null) => {
+    setSavingAppointment(sectionId);
+    try {
+      await apiClient.post("/academics/class-teacher-appointments", {
+        sectionId, teacherId, sessionId: activeSession,
+      });
+      refetchAppointments();
+    } catch (err:any) { alert("Failed to appoint teacher"); }
+    finally { setSavingAppointment(null); }
+  };
+
+  const saveTeacherMapping = async (sectionId: string) => {
+    if (!teacherForm.subjectId || !teacherForm.teacherId) return;
+    setSavingTeacher(true);
+    try {
+      await apiClient.post("/academics/teacher-mappings", {
+        sectionId, subjectId: teacherForm.subjectId,
+        teacherId: teacherForm.teacherId, sessionId: activeSession,
+      });
+      setShowTeacherForm(null); setTeacherForm({ subjectId:"", teacherId:"" });
+    } catch (err:any) { alert("Failed to assign teacher"); }
+    finally { setSavingTeacher(false); }
+  };
+
+  const activeClasses   = (classes ?? []).filter((c:any) => c.isActive !== false);
+  const inactiveClasses = (classes ?? []).filter((c:any) => c.isActive === false);
+
   return (
-    <div>
-      <PageHeader title="Academics" subtitle="Manage classes, sections and subjects" />
+    <div className="space-y-6">
+      <PageHeader title="Academics" subtitle="Classes, sections, subjects and teacher assignments" />
 
       {/* Session selector */}
-      <div className="mb-6 flex items-center gap-3">
-        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Session:</label>
-        <select
-          value={activeSession}
-          onChange={(e) => setSessionId(e.target.value)}
-          className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Select session</option>
-          {sessions?.map((s: any) => (
+      <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Academic Session:</label>
+        <select value={activeSession} onChange={e => setSessionId(e.target.value)}
+          className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+          {sessions?.map((s:any) => (
             <option key={s.id} value={s.id}>{s.name}{s.isCurrent ? " (Current)" : ""}</option>
           ))}
         </select>
-        <a href="/dashboard/sessions" className="text-xs text-blue-600 hover:text-blue-800">
-          + Manage sessions →
-        </a>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <StatCard label="Classes"  value={classes?.length  ?? 0} icon={<Layers className="w-5 h-5" />}   color="blue"   loading={cLoading} />
-        <StatCard label="Sections" value={totalSections}          icon={<Users className="w-5 h-5" />}    color="green"  loading={cLoading} />
-        <StatCard label="Subjects" value={subjects?.length ?? 0}  icon={<BookOpen className="w-5 h-5" />} color="purple" loading={sLoading} />
+      <div className="grid grid-cols-3 gap-4">
+        <StatCard label="Active Classes" value={activeClasses.length} icon={<Layers className="w-5 h-5" />} color="blue" loading={cLoading} />
+        <StatCard label="Sections" value={totalSections} icon={<Users className="w-5 h-5" />} color="green" loading={cLoading} />
+        <StatCard label="Subjects" value={subjects?.length ?? 0} icon={<BookOpen className="w-5 h-5" />} color="purple" loading={sLoading} />
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-slate-200 mb-6">
-        {(["classes","subjects"] as Tab[]).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
+      <div className="flex gap-1 border-b border-slate-200">
+        {(["classes","subjects","mappings","appointments"] as Tab[]).map(t => (
+          <button key={t} onClick={() => setTab(t)}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize ${
-              tab === t
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {t}
+              tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}>
+            {t === "mappings" ? "Subject Mapping" : t === "appointments" ? "Class Teachers" : t}
           </button>
         ))}
       </div>
 
-      {/* ── CLASSES TAB ── */}
       {tab === "classes" && (
-        <div>
-          <div className="flex justify-end mb-4">
-            <button
-              onClick={() => setShowClassForm(p => !p)}
-              disabled={!activeSession}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              <Plus className="w-4 h-4" /> Add Class
-            </button>
-          </div>
+        <div className="space-y-4">
+           <div className="flex justify-between items-center">
+              <h3 className="font-bold text-slate-800">Class Management</h3>
+              <button onClick={() => setShowClassForm(!showClassForm)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                <Plus className="w-4 h-4" /> Add Class
+              </button>
+           </div>
+           
+           {showClassForm && (
+             <form onSubmit={createClass} className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex gap-3 items-end">
+                <input required placeholder="Class Name" value={classForm.name} onChange={e => setClassForm({...classForm, name: e.target.value})} className="px-3 py-2 border rounded-lg text-sm" />
+                <button type="submit" disabled={savingClass} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">{savingClass ? "..." : "Create"}</button>
+             </form>
+           )}
 
-          {/* Create class form */}
-          {showClassForm && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-              <form onSubmit={createClass} className="flex gap-3 items-end flex-wrap">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Class Name *</label>
-                  <input
-                    required type="text" placeholder="e.g. Grade 10"
-                    value={classForm.name}
-                    onChange={(e) => setClassForm(p => ({ ...p, name: e.target.value }))}
-                    className="px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Display Order</label>
-                  <input
-                    type="number" min="0"
-                    value={classForm.displayOrder}
-                    onChange={(e) => setClassForm(p => ({ ...p, displayOrder: e.target.value }))}
-                    className="px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-24"
-                  />
-                </div>
-                <button type="submit" disabled={savingClass}
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors">
-                  {savingClass ? "Creating..." : "Create"}
-                </button>
-                <button type="button" onClick={() => setShowClassForm(false)}
-                  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-600 text-sm rounded-lg transition-colors">
-                  Cancel
-                </button>
-              </form>
-            </div>
-          )}
-
-          {cLoading ? (
-            <div className="space-y-3">
-              {[...Array(3)].map((_, i) => <div key={i} className="h-20 bg-slate-100 rounded-xl animate-pulse" />)}
-            </div>
-          ) : !classes || classes.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-100 p-12 text-center text-slate-400 text-sm">
-              {activeSession ? "No classes yet. Add your first class above." : "Select a session to view classes."}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {classes.map((cls: any) => (
-                <div key={cls.id} className="bg-white rounded-xl border border-slate-100 shadow-sm">
-                  <div className="px-5 py-4 flex items-center justify-between border-b border-slate-50">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs">
-                        {cls.name.replace(/\D/g, "").slice(0,2) || cls.name[0]}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-900">{cls.name}</p>
-                        <p className="text-xs text-slate-400">{cls.sections?.length ?? 0} sections</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setShowSectionForm(showSectionForm === cls.id ? null : cls.id)}
-                      className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
-                    >
-                      <Plus className="w-3 h-3" /> Add Section
-                    </button>
-                  </div>
-
-                  {/* Add section form */}
-                  {showSectionForm === cls.id && (
-                    <div className="px-5 py-3 bg-blue-50 border-b border-blue-100">
-                      <form onSubmit={(e) => createSection(e, cls.id)} className="flex gap-3 items-end flex-wrap">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Section Name *</label>
-                          <input
-                            required type="text" placeholder="e.g. A"
-                            value={sectionForm.name}
-                            onChange={(e) => setSectionForm(p => ({ ...p, name: e.target.value }))}
-                            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-32"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Capacity</label>
-                          <input
-                            type="number" min="1"
-                            value={sectionForm.capacity}
-                            onChange={(e) => setSectionForm(p => ({ ...p, capacity: e.target.value }))}
-                            className="px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-20"
-                          />
-                        </div>
-                        <button type="submit" disabled={savingSection}
-                          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg font-medium disabled:opacity-50 transition-colors">
-                          {savingSection ? "..." : "Add"}
-                        </button>
-                        <button type="button" onClick={() => setShowSectionForm(null)}
-                          className="px-3 py-2 bg-slate-200 text-slate-600 text-xs rounded-lg hover:bg-slate-300 transition-colors">
-                          Cancel
-                        </button>
-                      </form>
-                    </div>
-                  )}
-
-                  {/* Sections */}
-                  <div className="px-5 py-3 flex gap-2 flex-wrap">
-                    {cls.sections?.length === 0 ? (
-                      <p className="text-xs text-slate-400 italic">No sections yet</p>
-                    ) : cls.sections?.map((s: any) => (
-                      <div key={s.id} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
-                        <span className="text-sm font-semibold text-slate-700">{s.name}</span>
-                        <span className="text-xs text-slate-400">· {s.capacity} cap</span>
-                        {s._count?.students !== undefined && (
-                          <span className="text-xs text-blue-600 font-medium">· {s._count.students} students</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+           <div className="space-y-3">
+              {activeClasses.map((cls:any) => (
+                <ClassCard 
+                  key={cls.id} cls={cls} 
+                  expanded={!!expanded[cls.id]} 
+                  onToggleExpand={() => toggle(cls.id)}
+                  onShowSectionForm={() => setShowSectionForm(showSectionForm === cls.id ? null : cls.id)}
+                  showSectionForm={showSectionForm === cls.id}
+                  sectionName={sectionName} setSectionName={setSectionName}
+                  sectionCap={sectionCap} setSectionCap={setSectionCap}
+                  savingSection={savingSection}
+                  onCreateSection={(e: React.FormEvent) => createSection(e, cls.id)}
+                  onQuickSection={(name:string) => quickAddSection(cls.id, name)}
+                  showTeacherForm={showTeacherForm} setShowTeacherForm={setShowTeacherForm}
+                  teacherForm={teacherForm} setTeacherForm={setTeacherForm}
+                  savingTeacher={savingTeacher} onSaveTeacher={() => saveTeacherMapping(showTeacherForm!)}
+                  subjects={subjects} staff={staff}
+                />
               ))}
-            </div>
-          )}
+           </div>
         </div>
       )}
 
-      {/* ── SUBJECTS TAB ── */}
-      {tab === "subjects" && (
-        <div>
-          <div className="flex justify-end mb-4">
-            <button
-              onClick={() => setShowSubjectForm(p => !p)}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              <Plus className="w-4 h-4" /> Add Subject
-            </button>
+      {tab === "appointments" && (
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="p-5 border-b border-slate-50">
+            <h3 className="font-bold">Class Teacher Appointments</h3>
           </div>
-
-          {showSubjectForm && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-              <form onSubmit={createSubject} className="flex gap-3 items-end flex-wrap">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Subject Name *</label>
-                  <input
-                    required type="text" placeholder="e.g. Mathematics"
-                    value={subjectForm.name}
-                    onChange={(e) => setSubjectForm(p => ({ ...p, name: e.target.value }))}
-                    className="px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Code</label>
-                  <input
-                    type="text" placeholder="MATH01"
-                    value={subjectForm.code}
-                    onChange={(e) => setSubjectForm(p => ({ ...p, code: e.target.value }))}
-                    className="px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-32"
-                  />
-                </div>
-                <label className="flex items-center gap-2 cursor-pointer pb-2">
-                  <input
-                    type="checkbox"
-                    checked={subjectForm.isElective}
-                    onChange={(e) => setSubjectForm(p => ({ ...p, isElective: e.target.checked }))}
-                    className="w-4 h-4 accent-blue-600"
-                  />
-                  <span className="text-sm text-slate-700">Elective</span>
-                </label>
-                <button type="submit" disabled={savingSubject}
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors">
-                  {savingSubject ? "Creating..." : "Create"}
-                </button>
-                <button type="button" onClick={() => setShowSubjectForm(false)}
-                  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-600 text-sm rounded-lg transition-colors">
-                  Cancel
-                </button>
-              </form>
-            </div>
-          )}
-
-          <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  {["Subject","Code","Type"].map(h => (
-                    <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+          <div className="divide-y divide-slate-50">
+            {activeClasses.map((cls:any) => (
+              <div key={cls.id} className="p-5">
+                <p className="text-sm font-bold text-slate-900 mb-3">{cls.name}</p>
+                <div className="grid gap-3">
+                  {cls.sections?.map((sec:any) => (
+                    <div key={sec.id} className="flex items-center justify-between p-3 border rounded-lg bg-slate-50">
+                      <span className="font-medium text-sm">Section {sec.name}</span>
+                      <select 
+                        value={sec.classTeacherId ?? ""} 
+                        onChange={(e) => appointClassTeacher(sec.id, e.target.value || null)}
+                        className="text-sm border rounded-md p-1 bg-white"
+                      >
+                        <option value="">No Class Teacher</option>
+                        {staff?.filter((s:any) => ["TEACHER","CLASS_TEACHER"].includes(s.user?.role)).map((s:any) => (
+                          <option key={s.id} value={s.id}>{s.user?.firstName} {s.user?.lastName}</option>
+                        ))}
+                      </select>
+                    </div>
                   ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {sLoading ? (
-                  [...Array(4)].map((_, i) => (
-                    <tr key={i}>
-                      {[...Array(3)].map((_, j) => (
-                        <td key={j} className="px-5 py-4"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>
-                      ))}
-                    </tr>
-                  ))
-                ) : !subjects || subjects.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="px-5 py-12 text-center text-slate-400 text-sm">
-                      No subjects yet. Add your first subject above.
-                    </td>
-                  </tr>
-                ) : subjects.map((sub: any) => (
-                  <tr key={sub.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-5 py-3.5 font-medium text-slate-900">{sub.name}</td>
-                    <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{sub.code ?? "—"}</td>
-                    <td className="px-5 py-3.5">
-                      <Badge label={sub.isElective ? "Elective" : "Core"} variant={sub.isElective ? "info" : "neutral"} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </div>
+              </div>
+            ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClassCard({ cls, expanded, onToggleExpand, onShowSectionForm, showSectionForm, sectionName, setSectionName, sectionCap, setSectionCap, savingSection, onCreateSection, onQuickSection, showTeacherForm, setShowTeacherForm, teacherForm, setTeacherForm, savingTeacher, onSaveTeacher, subjects, staff }: any) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="p-4 flex items-center justify-between cursor-pointer" onClick={onToggleExpand}>
+        <div className="flex items-center gap-3">
+           {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+           <span className="font-bold">{cls.name}</span>
+           <span className="text-xs text-slate-400">{cls.sections?.length || 0} Sections</span>
+        </div>
+        <div className="flex gap-2">
+           {["A", "B", "C"].map(n => (
+             <button key={n} onClick={(e) => { e.stopPropagation(); onQuickSection(n); }} className="px-2 py-1 text-xs border rounded hover:bg-blue-50">+{n}</button>
+           ))}
+        </div>
+      </div>
+
+      {showSectionForm && (
+        <form onSubmit={onCreateSection} className="p-4 bg-slate-50 border-t flex gap-3 items-end">
+           <input required value={sectionName} onChange={e => setSectionName(e.target.value)} placeholder="Section Name" className="p-2 border rounded text-sm" />
+           <button type="submit" className="bg-blue-600 text-white px-3 py-2 rounded text-sm">Add</button>
+        </form>
+      )}
+
+      {expanded && cls.sections && (
+        <div className="p-4 bg-slate-50 border-t space-y-2">
+           {cls.sections.map((sec:any) => (
+             <div key={sec.id} className="bg-white p-3 rounded-lg border flex justify-between items-center shadow-sm">
+                <span className="text-sm font-medium">Section {sec.name}</span>
+                <button onClick={() => setShowTeacherForm(sec.id)} className="text-xs text-blue-600 font-bold">Assign Teacher</button>
+             </div>
+           ))}
         </div>
       )}
     </div>

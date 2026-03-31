@@ -1,60 +1,11 @@
 model Admission {
-  id                String              @id @default(cuid())
-  tenantId          String
-  firstName         String
-  lastName          String
-  email             String?
-  phone             String
-  applyingForClass  String
-  source            AdmissionSource     @default(DIRECT)
-  status            AdmissionStatus     @default(INQUIRY)
-  counsellorId      String?
-  notes             String?
-  followUpDate      DateTime?
-  rejectionReason   String?
-  enrolledStudentId String?
-  academicYear      String
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  addressLine       String?
-  alternatePhone    String?
-  city              String?
-  dateOfBirth       DateTime?
-  gender            Gender?
-  parentEmail       String?
-  parentFirstName   String?
-  parentLastName    String?
-  parentPhone       String?
-  pincode           String?
-  previousSchool    String?
-  state             String?
-  activities        AdmissionActivity[]
-
-  @@index([tenantId])
-  @@index([status])
-  @@index([counsellorId])
+  id           String          @id @default(cuid())
+  status       AdmissionStatus @default(INQUIRY)
+  firstName    String
+  lastName     String
+  academicYear String
+  tenantId     String
+  branchId     String
+  createdAt    DateTime        @default(now())
 }
 
-model AdmissionActivity {
-  id          String    @id @default(cuid())
-  admissionId String
-  tenantId    String
-  actorId     String
-  action      String
-  note        String?
-  createdAt   DateTime  @default(now())
-  admission   Admission @relation(fields: [admissionId], references: [id])
-
-  @@index([admissionId])
-  @@index([tenantId])
-}
-
-enum AdmissionSource {
-  GOOGLE
-  REFERRAL
-  WALK_IN
-  SOCIAL_MEDIA
-  DIRECT
-  EVENT
-  OTHER
-}

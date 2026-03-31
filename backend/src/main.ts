@@ -24,7 +24,9 @@ async function bootstrap() {
     .filter(Boolean);
 
   app.enableCors({
-    origin: allowedOrigins,
+    //origin: allowedOrigins,
+	  origin: 'https://schoolos.bytebeamtech.com', 
+    'https://superadmin.bytebeamtech.com'
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],

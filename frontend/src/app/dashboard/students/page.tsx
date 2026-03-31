@@ -1,4 +1,5 @@
 "use client";
+import { useApi } from "@/lib/hooks";
 import { useState }    from "react";
 import { useRouter }   from "next/navigation";
 import { Users, Search, Plus, Phone } from "lucide-react";
@@ -79,11 +80,14 @@ export default function StudentsPage() {
 
       setShowForm(false);
       
-      setForm({ firstName:"", lastName:"", admissionNumber:"", dateOfBirth:"", gender:"MALE",
+setForm({ 
+  firstName:"", lastName:"", admissionNumber:"", dateOfBirth:"", gender:"MALE",
   sectionId:"", academicYear: currentSession?.id ?? "",
-  guardianFirstName:"", guardianLastName:"", guardianPhone:"", guardianEmail:"", guardianRelation:"FATHER",
-  guardianAadhaar:"", studentAadhaar:"" });
-	refetch();
+  branchId: "", // ← ये जादू की झप्पी यहाँ डाल दो
+  guardianFirstName:"", guardianLastName:"", guardianPhone:"", guardianEmail:"", 
+  guardianRelation:"FATHER", guardianAadhaar:"", studentAadhaar:"" 
+});	
+      refetch();
     } catch (err: any) {
       alert(err?.response?.data?.message ?? "Failed to add student");
     } finally {
