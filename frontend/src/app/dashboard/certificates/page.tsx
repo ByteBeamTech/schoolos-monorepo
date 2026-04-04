@@ -5,6 +5,8 @@ import { PageHeader }  from "@/components/ui/page-header";
 import { Badge }       from "@/components/ui/badge";
 import { useApi }      from "@/lib/hooks";
 import { apiClient }   from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 const CERT_TYPES = ["TRANSFER","BONAFIDE","CHARACTER","ACHIEVEMENT","MIGRATION","CONDUCT"];
 const CERT_LABELS: Record<string,string> = {
@@ -17,6 +19,8 @@ const CERT_V: Record<string,any> = { TRANSFER:"error", BONAFIDE:"info", CHARACTE
 export default function CertificatesPage() {
   const { data: certs,   loading, refetch } = useApi<any[]>("/certificates");
   const { data: students                  } = useApi<any>("/students?limit=500");
+  const { toast } = useToast();
+
   const [showForm, setShowForm] = useState(false);
   const [saving,   setSaving]   = useState(false);
   const [lastCert, setLastCert] = useState<any>(null);
@@ -30,7 +34,7 @@ export default function CertificatesPage() {
       setLastCert(res.data); setShowForm(false);
       setForm({ studentId:"", type:"BONAFIDE", reason:"", notes:"" });
       refetch();
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 

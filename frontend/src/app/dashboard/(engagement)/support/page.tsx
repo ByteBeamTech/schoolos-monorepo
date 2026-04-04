@@ -7,6 +7,8 @@ import { Badge }      from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useApi }     from "@/lib/hooks";
 import { MessageSquare, Plus, Clock, CheckCircle, AlertCircle, Send, X } from "lucide-react";
+import { useToast } from '@/lib/use-toast';
+
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.50:3000/api/v1";
 
@@ -39,6 +41,8 @@ const PRIORITY_V: Record<string, any> = {
 };
 
 export default function SupportPage() {
+  const { toast } = useToast();
+
   const [showForm,  setShowForm]  = useState(false);
   const [selected,  setSelected]  = useState<string | null>(null);
   const [reply,     setReply]     = useState("");
@@ -70,7 +74,7 @@ export default function SupportPage() {
       await refetch();
       setSelected(created.id);
     } catch (err: any) {
-      alert(err.message ?? "Failed to create ticket");
+      toast.error(err.message ?? "Failed to create ticket");
     } finally { setSaving(false); }
   };
 
@@ -85,7 +89,7 @@ export default function SupportPage() {
       setReply("");
       refetchTicket();
     } catch (err: any) {
-      alert(err.message ?? "Failed to send reply");
+      toast.error(err.message ?? "Failed to send reply");
     } finally { setSaving(false); }
   };
 

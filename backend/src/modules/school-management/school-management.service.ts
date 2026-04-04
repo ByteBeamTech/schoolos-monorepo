@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
-import { PrismaService } from '../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }  from '../../core/compliance/audit.service';
 import {
   UpdateSchoolProfileDto,

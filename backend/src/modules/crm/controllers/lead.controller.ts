@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Req, Headers } from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, Headers }  from '@nestjs/common';
 import { LeadService } from '../services/lead.service';
 
 @Controller('crm')

@@ -4,7 +4,7 @@
 
 import { Injectable }    from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 
 export interface GatewayCreateOrderResult {
   gatewayOrderId: string;

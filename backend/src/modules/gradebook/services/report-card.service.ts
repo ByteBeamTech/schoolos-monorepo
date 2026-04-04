@@ -4,7 +4,7 @@
 // Wire in gradebook.module.ts: add ReportCardService to providers[].
 // ─────────────────────────────────────────────────────────────────────────────
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EVENTS }        from '../../../core/events/events.constants';
 

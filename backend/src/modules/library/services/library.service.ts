@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService }  from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { CreateBookDto, IssueBookDto, ReturnBookDto } from '../dto/library.dto';
 
 @Injectable()
@@ -111,8 +111,8 @@ export class LibraryService {
     return this.prisma.bookIssue.findMany({
       where,
       include: {
-        book:    { select: { title: true, isbn: true, author: true } },
-        student: { select: { firstName: true, lastName: true, admissionNumber: true } },
+        book: { select: { title: true, isbn: true, author: true } },
+        // Note: BookIssue has no ORM relation to Student; use studentId for lookup
       },
       orderBy: { issuedAt: 'desc' },
       take: 200,

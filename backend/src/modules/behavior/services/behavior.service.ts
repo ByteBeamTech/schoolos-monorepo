@@ -1,6 +1,6 @@
 // backend/src/modules/behavior/services/behavior.service.ts
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { CreateBehaviorRecordDto } from '../dto/behavior.dto';
 
 @Injectable()

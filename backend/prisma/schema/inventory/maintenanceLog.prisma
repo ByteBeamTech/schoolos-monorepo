@@ -1,0 +1,18 @@
+model maintenanceLog {
+  id       String @id @default(cuid())
+  tenantId String
+  assetId  String
+
+  issue  String
+  status String
+
+  cost  Float?
+  notes String?
+
+  createdAt DateTime @default(now())
+
+  asset asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([assetId])
+}

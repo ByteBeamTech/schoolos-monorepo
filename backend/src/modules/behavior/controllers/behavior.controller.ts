@@ -2,7 +2,7 @@
 import {
   Controller, Get, Post, Patch, Delete,
   Param, Body, Query, UseGuards,
-} from '@nestjs/common';
+}  from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { BehaviorService }         from '../services/behavior.service';
 import { CreateBehaviorRecordDto, ResolveRecordDto } from '../dto/behavior.dto';

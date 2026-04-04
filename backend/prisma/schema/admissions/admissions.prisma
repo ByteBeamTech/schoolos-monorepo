@@ -1,11 +1,112 @@
 model Admission {
-  id           String          @id @default(cuid())
-  status       AdmissionStatus @default(INQUIRY)
-  firstName    String
-  lastName     String
-  academicYear String
-  tenantId     String
-  branchId     String
-  createdAt    DateTime        @default(now())
-}
+  id     String          @id @default(cuid())
+  status AdmissionStatus @default(INQUIRY)
 
+  // 🔹 Basic Info
+  firstName   String
+  middleName  String?
+  lastName    String
+  gender      Gender?
+  dateOfBirth DateTime?
+
+  // 🔹 Govt / Identity
+  aadhaarNumber String?
+  penNumber     String?
+  apaarId       String?
+
+  // 🔹 Demographics
+  category    String?
+  religion    String?
+  bloodGroup  String?
+  nationality String? @default("Indian")
+
+  // 🔹 Academic
+  academicYear    String
+  applyingClassId String?
+
+  previousSchoolName String?
+  previousClass      String?
+  tcNumber           String?
+  tcIssueDate        DateTime?
+  lastPercentage     Float?
+
+  // 🔹 Parent Info
+// 🔹 Parent Info
+
+fatherFirstName String?
+fatherLastName  String?
+fatherPhone     String?
+fatherEmail     String?
+fatherOccupation String?
+fatherIncome     Float?
+email String?
+motherFirstName String?
+motherLastName  String?
+motherPhone     String?
+motherEmail     String?
+motherOccupation String?
+motherIncome     Float?
+
+guardianFirstName String?
+guardianLastName  String?
+guardianRelation  String?
+guardianPhone     String?
+
+alternatePhone   String?   // already needed
+  // 🔹 Address
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  pincode      String?
+
+  // 🔹 Medical
+  medicalConditions String?
+  allergies         String?
+  disability        String?
+
+  emergencyContactName  String?
+  emergencyContactPhone String?
+
+  // 🔹 Transport
+  transportRequired Boolean?
+  pickupLocation    String?
+
+  // 🔹 Fees
+  admissionFeePaid Boolean?
+  paymentReference String?
+  scholarship      Boolean?
+  discountNotes    String?
+
+  // 🔹 Documents
+  photoUrl            String?
+  birthCertificateUrl String?
+  aadhaarUrl          String?
+  tcUrl               String?
+  marksheetUrl        String?
+
+  // 🔹 Workflow
+  source          String?
+  followUpDate    DateTime?
+  rejectionReason String?
+  notes           String?
+
+  // 🔹 Conversion
+  enrolledStudentId String?
+
+  // 🔹 Multi-tenant
+  tenantId String
+  branchId String
+
+  // 🔹 Relations
+  activities admissionActivity[]
+  stepLogs   admissionStepLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([branchId])
+  @@index([status])
+  @@index([source])
+}

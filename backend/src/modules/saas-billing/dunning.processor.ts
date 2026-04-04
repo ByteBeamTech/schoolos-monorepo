@@ -1,7 +1,7 @@
 import { Process, Processor } from '@nestjs/bull';
 import { Logger }             from '@nestjs/common';
 import { Job }                from 'bull';
-import { PrismaService }      from '../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { QUEUE_NAMES }        from '../../infra/queue/queue.module';
 
 @Processor(QUEUE_NAMES.DUNNING)

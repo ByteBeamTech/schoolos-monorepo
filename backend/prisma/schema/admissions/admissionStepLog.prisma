@@ -1,0 +1,31 @@
+model admissionStepLog {
+  id           String   @id @default(cuid())
+
+  tenantId     String
+  branchId     String?
+  admissionId  String
+
+  // 🔹 workflow step
+  step         String
+  fromStep     String?
+
+  // 🔹 actor tracking
+  actorId      String?
+
+  // 🔹 time tracking (ms precision)
+  durationMs   Int?
+
+  // 🔹 optional context
+  note         String?
+  metadata     Json?
+
+  createdAt    DateTime @default(now())
+
+  admission Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, branchId])
+  @@index([admissionId])
+  @@index([step])
+  @@index([createdAt])
+}

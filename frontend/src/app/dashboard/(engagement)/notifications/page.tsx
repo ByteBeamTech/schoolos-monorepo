@@ -7,6 +7,8 @@ import { StatCard }           from "@/components/ui/stat-card";
 import { Badge }              from "@/components/ui/badge";
 import { EmptyState }         from "@/components/ui/empty-state";
 import { useNotificationStats, useApi } from "@/lib/hooks";
+import { useToast } from '@/lib/use-toast';
+
 
 interface Notification {
   id:        string;
@@ -36,6 +38,8 @@ export default function NotificationsPage() {
   const { data: stats, loading: statsLoading } = useNotificationStats();
   const { data: list,  loading: listLoading  } = useApi<Notification[]>("/notifications?limit=50");
 
+  const { toast } = useToast();
+
   const [showSend, setShowSend] = useState(false);
   const [sendForm, setSendForm] = useState({ channel: "SMS", phone: "", email: "", subject: "", body: "" });
   const [sending,  setSending]  = useState(false);
@@ -51,7 +55,7 @@ export default function NotificationsPage() {
       setShowSend(false);
       setSendForm({ channel: "SMS", phone: "", email: "", subject: "", body: "" });
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to send");
+      toast.error(err?.response?.data?.message ?? "Failed to send");
     } finally {
       setSending(false);
     }

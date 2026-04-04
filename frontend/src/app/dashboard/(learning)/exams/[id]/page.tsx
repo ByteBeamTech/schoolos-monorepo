@@ -8,6 +8,8 @@ import {
 import { Badge }     from "@/components/ui/badge";
 import { useApi, useClasses, useSubjects, useAcademicSessions } from "@/lib/hooks";
 import { apiClient } from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -29,6 +31,8 @@ export default function ExamDetailPage({ params }: { params: Promise<{ id: strin
   const currentSession     = sessions?.find((s: any) => s.isCurrent) ?? sessions?.[0];
   const { data: classes }  = useClasses(currentSession?.id ?? "");
   const { data: subjects } = useSubjects();
+
+  const { toast } = useToast();
 
   const [tab, setTab] = useState<"schedules"|"marks"|"results">("schedules");
 
@@ -60,7 +64,7 @@ export default function ExamDetailPage({ params }: { params: Promise<{ id: strin
       setSchedForm({ classId:"", subjectId:"", date:"", startTime:"09:00", endTime:"11:00", maxMarks:"100", passMarks:"35", hallId:"" });
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
+      toast.error(err?.response?.data?.message ?? "Failed");
     } finally {
       setSavingSched(false);
     }
@@ -90,8 +94,8 @@ export default function ExamDetailPage({ params }: { params: Promise<{ id: strin
   }, [selectedClass, selectedSched]);
 
   const submitMarks = async () => {
-    if (!selectedSched) { alert("Select a schedule first"); return; }
-    if (students.length === 0) { alert("No students found"); return; }
+    if (!selectedSched) { toast.error("Select a schedule first"); return; }
+    if (students.length === 0) { toast.error("No students found"); return; }
     setSavingMarks(true);
     try {
       await apiClient.post("/examinations/marks/bulk", {
@@ -105,7 +109,7 @@ export default function ExamDetailPage({ params }: { params: Promise<{ id: strin
       });
       setMarksSubmitted(true);
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to submit marks");
+      toast.error(err?.response?.data?.message ?? "Failed to submit marks");
     } finally {
       setSavingMarks(false);
     }
@@ -161,7 +165,7 @@ export default function ExamDetailPage({ params }: { params: Promise<{ id: strin
             <button
               onClick={async () => {
                 try { await apiClient.post(`/examinations/${id}/publish`, {}); refetch(); }
-                catch (err: any) { alert(err?.response?.data?.message ?? "Failed"); }
+                catch (err: any) { toast.error(err?.response?.data?.message ?? "Failed"); }
               }}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium transition-colors">
               Publish Exam

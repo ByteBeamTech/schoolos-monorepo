@@ -1,6 +1,6 @@
 # PrismaService.forTenant() — Usage Guide
 
-## ✅ Already implemented in prisma.service.ts
+import { PrismaService } from '@infra/database/prisma.service';
 
 The `forTenant(tenantId)` method auto-injects tenantId into every query:
 - findMany, findFirst, findFirstOrThrow, count

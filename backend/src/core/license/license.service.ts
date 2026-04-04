@@ -1,6 +1,6 @@
 // core/license/license.service.ts
 import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
-import { PrismaService } from '../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { RedisService }  from '../../infra/cache/redis.service';
 
 export interface LicenseCheckResult {

@@ -6,27 +6,24 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
-    "target": "ES2021",
+    "target": "ES2022",
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": "./src",
     "incremental": false,
     "skipLibCheck": true,
-    "strictNullChecks": false,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "forceConsistentCasingInFileNames": false,
-    "noFallthroughCasesInSwitch": false,
+    "strict": false,
     "esModuleInterop": true,
     "resolveJsonModule": true,
+    "types": ["node", "jest"], // 👈 ये जोड़ना ज़रूरी है
     "paths": {
       "@core/*":    ["core/*"],
       "@modules/*": ["modules/*"],
-      "@infra/*":   ["infra/*"],
+      "@infra/*":    ["infra/*"],
       "@common/*":  ["common/*"]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test", "**/*spec.ts", "prisma/**/*"]
+  "include": ["src/**/*", "test/**/*"], // 👈 टेस्ट फोल्डर को शामिल कर
+  "exclude": ["node_modules", "dist"] // 👈 यहाँ से spec.ts हटा दिया है
 }

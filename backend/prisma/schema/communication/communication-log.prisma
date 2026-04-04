@@ -3,82 +3,82 @@
 // CommunicationLog is the audit spine; Notification remains for queueing.
 
 model CommunicationLog {
-  id            String                  @id @default(cuid())
-  tenantId      String
+  id       String @id @default(cuid())
+  tenantId String
 
   // WHO sent it
-  initiatedBy   String                  // userId or 'system' for cron/auto
-  initiatedAt   DateTime                @default(now())
+  initiatedBy String // userId or 'system' for cron/auto
+  initiatedAt DateTime @default(now())
 
   // WHAT was sent
-  channel       CommunicationChannel    // SMS | EMAIL | WHATSAPP | PUSH | IN_APP
-  templateId    String?                 // reference to NotificationTemplate
-  subject       String?                 // email subject or push title
-  bodyPreview   String?                 // first 200 chars of rendered body (for UI)
+  channel     CommunicationChannel // SMS | EMAIL | WHATSAPP | PUSH | IN_APP
+  templateId  String? // reference to NotificationTemplate
+  subject     String? // email subject or push title
+  bodyPreview String? // first 200 chars of rendered body (for UI)
 
   // TO WHOM
-  recipientType CommunicationRecipient  // STUDENT | GUARDIAN | STAFF | TENANT_ADMIN | BULK
-  recipientId   String?                 // userId / guardianId — null for bulk
-  recipientRef  String?                 // phone or email used at send time (snapshot)
+  recipientType CommunicationRecipient // STUDENT | GUARDIAN | STAFF | TENANT_ADMIN | BULK
+  recipientId   String? // userId / guardianId — null for bulk
+  recipientRef  String? // phone or email used at send time (snapshot)
 
   // CONTEXT (what triggered this message)
-  triggerType   CommunicationTrigger    // FEE_REMINDER | ATTENDANCE_ALERT | BROADCAST | MANUAL | etc.
-  entityType    String?                 // 'Invoice' | 'Student' | 'Announcement'
-  entityId      String?                 // the specific record that triggered the send
+  triggerType CommunicationTrigger // FEE_REMINDER | ATTENDANCE_ALERT | BROADCAST | MANUAL | etc.
+  entityType  String? // 'Invoice' | 'Student' | 'Announcement'
+  entityId    String? // the specific record that triggered the send
 
   // DELIVERY TRACKING
-  status        CommunicationStatus     @default(QUEUED)
-  queuedAt      DateTime?
-  sentAt        DateTime?
-  deliveredAt   DateTime?
-  readAt        DateTime?               // supported by WhatsApp, Push, In-App
-  failedAt      DateTime?
-  failReason    String?
-  retryCount    Int                     @default(0)
-  providerRef   String?                 // external message ID from Twilio/MSG91/FCM
+  status      CommunicationStatus @default(QUEUED)
+  queuedAt    DateTime?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime? // supported by WhatsApp, Push, In-App
+  failedAt    DateTime?
+  failReason  String?
+  retryCount  Int                 @default(0)
+  providerRef String? // external message ID from Twilio/MSG91/FCM
 
   // COST TRACKING (critical for Indian SMS/WhatsApp which bill per message)
-  costUnits     Int?                    // SMS = credit units consumed
-  costAmount    Decimal?                @db.Decimal(10, 4) // rupees
+  costUnits  Int? // SMS = credit units consumed
+  costAmount Decimal? @db.Decimal(10, 4) // rupees
 
   // BULK CONTEXT
-  bulkJobId     String?                 // links to BulkNotificationJob if part of a campaign
+  bulkJobId String? // links to BulkNotificationJob if part of a campaign
 
-  createdAt     DateTime                @default(now())
-  updatedAt     DateTime                @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant        Tenant                  @relation(fields: [tenantId], references: [id])
-  bulkJob       BulkNotificationJob?    @relation(fields: [bulkJobId], references: [id])
+  tenant  Tenant               @relation(fields: [tenantId], references: [id])
+  bulkJob BulkNotificationJob? @relation(fields: [bulkJobId], references: [id])
 
   @@index([tenantId, channel, status])
   @@index([tenantId, recipientId])
   @@index([tenantId, triggerType])
   @@index([tenantId, initiatedAt])
   @@index([bulkJobId])
-  @@index([providerRef])              // for webhook callbacks from Twilio/MSG91
+  @@index([providerRef]) // for webhook callbacks from Twilio/MSG91
 }
 
 // Tracks bulk send campaigns (fee reminders, event notifications, etc.)
 model BulkNotificationJob {
-  id            String                @id @default(cuid())
-  tenantId      String
-  name          String                // "Fee Reminder — March 2026"
-  triggerType   CommunicationTrigger
-  channel       CommunicationChannel
-  templateId    String?
-  totalCount    Int                   @default(0)
-  queuedCount   Int                   @default(0)
-  sentCount     Int                   @default(0)
+  id             String               @id @default(cuid())
+  tenantId       String
+  name           String // "Fee Reminder — March 2026"
+  triggerType    CommunicationTrigger
+  channel        CommunicationChannel
+  templateId     String?
+  totalCount     Int                  @default(0)
+  queuedCount    Int                  @default(0)
+  sentCount      Int                  @default(0)
   deliveredCount Int                  @default(0)
-  failedCount   Int                   @default(0)
-  status        BulkJobStatus         @default(PENDING)
-  startedAt     DateTime?
-  completedAt   DateTime?
-  createdBy     String
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  logs          CommunicationLog[]
-  tenant        Tenant                @relation(fields: [tenantId], references: [id])
+  failedCount    Int                  @default(0)
+  status         BulkJobStatus        @default(PENDING)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdBy      String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  logs           CommunicationLog[]
+  tenant         Tenant               @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, status])
   @@index([tenantId, createdAt])

@@ -5,10 +5,14 @@ import { PageHeader }  from "@/components/ui/page-header";
 import { StatCard }    from "@/components/ui/stat-card";
 import { useApi }      from "@/lib/hooks";
 import { apiClient }   from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 type Tab = "announcements" | "circulars";
 
 export default function CommunicationPage() {
+  const { toast } = useToast();
+
   const [tab,     setTab]     = useState<Tab>("announcements");
   const [showNew, setShowNew] = useState(false);
   const [saving,  setSaving]  = useState(false);
@@ -31,19 +35,19 @@ export default function CommunicationPage() {
         refetchCirc();
       }
       setShowNew(false); setForm({ title:"", body:"", isPinned:false, expiresAt:"", type:"announcement" });
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 
   const pin = async (id:string) => {
     try { await apiClient.patch(`/communication/announcements/${id}/pin`, {}); refetchAnn(); }
-    catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
   };
 
   const deleteAnn = async (id:string) => {
     if (!confirm("Delete this announcement?")) return;
     try { await apiClient.delete(`/communication/announcements/${id}`); refetchAnn(); }
-    catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
   };
 
   return (

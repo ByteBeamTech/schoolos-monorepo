@@ -1,6 +1,13 @@
 model StockItem {
-  id String @id @default(cuid())
-  name String
-  quantity Int @default(0)
+  id       String @id @default(cuid())
+  name     String
+  quantity Int    @default(0)
   tenantId String
+
+  // ✅ OPTIONAL BUT RECOMMENDED
+  category  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
 }

@@ -6,11 +6,15 @@ import { StatCard }    from "@/components/ui/stat-card";
 import { Badge }       from "@/components/ui/badge";
 import { useApi }      from "@/lib/hooks";
 import { apiClient }   from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 const CATEGORIES = ["UTILITIES","STATIONERY","MAINTENANCE","SALARIES","TRANSPORT","EVENTS","EQUIPMENT","PETTY_CASH","OTHER"];
 const CAT_COLORS: Record<string, any> = { UTILITIES:"info", MAINTENANCE:"warning", SALARIES:"purple", EVENTS:"success", OTHER:"neutral" };
 
 export default function AccountingPage() {
+  const { toast } = useToast();
+
   const [tab,     setTab]     = useState<"expenses"|"vendors">("expenses");
   const [showNew, setShowNew] = useState(false);
   const [catFilter,setCatFilter] = useState("");
@@ -35,7 +39,7 @@ export default function AccountingPage() {
       await apiClient.post("/accounting/expenses", { ...form, amount: parseFloat(form.amount) });
       setShowNew(false); setForm({ category:"OTHER", amount:"", description:"", expenseDate:"", vendorId:"" });
       refetchExp();
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 
@@ -45,12 +49,12 @@ export default function AccountingPage() {
       await apiClient.post("/accounting/vendors", vForm);
       setShowVend(false); setVForm({ name:"", contactName:"", phone:"", email:"", gstNumber:"" });
       refetchVend();
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 
   const exportTally = () => {
-    if (!fromDate||!toDate) { alert("Select date range for Tally export"); return; }
+    if (!fromDate||!toDate) { toast.error("Select date range for Tally export"); return; }
     window.open(`/api/v1/accounting/export/tally?fromDate=${fromDate}&toDate=${toDate}`, "_blank");
   };
 

@@ -1,7 +1,7 @@
 // path: apps/schoolos/backend/src/modules/admissions/services/promotion.service.ts
 
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as crypto from 'crypto';
 import {
@@ -210,13 +210,13 @@ export class PromotionService {
         } as any,
       });
 
-      if (admission.parentPhone) {
+      if ((admission as any).guardianPhone || (admission as any).fatherPhone) {
         const guardian = await tx.guardian.upsert({
-          where: { tenantId_phone: { tenantId: tenantId as any, phone: admission.parentPhone } },
-          update: { firstName: admission.parentFirstName },
+          where: { tenantId_phone: { tenantId: tenantId as any, phone: (admission as any).guardianPhone ?? (admission as any).fatherPhone } },
+          update: { firstName: (admission as any).guardianName ?? (admission as any).fatherName },
           create: {
-            tenantId: tenantId as any, phone: admission.parentPhone,
-            firstName: admission.parentFirstName, lastName: admission.parentLastName ?? '',
+            tenantId: tenantId as any, phone: (admission as any).guardianPhone ?? (admission as any).fatherPhone,
+            firstName: (admission as any).guardianName ?? (admission as any).fatherName ?? '', lastName: (admission as any).parentLastName ?? '',
           } as any,
         });
 

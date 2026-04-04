@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { IssueCertificateDto } from '../dto/certificates.dto';
 
 const CERT_LABELS: Record<string, string> = {

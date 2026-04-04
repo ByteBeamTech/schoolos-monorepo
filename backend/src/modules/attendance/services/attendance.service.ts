@@ -2,10 +2,9 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
-  ConflictException,
   Logger,
 } from '@nestjs/common';
-import { PrismaService } from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }  from '../../../core/compliance/audit.service';
 import {
   BulkMarkAttendanceDto,
@@ -29,15 +28,10 @@ export class AttendanceService {
     const section = await this.prisma.section.findFirst({ where: { id: dto.sectionId, tenantId } });
     if (!section) throw new NotFoundException(`Section not found: ${dto.sectionId}`);
 
-    const existing = await this.prisma.attendance.findFirst({
-      where: { tenantId, date, period: null, student: { sectionId: dto.sectionId } },
-    });
-    if (existing) {
-      throw new ConflictException(
-        `Attendance already marked for this section on ${dto.date}. Use update endpoint to modify.`,
-      );
-    }
-
+    // BUG 2 FIX: upsert WHERE period must be null (not 0) to match the unique
+    // constraint @@unique([tenantId, studentId, date, period]) and the create
+    // data which also stores null. period: 0 caused a mismatch — Prisma treated
+    // it as a different key, so upsert always inserted → unique constraint error.
     const results = await Promise.all(
       dto.attendance.map(entry =>
         this.prisma.attendance.upsert({
@@ -46,7 +40,7 @@ export class AttendanceService {
               tenantId,
               studentId: entry.studentId,
               date,
-              period:    0,
+              period:    null,   // ✅ was: 0 — must match create.period below
             },
           },
           create: {

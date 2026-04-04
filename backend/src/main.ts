@@ -1,10 +1,10 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -23,18 +23,26 @@ async function bootstrap() {
     .map((o) => o.trim())
     .filter(Boolean);
 
+// --- main.ts CORS Fix ---
+  
   app.enableCors({
-    //origin: allowedOrigins,
-	  origin: 'https://schoolos.bytebeamtech.com', 
-    'https://superadmin.bytebeamtech.com'
+    // ✅ मल्टीपल origins के लिए हमेशा Array का इस्तेमाल कर
+    origin: [
+      'https://schoolos.bytebeamtech.com',
+      'https://superadmin.bytebeamtech.com',
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-tenant-id'],
+    allowedHeaders: [
+      'Content-Type', 
+      'Authorization', 
+      'x-tenant-id', 
+      'x-branch-id', 
+      'x-idempotency-key'
+    ],
   });
-
-  const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
+  const apiPrefix = configService.get<string>('API_PREFIX', 'api');
   app.setGlobalPrefix(apiPrefix);
-  app.enableVersioning({ type: VersioningType.URI });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -51,7 +59,6 @@ async function bootstrap() {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('SchoolOS API')
       .setDescription('Enterprise School ERP SaaS — API Documentation')
-      .setVersion('1.0')
       .addBearerAuth(
         { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
         'access-token',

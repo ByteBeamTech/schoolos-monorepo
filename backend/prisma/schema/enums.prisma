@@ -263,16 +263,15 @@ enum CertificateType {
   CONDUCT
 }
 
-
 enum AdmissionStatus {
   INQUIRY
-  APPLIED            // पुराना फ्लो
-  DOCUMENT_UPLOAD    // नया (Part 2 से)
-  SCREENING          // पुराना फ्लो
-  VERIFICATION       // नया (Part 2 से)
+  APPLIED // पुराना फ्लो
+  DOCUMENT_UPLOAD // नया (Part 2 से)
+  SCREENING // पुराना फ्लो
+  VERIFICATION // नया (Part 2 से)
   WAITLISTED
-  FEE_DEPOSIT        // नया (Part 2 से)
-  ENROLLED           // (इसे CONVERTED भी कह सकते हैं)
+  FEE_DEPOSIT // नया (Part 2 से)
+  ENROLLED // (इसे CONVERTED भी कह सकते हैं)
   REJECTED
   WITHDRAWN
 }

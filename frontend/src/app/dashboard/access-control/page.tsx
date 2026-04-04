@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Badge }      from "@/components/ui/badge";
 import { useApi }     from "@/lib/hooks";
 import { apiClient }  from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 // All roles with descriptions of what each one means
 const ROLES = [
@@ -58,6 +60,8 @@ const MODULE_COLORS: Record<string,string> = {
 };
 
 export default function AccessControlPage() {
+  const { toast } = useToast();
+
   const [selectedRole, setSelectedRole] = useState("CLASS_TEACHER");
   const [granted, setGranted]           = useState<Set<string>>(new Set());
   const [saving,  setSaving]            = useState(false);
@@ -96,16 +100,16 @@ export default function AccessControlPage() {
       });
       setSaved(true); setTimeout(() => setSaved(false), 2000);
       refetchRole();
-    } catch { alert("Failed to save"); } finally { setSaving(false); }
+    } catch { toast.error("Failed to save"); } finally { setSaving(false); }
   };
 
   const seed = async () => {
     setSeeding(true);
     try {
       const r = await apiClient.post("/access-control/permissions/seed", {});
-      alert(`Permissions seeded! ${(r as any).created || 0} entries created/updated.`);
+      toast.error(`Permissions seeded! ${(r as any).created || 0} entries created/updated.`);
       refetchPerms();
-    } catch { alert("Failed to seed"); } finally { setSeeding(false); }
+    } catch { toast.error("Failed to seed"); } finally { setSeeding(false); }
   };
 
   const applyMatrix = async () => {
@@ -113,9 +117,9 @@ export default function AccessControlPage() {
     setApplying(true);
     try {
       const r = await apiClient.post("/access-control/roles/apply-default-matrix", {});
-      alert(`Default matrix applied! ${(r as any).granted} permissions granted across ${(r as any).roles} roles.`);
+      toast.error(`Default matrix applied! ${(r as any).granted} permissions granted across ${(r as any).roles} roles.`);
       refetchRole();
-    } catch { alert("Failed to apply matrix"); } finally { setApplying(false); }
+    } catch { toast.error("Failed to apply matrix"); } finally { setApplying(false); }
   };
 
   const toggleModule = (mod: string) =>

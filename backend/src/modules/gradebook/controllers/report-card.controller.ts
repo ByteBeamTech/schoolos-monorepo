@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import {
   Controller, Get, Param, Query, UseGuards, Res,
-} from '@nestjs/common';
+}  from '@nestjs/common';
 import { Response }          from 'express';
 import { ApiTags, ApiBearerAuth, ApiQuery, ApiOperation } from '@nestjs/swagger';
 import { ReportCardService } from '../services/report-card.service';

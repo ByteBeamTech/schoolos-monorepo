@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { CreateAssetDto, CreateStockItemDto, AddMaintenanceLogDto } from '../dto/inventory.dto';
 
 @Injectable()
@@ -18,7 +18,7 @@ export class InventoryService {
   async listAssets(tenantId: string, category?: string) {
     return this.prisma.asset.findMany({
       where:   { tenantId, isActive: true, ...(category && { category }) },
-      include: { maintenanceLogs: { orderBy: { performedAt: 'desc' }, take: 1 } },
+      include: { maintenanceLogs: { orderBy: { createdAt: 'desc' }, take: 1 } },
       orderBy: { name: 'asc' },
     });
   }
@@ -27,15 +27,12 @@ export class InventoryService {
     return this.prisma.asset.create({
       data: {
         tenantId,
-        name:          dto.name,
-        category:      dto.category,
-        serialNumber:  dto.serialNumber  ?? null,
-        purchaseDate:  dto.purchaseDate  ? new Date(dto.purchaseDate) : null,
-        purchasePrice: dto.purchasePrice ?? null,
-        location:      dto.location      ?? null,
-        condition:     dto.condition     ?? 'GOOD',
-        assignedTo:    dto.assignedTo    ?? null,
-      },
+        name:        dto.name,
+        category:    dto.category    ?? null,
+        description: dto.description ?? null,
+        purchaseDate: dto.purchaseDate ? new Date(dto.purchaseDate) : null,
+        cost:         dto.purchasePrice ?? null,
+      } as any,
     });
   }
 
@@ -46,10 +43,10 @@ export class InventoryService {
       data: {
         tenantId,
         assetId,
-        description: dto.description,
-        cost:        dto.cost        ?? null,
-        performedBy: dto.performedBy ?? null,
-        nextDueDate: dto.nextDueDate ? new Date(dto.nextDueDate) : null,
+        issue:  dto.description ?? 'Maintenance',  // schema field: issue
+        status: 'OPEN',
+        cost:   dto.cost ?? null,
+        notes:  dto.performedBy ? `Performed by: ${dto.performedBy}` : null,
       },
     });
   }
@@ -66,14 +63,10 @@ export class InventoryService {
     return this.prisma.stockItem.create({
       data: {
         tenantId,
-        name:        dto.name,
-        category:    dto.category,
-        unit:        dto.unit,
-        quantity:    dto.quantity    ?? 0,
-        minQuantity: dto.minQuantity ?? 0,
-        unitCost:    dto.unitCost    ?? null,
-        location:    dto.location    ?? null,
-      },
+        name:     dto.name,
+        category: dto.category ?? null,
+        quantity: dto.quantity ?? 0,
+      } as any,
     });
   }
 

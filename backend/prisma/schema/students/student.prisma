@@ -1,100 +1,127 @@
 // path: apps/schoolos/backend/prisma/schema/students/student.prisma
 
 model Student {
-  id                  String                @id @default(cuid())
-  tenantId            String
-  admissionNumber     String                @unique // Note: Global uniqueness check
-  firstName           String
-  lastName            String
-  dateOfBirth         DateTime?
-  gender              Gender?
-  bloodGroup          String?
-  photoUrl            String?
-  sectionId           String?
-  rollNumber          String?
-  academicYear        String
-  isActive            Boolean               @default(true)
-  enrolledAt          DateTime              @default(now())
-  leftAt              DateTime?
-  address             Json?
-  metadata            Json?                 @default("{}")
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  aadharHash          String?               @unique
-  aadharLast4         String?
-  additionalDetails   Json?
-  admissionDate       DateTime?
-  branchId            String
-  email               String?
-  familyId            String?
-  heightCm            Float?
-  isDuplicate         Boolean               @default(false)
-  lastHealthCheck     DateTime?
-  phone               String?
-  previousClass       String?
-  previousSchool      String?
-  weightKg            Float?
+  id                String    @id @default(cuid())
+  tenantId          String
 
-  // Relations
+  // ❌ removed global unique (multi-tenant safe)
+  admissionNumber   String
+
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime?
+  gender            Gender?
+  bloodGroup        String?
+  photoUrl          String?
+
+  sectionId         String?
+  rollNumber        String?
+  academicYear      String
+
+  isActive          Boolean   @default(true)
+
+  enrolledAt        DateTime  @default(now())
+  leftAt            DateTime?
+
+  address           Json?
+  metadata          Json?     @default("{}")
+  additionalDetails Json?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // 🔐 Aadhaar safe storage
+  aadharHash        String?   @unique
+  aadharLast4       String?
+
+  admissionDate     DateTime?
+  branchId          String
+
+  email             String?
+  phone             String?
+
+  familyId          String?
+
+  heightCm          Float?
+  weightKg          Float?
+  lastHealthCheck   DateTime?
+
+  previousClass     String?
+  previousSchool    String?
+
+  isDuplicate       Boolean   @default(false)
+
+  // 🔗 Relations
   attendances         Attendance[]
   discounts           Discount[]
   feeAssignments      FeeAssignment[]
   guardianLinks       GuardianStudent[]
   invoices            Invoice[]
+
   family              Family?               @relation(fields: [familyId], references: [id])
   section             Section?              @relation(fields: [sectionId], references: [id])
   tenant              Tenant                @relation(fields: [tenantId], references: [id])
+
   relatedToMe         StudentRelationship[] @relation("RelatedTo")
   relations           StudentRelationship[] @relation("StudentRelations")
+
   transportAssignment TransportAssignment?
 
-  // Indexes for 12GB RAM Optimization
+  // 🔥 Indexes (optimized)
   @@unique([tenantId, admissionNumber])
   @@index([tenantId])
   @@index([tenantId, branchId])
   @@index([academicYear])
-  @@index([firstName, lastName]) // Speed up student search by name
+  @@index([firstName, lastName])
+  @@index([aadharLast4])
 }
 
 model Guardian {
-  id           String            @id @default(cuid())
-  tenantId     String
-  firstName    String
-  lastName     String
-  email        String?
-  phone        String            // Removed global uniqueness if any
-  altPhone     String?
-  occupation   String?
-  address      Json?
-  photoUrl     String?
-  isActive     Boolean           @default(true)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  
-  // Relations
-  tenant       Tenant            @relation(fields: [tenantId], references: [id])
+  id         String   @id @default(cuid())
+  tenantId   String
+
+  firstName  String
+  lastName   String
+
+  phone      String
+  altPhone   String?
+
+  email      String?
+  occupation String?
+
+  address    Json?
+  photoUrl   String?
+
+  isActive   Boolean  @default(true)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // 🔗 Relations
   studentLinks GuardianStudent[]
+  tenant       Tenant @relation(fields: [tenantId], references: [id])
 
-  @@unique([tenantId, phone]) 
-
+  @@unique([tenantId, phone])
   @@index([tenantId])
   @@index([phone])
 }
 
 model GuardianStudent {
-  id         String           @id @default(cuid())
+  id         String   @id @default(cuid())
+
   guardianId String
   studentId  String
-  relation   GuardianRelation
-  isPrimary  Boolean          @default(false)
-  createdAt  DateTime         @default(now())
-  
-  // Relations
-  guardian   Guardian         @relation(fields: [guardianId], references: [id])
-  student    Student          @relation(fields: [studentId], references: [id])
 
-  // Prevent duplicate linking of the same guardian to the same student
+  relation   String   // father, mother, guardian
+  isPrimary  Boolean  @default(false)
+
+  createdAt  DateTime @default(now())
+
+  // 🔗 Relations
+  guardian Guardian @relation(fields: [guardianId], references: [id])
+  student  Student  @relation(fields: [studentId], references: [id])
+
   @@unique([guardianId, studentId])
   @@index([studentId])
-  @@index([guardianId]) // Crucial for "Find all children of this parent" queries
+  @@index([guardianId])
 }

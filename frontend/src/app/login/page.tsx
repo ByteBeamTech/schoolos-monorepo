@@ -111,6 +111,13 @@ export default function LoginPage() {
                     className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-500 text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
                   />
                 </div>
+
+              <div className="flex justify-end">
+                <a href={`/forgot-password?school=${slug}`}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                  Forgot password?
+                </a>
+              </div>
               </>
             )}
 

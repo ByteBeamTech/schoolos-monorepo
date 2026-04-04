@@ -6,6 +6,8 @@ import { StatCard }    from "@/components/ui/stat-card";
 import { Badge }       from "@/components/ui/badge";
 import { useApi, useAcademicSessions } from "@/lib/hooks";
 import { apiClient }   from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 export default function HomeworkPage() {
   const { data: stats,  loading: sLoad            } = useApi<any>("/homework/stats");
@@ -13,6 +15,8 @@ export default function HomeworkPage() {
   const { data: sessions }                                  = useAcademicSessions();
   const { data: classes }                             = useApi<any>("/academics/classes");
   const { data: subjects }                            = useApi<any[]>("/academics/subjects");
+  const { toast } = useToast();
+
   const [showNew, setShowNew] = useState(false);
   const [saving,  setSaving]  = useState(false);
 
@@ -25,7 +29,7 @@ export default function HomeworkPage() {
       await apiClient.post("/homework", { ...form, maxMarks:form.maxMarks?+form.maxMarks:undefined });
       setShowNew(false); setForm({ sessionId:"", classId:"", subjectId:"", title:"", dueDate:"", description:"", maxMarks:"" });
       refetch();
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 

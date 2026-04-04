@@ -1,4 +1,8 @@
-import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Body, Controller, Get, HttpCode,
+  HttpStatus, Param, Patch, Post,
+  Query, UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { InvoiceService }    from '../services/invoice.service';
 import { GenerateInvoiceDto, BulkGenerateInvoicesDto } from '../../dto/billing.dto';
@@ -31,13 +35,13 @@ export class InvoiceController {
 
   @Get()
   @ApiOperation({ summary: 'List invoices' })
-  @ApiQuery({ name: 'studentId', required: false })
-  @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'studentId',    required: false })
+  @ApiQuery({ name: 'status',       required: false })
   @ApiQuery({ name: 'academicYear', required: false })
   findAll(
     @CurrentUser() user: AuthenticatedUser,
-    @Query('studentId') studentId?: string,
-    @Query('status') status?: string,
+    @Query('studentId')    studentId?:    string,
+    @Query('status')       status?:       string,
     @Query('academicYear') academicYear?: string,
   ) {
     return this.service.findAll(user.tenantId, { studentId, status, academicYear });
@@ -54,7 +58,10 @@ export class InvoiceController {
   @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Billing stats' })
   @ApiQuery({ name: 'academicYear', required: false })
-  getStats(@CurrentUser() user: AuthenticatedUser, @Query('academicYear') academicYear?: string) {
+  getStats(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('academicYear') academicYear?: string,
+  ) {
     return this.service.getStats(user.tenantId, academicYear);
   }
 

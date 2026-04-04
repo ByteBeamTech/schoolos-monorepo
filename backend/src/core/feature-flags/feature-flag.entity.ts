@@ -3,7 +3,7 @@ import {
   Injectable, Logger, ForbiddenException,
   NotFoundException, BadRequestException,
 } from '@nestjs/common';
-import { PrismaService } from '../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { RedisService }  from '../../infra/cache/redis.service';
 import { AuditService }  from '../compliance/audit.service';
 import { ALL_FLAGS }     from './flag-definitions';

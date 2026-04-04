@@ -6,10 +6,14 @@ import { StatCard }    from "@/components/ui/stat-card";
 import { Badge }       from "@/components/ui/badge";
 import { useApi }      from "@/lib/hooks";
 import { apiClient }   from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 type Tab = "assets"|"stock";
 
 export default function InventoryPage() {
+  const { toast } = useToast();
+
   const [tab, setTab]         = useState<Tab>("assets");
   const [showNew, setShowNew] = useState(false);
   const [saving,  setSaving]  = useState(false);
@@ -28,7 +32,7 @@ export default function InventoryPage() {
     try {
       await apiClient.post("/inventory/assets", { ...aForm, purchasePrice:aForm.purchasePrice?parseFloat(aForm.purchasePrice):undefined });
       setShowNew(false); ra();
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 
@@ -37,7 +41,7 @@ export default function InventoryPage() {
     try {
       await apiClient.post("/inventory/stock", { ...sForm, quantity:+sForm.quantity, minQuantity:+sForm.minQuantity, unitCost:sForm.unitCost?parseFloat(sForm.unitCost):undefined });
       setShowNew(false); rs();
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 

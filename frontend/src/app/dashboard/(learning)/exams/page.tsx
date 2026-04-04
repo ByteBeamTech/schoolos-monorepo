@@ -6,6 +6,8 @@ import { StatCard }       from "@/components/ui/stat-card";
 import { Badge }          from "@/components/ui/badge";
 import { useExams, useExamStats, useApi } from "@/lib/hooks";
 import { apiClient }      from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 const EXAM_TYPES = ["UNIT_TEST","MID_TERM","FINAL","PRACTICAL","INTERNAL"];
 
@@ -19,6 +21,8 @@ function typeVariant(t: string) {
 export default function ExamsPage() {
   const { data: sessions }  = useApi<any[]>("/academic-sessions");
   const currentSession      = sessions?.find((s: any) => s.isCurrent) ?? sessions?.[0];
+  const { toast } = useToast();
+
   const [sessionId, setSessionId] = useState("");
   const activeSession = sessionId || currentSession?.id || "";
 
@@ -31,7 +35,7 @@ export default function ExamsPage() {
 
   const createExam = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeSession) { alert("Select a session first"); return; }
+    if (!activeSession) { toast.error("Select a session first"); return; }
     setSaving(true);
     try {
       await apiClient.post("/examinations", { ...form, sessionId: activeSession });
@@ -39,7 +43,7 @@ export default function ExamsPage() {
       setForm({ name: "", type: "UNIT_TEST", startDate: "", endDate: "" });
       refetch();
     } catch (e: any) {
-      alert(e?.response?.data?.message ?? "Failed to create exam");
+      toast.error(e?.response?.data?.message ?? "Failed to create exam");
     } finally {
       setSaving(false);
     }
@@ -50,7 +54,7 @@ export default function ExamsPage() {
       await apiClient.post(`/examinations/${id}/publish`, {});
       refetch();
     } catch (e: any) {
-      alert(e?.response?.data?.message ?? "Failed to publish");
+      toast.error(e?.response?.data?.message ?? "Failed to publish");
     }
   };
 

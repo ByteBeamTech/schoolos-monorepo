@@ -1,6 +1,6 @@
 import {
-  Controller, Get, Post, Patch, Param,
-  Body, Query, UseGuards,
+  Body, Controller, Get, Param,
+  Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { StudentsService }   from '../services/students.service';
@@ -16,8 +16,8 @@ import { AuthenticatedUser } from '../../../core/auth/guards/jwt.strategy';
 
 @ApiTags('students')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtGuard, RolesGuard)
 @Controller('students')
+@UseGuards(JwtGuard, RolesGuard)
 export class StudentsController {
   constructor(private readonly service: StudentsService) {}
 

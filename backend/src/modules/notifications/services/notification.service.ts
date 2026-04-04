@@ -3,7 +3,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue }        from '@nestjs/bull';
 import { Queue }              from 'bull';
-import { PrismaService }      from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { QUEUE_NAMES }        from '../../../infra/queue/queue.module';
 import { renderTemplate }     from '../templates/notification.templates';
 import {

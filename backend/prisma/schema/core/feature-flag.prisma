@@ -46,27 +46,27 @@ enum OverrideRequestStatus {
 // ─── MODELS ─────────────────────────────────────────────────────────────────
 
 model FeatureFlag {
-  id                 String                       @id @default(cuid())
-  name               String                       @unique
-  category           FlagCategory                 @default(FEATURE)
-  label              String                       @default("New Feature")
+  id                 String       @id @default(cuid())
+  name               String       @unique
+  category           FlagCategory @default(FEATURE)
+  label              String       @default("New Feature")
   description        String?
-  defaultValue       Boolean                      @default(false)
-  allowedTiers       Json                         @default("[]")
-  rolloutPercentage  Int                          @default(0)
+  defaultValue       Boolean      @default(false)
+  allowedTiers       Json         @default("[]")
+  rolloutPercentage  Int          @default(0)
   enabledFromAt      DateTime?
   enabledUntilAt     DateTime?
-  tenantControllable Boolean                      @default(false)
+  tenantControllable Boolean      @default(false)
   createdBy          String?
   updatedBy          String?
-  createdAt          DateTime                     @default(now())
-  updatedAt          DateTime                     @updatedAt
-  
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
   // Relations
-  tenants            Tenant[]
-  overrides          FeatureFlagOverride[]
-  schedules          FeatureFlagSchedule[]
-  overrideRequests   FeatureFlagOverrideRequest[]
+  tenants          Tenant[]
+  overrides        FeatureFlagOverride[]
+  schedules        FeatureFlagSchedule[]
+  overrideRequests FeatureFlagOverrideRequest[]
 
   @@index([category])
   @@index([name])
@@ -82,13 +82,13 @@ model FeatureFlagOverride {
   expiresAt  DateTime?
   createdBy  String?
   reason     String?
-  
+
   // Relation to Request
-  requestId  String?        @unique
-  request    FeatureFlagOverrideRequest? @relation(fields: [requestId], references: [id])
-  
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  requestId String?                     @unique
+  request   FeatureFlagOverrideRequest? @relation(fields: [requestId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([flagId, targetType, targetId])
   @@index([flagId])
@@ -97,52 +97,52 @@ model FeatureFlagOverride {
 }
 
 model FeatureFlagOverrideRequest {
-  id                 String                @id @default(cuid())
-  flagId             String
-  flag               FeatureFlag           @relation(fields: [flagId], references: [id], onDelete: Cascade)
-  targetType         FlagTargetType
-  targetId           String
-  targetName         String?
-  isEnabled          Boolean               @default(true)
-  requestedBy        String
-  requestedAt        DateTime              @default(now())
-  requestReason      String
-  activationMode     ActivationMode
-  activatesAt        DateTime?
-  trialDays          Int?
-  status             OverrideRequestStatus @default(PENDING)
+  id             String                @id @default(cuid())
+  flagId         String
+  flag           FeatureFlag           @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  targetType     FlagTargetType
+  targetId       String
+  targetName     String?
+  isEnabled      Boolean               @default(true)
+  requestedBy    String
+  requestedAt    DateTime              @default(now())
+  requestReason  String
+  activationMode ActivationMode
+  activatesAt    DateTime?
+  trialDays      Int?
+  status         OverrideRequestStatus @default(PENDING)
 
   // ─── New SLA & Grace Period Fields ───
-  gracePeriodDays       Int?      // Days before hard-blocking after trial expiry
-  graceEndsAt           DateTime? // Set when grace period starts
-  inGracePeriod         Boolean   @default(false)
-  planSnapshotAtApproval Json?     // Snapshot of tenant's plan at approval
-  slaDeadlineAt         DateTime? // When approval SLA expires
-  escalatedAt           DateTime? // When SLA breach was escalated
-  escalatedTo           String?   // User ID escalated to
+  gracePeriodDays        Int? // Days before hard-blocking after trial expiry
+  graceEndsAt            DateTime? // Set when grace period starts
+  inGracePeriod          Boolean   @default(false)
+  planSnapshotAtApproval Json? // Snapshot of tenant's plan at approval
+  slaDeadlineAt          DateTime? // When approval SLA expires
+  escalatedAt            DateTime? // When SLA breach was escalated
+  escalatedTo            String? // User ID escalated to
 
   // Audit Info
-  approvedBy         String?
-  approvedAt         DateTime?
-  approverNote       String?
-  rejectedBy         String?
-  rejectedAt         DateTime?
-  rejectionReason    String?
-  cancelledBy        String?
-  cancelledAt        DateTime?
-  revokedAt          DateTime?
-  revokeReason       String?
-  revokedBy          String?
-  
+  approvedBy      String?
+  approvedAt      DateTime?
+  approverNote    String?
+  rejectedBy      String?
+  rejectedAt      DateTime?
+  rejectionReason String?
+  cancelledBy     String?
+  cancelledAt     DateTime?
+  revokedAt       DateTime?
+  revokeReason    String?
+  revokedBy       String?
+
   // Post-Request Analysis
   autoRevokeIfNotUpgradedDays Int?
   upgradedDetectedAt          DateTime?
   notifiedSchoolAt            DateTime?
 
   // Relations
-  createdOverride    FeatureFlagOverride?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  createdOverride FeatureFlagOverride?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
   @@index([status])
   @@index([requestedBy])
@@ -171,17 +171,17 @@ model FeatureFlagSchedule {
 // ─── ANALYTICS & CACHE VERSIONING (New Models) ──────────────────────────────
 
 model FeatureFlagUsage {
-  id         String   @id @default(cuid())
-  flagName   String
-  tenantId   String
-  date       DateTime // truncated to day: 2026-03-28T00:00:00Z
-  callCount  Int      @default(0)   // how many times isEnabled was called
-  hitCount   Int      @default(0)   // how many times flag evaluated to TRUE
-  missCount  Int      @default(0)   // how many times flag evaluated to FALSE
-  
+  id        String   @id @default(cuid())
+  flagName  String
+  tenantId  String
+  date      DateTime // truncated to day: 2026-03-28T00:00:00Z
+  callCount Int      @default(0) // how many times isEnabled was called
+  hitCount  Int      @default(0) // how many times flag evaluated to TRUE
+  missCount Int      @default(0) // how many times flag evaluated to FALSE
+
   lastNudgeAt DateTime? // Last time an upgrade nudge was sent
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([flagName, tenantId, date])
   @@index([tenantId, date])

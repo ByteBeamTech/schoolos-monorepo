@@ -8,6 +8,8 @@ import { Badge }       from "@/components/ui/badge";
 import { EmptyState }  from "@/components/ui/empty-state";
 import { useStudents, useAcademicSessions, useClasses } from "@/lib/hooks";
 import { apiClient }   from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 function statusVariant(s: string) {
   if (s === "ACTIVE")   return "success" as const;
@@ -17,6 +19,8 @@ function statusVariant(s: string) {
 
 export default function StudentsPage() {
   const router = useRouter();
+  const { toast } = useToast();
+
   const [page,  setPage]  = useState(1);
   const [search, setSearch] = useState("");
   const [query,  setQuery]  = useState("");
@@ -89,7 +93,7 @@ setForm({
 });	
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to add student");
+      toast.error(err?.response?.data?.message ?? "Failed to add student");
     } finally {
       setSaving(false);
     }

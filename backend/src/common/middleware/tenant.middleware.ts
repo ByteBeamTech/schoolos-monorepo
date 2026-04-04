@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { ClsService } from 'nestjs-cls';
-import { PrismaService } from '../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 
 export const TENANT_ID_KEY  = 'tenantId';
 export const TENANT_SLUG_KEY = 'tenantSlug';

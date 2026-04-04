@@ -6,11 +6,15 @@ import { StatCard }    from "@/components/ui/stat-card";
 import { Badge }       from "@/components/ui/badge";
 import { useApi }      from "@/lib/hooks";
 import { apiClient }   from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 export default function TransportPage() {
   const { data: routes,  loading: rLoad, refetch: refetchRoutes } = useApi<any[]>("/transport/routes");
   const { data: stats,   loading: sLoad, refetch: refetchStats  } = useApi<any>("/transport/stats");
   const { data: students }                                          = useApi<any>("/students?limit=500");
+  const { toast } = useToast();
+
   const [selected,  setSelected]  = useState<string|null>(null);
   const { data: detail, loading: dLoad } = useApi<any>(selected?`/transport/routes/${selected}`:"", [selected]);
 
@@ -29,7 +33,7 @@ export default function TransportPage() {
       await apiClient.post("/transport/routes", { ...rf, feeAmount: parseFloat(rf.feeAmount) });
       setShowRoute(false); setRf({ name:"", vehicleNumber:"", driverName:"", driverPhone:"", feeAmount:"0", description:"" });
       refetchRoutes(); refetchStats();
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 
@@ -39,13 +43,13 @@ export default function TransportPage() {
       await apiClient.post("/transport/assign", af);
       setShowAssign(false); setAf({ studentId:"", routeId:"", boardingStop:"" });
       refetchStats(); setSelected(null);
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 
   const unassign = async (studentId:string) => {
     try { await apiClient.delete(`/transport/unassign/${studentId}`); refetchStats(); setSelected(null); }
-    catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
   };
 
   return (

@@ -21,18 +21,18 @@ const colorMap = {
 export function StatCard({ label, value, sub, icon, color = "blue", loading }: StatCardProps) {
   const c = colorMap[color];
   return (
-    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-start gap-4 shadow-sm hover:shadow-md transition-shadow">
+    <div style={{ background: "var(--bg-surface)", border: "1px solid var(--border-light)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)", padding: "20px" }} className="flex items-start gap-4 transition-shadow hover:shadow-md">
       {icon && (
         <div className={`${c.icon} text-white rounded-lg p-2.5 flex-shrink-0`}>
           <div className="w-5 h-5">{icon}</div>
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</p>
+        <p style={{ fontSize: 11, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-tertiary)" }}>{label}</p>
         {loading ? (
           <div className="h-7 w-20 bg-slate-100 rounded animate-pulse mt-1" />
         ) : (
-          <p className="text-2xl font-bold text-slate-900 mt-0.5">{value}</p>
+          <p style={{ fontSize: 24, fontWeight: 700, color: "var(--text-primary)", marginTop: 2 }}>{value}</p>
         )}
         {sub && <p className={`text-xs ${c.text} mt-0.5 font-medium`}>{sub}</p>}
       </div>

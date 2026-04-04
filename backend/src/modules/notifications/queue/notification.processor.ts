@@ -4,7 +4,7 @@ import { Job }                from 'bull';
 import { EmailChannel }       from '../channels/email.channel';
 import { SmsChannel }         from '../channels/sms.channel';
 import { WhatsAppChannel }    from '../channels/whatsapp.channel';
-import { PrismaService }      from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { QUEUE_NAMES }        from '../../../infra/queue/queue.module';
 
 export interface NotificationJob {

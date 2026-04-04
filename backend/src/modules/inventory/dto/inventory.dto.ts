@@ -10,6 +10,10 @@ export class CreateAssetDto {
   @ApiPropertyOptional() @IsString()  @IsOptional()  location?:      string;
   @ApiPropertyOptional() @IsString()  @IsOptional()  condition?:     string;
   @ApiPropertyOptional() @IsString()  @IsOptional()  assignedTo?:    string;
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  description?: string;
 }
 
 export class CreateStockItemDto {

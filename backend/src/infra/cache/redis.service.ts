@@ -9,16 +9,16 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   constructor(private readonly config: ConfigService) {
     this.client = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'), {
-      password: this.config.get<string>('REDIS_PASSWORD') || undefined,
-      db: this.config.get<number>('REDIS_DB', 0),
-      retryStrategy: (times) => Math.min(times * 100, 3000),
-      enableReadyCheck: true,
+      password:          this.config.get<string>('REDIS_PASSWORD') || undefined,
+      db:                this.config.get<number>('REDIS_DB', 0),
+      retryStrategy:     (times) => Math.min(times * 100, 3000),
+      enableReadyCheck:  true,
       maxRetriesPerRequest: 3,
-      lazyConnect: true,
+      lazyConnect:       true,
     });
 
-    this.client.on('error', (err) => this.logger.error('Redis error:', err.message));
-    this.client.on('reconnecting', () => this.logger.warn('Redis reconnecting...'));
+    this.client.on('error',        (err) => this.logger.error('Redis error:', err.message));
+    this.client.on('reconnecting', ()    => this.logger.warn('Redis reconnecting...'));
   }
 
   async onModuleInit() {
@@ -61,6 +61,16 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     await this.set(key, JSON.stringify(value), ttlSeconds);
   }
 
+  async incr(key: string): Promise<number> {
+    return this.client.incr(key);
+  }
+
+  // BUG 8 FIX: expire() was missing — password-reset.service.ts calls it
+  // to set a TTL on the brute-force attempts counter after each failed OTP try.
+  async expire(key: string, ttlSeconds: number): Promise<void> {
+    await this.client.expire(key, ttlSeconds);
+  }
+
   tenantKey(tenantId: string, ...parts: string[]): string {
     return `tenant:${tenantId}:${parts.join(':')}`;
   }
@@ -81,7 +91,4 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try { return (await this.client.ping()) === 'PONG'; }
     catch { return false; }
   }
-  async incr(key: string): Promise<number> {
-  return this.client.incr(key);
-}
 }

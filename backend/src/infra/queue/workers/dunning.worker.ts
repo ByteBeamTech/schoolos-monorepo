@@ -3,7 +3,7 @@ import { Process, Processor } from '@nestjs/bull';
 import { Logger }             from '@nestjs/common';
 import { Job }                from 'bull';
 import { QUEUE_NAMES }        from '../queue.module';
-import { PrismaService }      from '../../database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 
 export interface DunningJob {
   subscriptionId: string;

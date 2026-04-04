@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards }  from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { TimetableService }        from '../services/timetable.service';
 import { CreateTimetableSlotDto, UpdateTimetableSlotDto, BulkCreateTimetableDto } from '../dto/timetable.dto';

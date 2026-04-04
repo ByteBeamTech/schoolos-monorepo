@@ -9,6 +9,8 @@ import { StatCard }   from "@/components/ui/stat-card";
 import { Badge }      from "@/components/ui/badge";
 import { useApi }     from "@/lib/hooks";
 import { apiClient }  from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 type Tab = "classes" | "subjects" | "mappings" | "appointments";
 
@@ -37,6 +39,8 @@ function toSectionName(raw: string) {
 export default function AcademicsPage() {
   const { data: sessions } = useApi<any[]>("/academic-sessions");
   const currentSession     = sessions?.find((s: any) => s.isCurrent) ?? sessions?.[0];
+  const { toast } = useToast();
+
   const [sessionId, setSessionId] = useState("");
   const activeSession = sessionId || currentSession?.id || "";
 
@@ -103,7 +107,7 @@ export default function AcademicsPage() {
       setShowClassForm(false);
       setClassForm({ name: "", displayOrder: "0" });
       refetchClasses();
-    } catch { alert("Failed to create class"); }
+    } catch { toast.error("Failed to create class"); }
     finally { setSavingClass(false); }
   };
 
@@ -118,7 +122,7 @@ export default function AcademicsPage() {
       setSectionName("");
       setSectionCap("40");
       refetchClasses();
-    } catch { alert("Failed to create section"); }
+    } catch { toast.error("Failed to create section"); }
     finally { setSavingSection(false); }
   };
 
@@ -137,7 +141,7 @@ export default function AcademicsPage() {
       setSubjectForm({ name: "", code: "", description: "", isElective: false });
       refetchSubjects();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to create subject");
+      toast.error(err?.response?.data?.message ?? "Failed to create subject");
     } finally { setSavingSubject(false); }
   };
 
@@ -149,14 +153,14 @@ export default function AcademicsPage() {
       refetchSubjects();
       refetchMappings();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to delete subject");
+      toast.error(err?.response?.data?.message ?? "Failed to delete subject");
     } finally { setDeletingSubject(null); }
   };
 
   const bulkAddPresets = async () => {
     const existing = new Set((subjects ?? []).map((s: any) => s.code));
     const toAdd = SUBJECT_PRESETS.filter(p => !existing.has(p.code));
-    if (toAdd.length === 0) { alert("All preset subjects already exist."); return; }
+    if (toAdd.length === 0) { toast.error("All preset subjects already exist."); return; }
     setBulkLoading(true);
     try {
       for (const s of toAdd) {
@@ -182,7 +186,7 @@ export default function AcademicsPage() {
       setMapWeekly("5");
       refetchMappings();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to map subject");
+      toast.error(err?.response?.data?.message ?? "Failed to map subject");
     } finally { setSavingMap(false); }
   };
 
@@ -190,7 +194,7 @@ export default function AcademicsPage() {
     try {
       await apiClient.delete(`/academics/subject-mappings/${mappingId}`);
       refetchMappings();
-    } catch { alert("Failed to remove mapping"); }
+    } catch { toast.error("Failed to remove mapping"); }
   };
 
   // ── Teacher & appointment handlers ──────────────────────────────────────────
@@ -206,7 +210,7 @@ export default function AcademicsPage() {
       });
       setShowTeacherForm(null);
       setTeacherForm({ subjectId: "", teacherId: "" });
-    } catch { alert("Failed to assign teacher"); }
+    } catch { toast.error("Failed to assign teacher"); }
     finally { setSavingTeacher(false); }
   };
 
@@ -217,7 +221,7 @@ export default function AcademicsPage() {
         sectionId, teacherId, sessionId: activeSession,
       });
       refetchAppointments();
-    } catch { alert("Failed to appoint teacher"); }
+    } catch { toast.error("Failed to appoint teacher"); }
     finally { setSavingAppointment(null); }
   };
 

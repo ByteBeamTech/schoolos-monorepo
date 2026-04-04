@@ -15,24 +15,21 @@ model Notification {
   readAt      DateTime?
   failReason  String?
   createdAt   DateTime            @default(now())
-  
+
   // Relations
-  tenant      Tenant              @relation(fields: [tenantId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
   // EXISTING INDEXES
   @@index([tenantId])
   @@index([recipientId])
   @@index([status])
-
   // NEW PERFORMANCE INDEXES (The Fix for 12GB RAM)
   // 1. डैशबोर्ड पर "Pending/Failed" नोटिफिकेशन जल्दी लोड करने के लिए
-  @@index([tenantId, status])               
-
+  @@index([tenantId, status])
   // 2. मोबाइल ऐप/पैनल पर "My Notifications" को फ़ास्ट करने के लिए
-  @@index([tenantId, recipientId, status])  
-
+  @@index([tenantId, recipientId, status])
   // 3. पुराने नोटिफिकेशन साफ़ करने वाले क्रॉन जॉब्स (Cleanup Jobs) के लिए
-  @@index([createdAt])                      
+  @@index([createdAt])
 }
 
 model FraudAlert {
@@ -50,8 +47,8 @@ model FraudAlert {
   resolvedBy  String?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
-  
-  tenant      Tenant             @relation(fields: [tenantId], references: [id])
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, status])
   @@index([severity])

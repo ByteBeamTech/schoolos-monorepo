@@ -14,6 +14,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useApi } from "@/lib/hooks";
 import { apiClient } from "@/lib/api";
 import { MessageSquare, UserCheck, Users, Plus, Printer, CheckCircle, Clock } from "lucide-react";
+import { useToast } from '@/lib/use-toast';
+
 
 const COMPLAINT_CATEGORIES = ["ACADEMIC","DISCIPLINE","FACILITY","TRANSPORT","BILLING","STAFF_BEHAVIOR","SAFETY","FOOD","OTHER"];
 const COMPLAINANT_TYPES = ["PARENT","STUDENT","STAFF","VISITOR","OTHER"];
@@ -22,6 +24,8 @@ const PRIORITY_COLORS: Record<string, string> = { LOW:"bg-gray-100 text-gray-800
 const STATUS_COLORS: Record<string, string> = { OPEN:"bg-blue-100 text-blue-800", IN_PROGRESS:"bg-yellow-100 text-yellow-800", RESOLVED:"bg-green-100 text-green-800", CLOSED:"bg-gray-100 text-gray-800", CHECKED_IN:"bg-green-100 text-green-800", CHECKED_OUT:"bg-gray-100 text-gray-800" };
 
 export default function ReceptionPage() {
+  const { toast } = useToast();
+
   const [activeTab, setActiveTab] = useState("visitors");
   const [showComplaintForm, setShowComplaintForm] = useState(false);
   const [showVisitorForm, setShowVisitorForm] = useState(false);
@@ -37,18 +41,18 @@ export default function ReceptionPage() {
   const submitComplaint = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try { await apiClient.post("/reception/complaints", cf); setShowComplaintForm(false); setCf({ complainantName:"", complainantPhone:"", complainantType:"PARENT", category:"OTHER", subject:"", description:"", priority:"MEDIUM" }); refetchComplaints(); }
-    catch { alert("Failed to create complaint"); } finally { setSaving(false); }
+    catch { toast.error("Failed to create complaint"); } finally { setSaving(false); }
   };
 
   const checkInVisitor = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try { await apiClient.post("/reception/visitors", vf); setShowVisitorForm(false); setVf({ visitorName:"", phone:"", email:"", company:"", purpose:"MEETING", personToMeet:"", department:"", idType:"", idNumber:"", vehicleNumber:"", remarks:"" }); refetchVisitors(); }
-    catch { alert("Failed to check in visitor"); } finally { setSaving(false); }
+    catch { toast.error("Failed to check in visitor"); } finally { setSaving(false); }
   };
 
   const checkOut = async (id: string) => {
     try { await apiClient.post(`/reception/visitors/${id}/checkout`, {}); refetchVisitors(); }
-    catch { alert("Failed to check out"); }
+    catch { toast.error("Failed to check out"); }
   };
 
   const printPass = async (id: string) => {
@@ -57,14 +61,14 @@ export default function ReceptionPage() {
       const p = (res as any).data || res;
       const w = window.open("", "_blank");
       if (w) { w.document.write(`<html><head><title>Pass</title></head><body style="font-family:Arial;padding:20px"><div style="border:2px solid #333;padding:20px;width:300px"><h2>VISITOR PASS</h2><p><b>Pass #:</b> ${p.passNumber}</p><p><b>Name:</b> ${p.visitorName}</p><p><b>To Meet:</b> ${p.personToMeet}</p><p><b>Purpose:</b> ${p.purpose}</p><p><b>Check-in:</b> ${new Date(p.checkIn).toLocaleString()}</p></div><script>window.print();</script></body></html>`); }
-    } catch { alert("Failed to get pass"); }
+    } catch { toast.error("Failed to get pass"); }
   };
 
   const resolveComplaint = async (id: string) => {
     const resolution = prompt("Enter resolution:");
     if (!resolution) return;
     try { await apiClient.post(`/reception/complaints/${id}/resolve`, { resolution }); refetchComplaints(); }
-    catch { alert("Failed to resolve"); }
+    catch { toast.error("Failed to resolve"); }
   };
 
   return (

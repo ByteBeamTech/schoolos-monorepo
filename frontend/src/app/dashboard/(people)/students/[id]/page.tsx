@@ -19,6 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { useApi } from "@/lib/hooks";
 import { apiClient, behaviorApi } from "@/lib/api";
 import type { BehaviorRecord, CreateBehaviorRecordRequest } from "@schoolos/api-contracts";
+import { useToast } from '@/lib/use-toast';
+
 
 function fmt(n: number) {
   return `Rs ${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
@@ -39,6 +41,8 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     [id],
   );
   const { data: behaviorRecords, refetch: refetchBehavior } = useApi<BehaviorRecord[]>(`/behavior/student/${id}`, [id]);
+
+  const { toast } = useToast();
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -71,7 +75,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
       setEditing(false);
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to update");
+      toast.error(err?.response?.data?.message ?? "Failed to update");
     } finally {
       setSaving(false);
     }
@@ -101,7 +105,7 @@ setBehaviorForm({
 
       refetchBehavior();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to save behavior record");
+      toast.error(err?.response?.data?.message ?? "Failed to save behavior record");
     } finally {
       setSavingBehavior(false);
     }

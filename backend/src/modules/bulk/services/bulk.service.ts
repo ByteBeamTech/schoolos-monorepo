@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { BulkInvoiceDto } from '../dto/bulk.dto';
 
 export interface BulkStudentRow {

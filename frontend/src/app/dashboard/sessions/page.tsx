@@ -5,6 +5,8 @@ import { PageHeader }    from "@/components/ui/page-header";
 import { Badge }         from "@/components/ui/badge";
 import { useApi }        from "@/lib/hooks";
 import { apiClient }     from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 interface Session {
   id:        string;
@@ -17,6 +19,8 @@ interface Session {
 
 export default function SessionsPage() {
   const { data: sessions, loading, refetch } = useApi<Session[]>("/academic-sessions");
+
+  const { toast } = useToast();
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving]     = useState(false);
@@ -37,7 +41,7 @@ export default function SessionsPage() {
       setForm({ name: "", startDate: "", endDate: "", isCurrent: false });
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to create session");
+      toast.error(err?.response?.data?.message ?? "Failed to create session");
     } finally {
       setSaving(false);
     }
@@ -49,7 +53,7 @@ export default function SessionsPage() {
       await apiClient.patch(`/academic-sessions/${id}/set-current`, {});
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
+      toast.error(err?.response?.data?.message ?? "Failed");
     } finally {
       setActing("");
     }
@@ -62,7 +66,7 @@ export default function SessionsPage() {
       await apiClient.patch(`/academic-sessions/${id}/lock`, {});
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
+      toast.error(err?.response?.data?.message ?? "Failed");
     } finally {
       setActing("");
     }

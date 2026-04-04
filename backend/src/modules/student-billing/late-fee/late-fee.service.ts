@@ -1,6 +1,6 @@
 // modules/student-billing/late-fee/late-fee.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService }      from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
 export interface LateFeeConfig {

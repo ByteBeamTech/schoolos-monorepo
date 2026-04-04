@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { PrismaService } from '../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 
 declare global {
   namespace Express {

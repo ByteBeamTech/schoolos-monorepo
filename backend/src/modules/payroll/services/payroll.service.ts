@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { PrismaService } from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { CreatePayrollStructureDto, GeneratePayslipDto } from '../dto/payroll.dto';
 
 @Injectable()

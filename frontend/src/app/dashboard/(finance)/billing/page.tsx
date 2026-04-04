@@ -13,6 +13,8 @@ import { Pagination }        from "@/components/ui/pagination";
 import { INVOICE_FILTER_SCHEMA } from "@/lib/filter-schemas";
 import { useApi, useFeePlans, useInvoiceStats, useStudents, useAcademicSessions } from "@/lib/hooks";
 import { apiClient }         from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 type Tab = "invoices" | "fee-plans";
 
@@ -30,6 +32,8 @@ function fmt(n: number) {
 }
 
 export default function BillingPage() {
+  const { toast } = useToast();
+
   const [tab, setTab] = useState<Tab>("invoices");
 
   // Sessions
@@ -73,7 +77,7 @@ export default function BillingPage() {
 
   const createPlan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentSession?.id) { alert("Select a session first"); return; }
+    if (!currentSession?.id) { toast.error("Select a session first"); return; }
     setSavingPlan(true);
     try {
       await apiClient.post("/billing/fee-plans", {
@@ -90,7 +94,7 @@ export default function BillingPage() {
       setPlanForm({ name: "", grade: "", currency: "INR", items: [{ name: "", amount: "" }] });
       refetchPlans();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to create fee plan");
+      toast.error(err?.response?.data?.message ?? "Failed to create fee plan");
     } finally { setSavingPlan(false); }
   };
 
@@ -108,7 +112,7 @@ export default function BillingPage() {
       setInvoiceForm({ studentId: "", feePlanId: "", dueDate: "" });
       refetchInvoices();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to generate invoice");
+      toast.error(err?.response?.data?.message ?? "Failed to generate invoice");
     } finally { setSavingInvoice(false); }
   };
 
@@ -132,7 +136,7 @@ export default function BillingPage() {
       setPayForm({ amount: "", paymentMethod: "CASH", referenceNumber: "" });
       refetchInvoices();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to record payment");
+      toast.error(err?.response?.data?.message ?? "Failed to record payment");
     } finally { setSavingPayment(false); }
   };
 
@@ -141,7 +145,7 @@ export default function BillingPage() {
       await apiClient.patch(`/billing/invoices/${id}/send`, {});
       refetchInvoices();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to send invoice");
+      toast.error(err?.response?.data?.message ?? "Failed to send invoice");
     }
   };
 

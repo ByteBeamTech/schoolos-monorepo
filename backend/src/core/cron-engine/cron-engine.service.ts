@@ -4,7 +4,7 @@ import { Cron }               from '@nestjs/schedule';
 import { InjectQueue }        from '@nestjs/bull';
 import { Queue }              from 'bull';
 import { EVENTS } from '../events/events.constants';
-import { PrismaService }      from '../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { QUEUE_NAMES }        from '../../infra/queue/queue.module';
 import { FeatureFlagService } from '../feature-flags/feature-flags.service';
 

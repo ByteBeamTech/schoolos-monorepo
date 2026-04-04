@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 }      from '@nestjs/event-emitter';
-import { PrismaService }      from '../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { GenericBiometricAdapter } from '../../../infra/iot-bridge/adapters/biometric/generic';
 import { normalizeDeviceEvent }    from '../../../infra/iot-bridge/normalizer';
 import type { DeviceConfig, DeviceEvent } from '../../../infra/iot-bridge/contracts';

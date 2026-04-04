@@ -11,10 +11,14 @@ import { apiClient }   from "@/lib/api";
 import { useSearchParams }  from "next/navigation";
 import { FilterBuilder }    from "@/components/ui/filter-builder";
 import { useFilterParams }  from "@/lib/use-filter-params";
+import { useToast } from '@/lib/use-toast';
+
 
 type Tab = "catalog" | "overdue";
 
 export default function LibraryPage() {
+  const { toast } = useToast();
+
   const [tab, setTab] = useState<Tab>("catalog");
   const searchParams  = useSearchParams();
   
@@ -43,7 +47,7 @@ export default function LibraryPage() {
       await apiClient.post("/library/books", { ...bookForm, totalCopies: parseInt(bookForm.totalCopies) });
       setShowAdd(false); setBookForm({ title:"", author:"", isbn:"", subject:"", location:"", totalCopies:"1" });
       refetchBooks(); refetchStats();
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 
@@ -53,7 +57,7 @@ export default function LibraryPage() {
       await apiClient.post("/library/issue", issueForm);
       setShowIssue(false); setIssueForm({ bookId:"", studentId:"", dueDate:"" });
       refetchBooks(); refetchStats();
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
   };
 
@@ -61,7 +65,7 @@ export default function LibraryPage() {
     try {
       await apiClient.post(`/library/return/${issueId}`, {});
       refetchOverdue(); refetchStats(); refetchBooks();
-    } catch(err:any) { alert(err?.response?.data?.message ?? "Failed"); }
+    } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
   };
 
   const LIBRARY_SCHEMA = {

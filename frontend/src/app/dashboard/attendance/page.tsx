@@ -12,6 +12,8 @@ import { FilterBuilder }           from "@/components/ui/filter-builder";
 import { Pagination }              from "@/components/ui/pagination";
 import { ATTENDANCE_FILTER_SCHEMA }from "@/lib/filter-schemas";
 import { useFilterParams }         from "@/lib/use-filter-params";
+import { useToast } from '@/lib/use-toast';
+
 
 const STATUS_OPTIONS = ["PRESENT","ABSENT","LATE","HALF_DAY","ON_LEAVE"] as const;
 type Status = typeof STATUS_OPTIONS[number];
@@ -26,6 +28,8 @@ const statusColor: Record<Status, string> = {
 
 export default function AttendancePage() {
   const today     = new Date().toISOString().split("T")[0];
+  const { toast } = useToast();
+
   const [pageTab, setPageTab] = useState<"mark"|"history">("mark");
   const searchParams = useSearchParams();
   const qs           = searchParams.toString();
@@ -101,7 +105,7 @@ export default function AttendancePage() {
       });
       setSubmitted(true);
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to submit attendance");
+      toast.error(err?.response?.data?.message ?? "Failed to submit attendance");
     } finally {
       setSubmitting(false);
     }

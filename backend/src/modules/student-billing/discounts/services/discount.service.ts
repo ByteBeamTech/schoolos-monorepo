@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { PrismaService } from '../../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }  from '../../../../core/compliance/audit.service';
 import { CreateDiscountDto, ApproveDiscountDto, RejectDiscountDto } from '../../dto/billing.dto';
 

@@ -1,7 +1,7 @@
 import {
   Controller, Post, Get, Body, Query,
   UseGuards, Headers, Res,
-} from '@nestjs/common';
+}  from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { BulkService }         from '../services/bulk.service';
 import { BulkInvoiceDto }      from '../dto/bulk.dto';

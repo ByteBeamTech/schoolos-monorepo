@@ -5,14 +5,15 @@ import { IdentityModule }   from '../identity/identity.module';
 import { UsersModule }      from '../users/users.module';
 import { ComplianceModule } from '../compliance/compliance.module';
 
-import { AuthService }    from './auth.service';
-import { AuthController } from './auth.controller';
-import { JwtStrategy }    from './guards/jwt.strategy';
-import { JwtGuard }       from './guards/jwt.guard';
-
-// Phase 1: Naye guards aur strategy import karo
+import { AuthService }          from './auth.service';
+import { AuthController }       from './auth.controller';
+import { JwtStrategy }          from './guards/jwt.strategy';
+import { JwtGuard }             from './guards/jwt.guard';
 import { JwtSuperadminStrategy } from './guards/jwt-superadmin.strategy';
 import { JwtSuperadminGuard }    from './guards/jwt-superadmin.guard';
+// BUG 7 FIX: PasswordResetService was never registered in the module,
+// so NestJS DI could not resolve it and the forgot/reset routes didn't work.
+import { PasswordResetService } from './password-reset.service';
 
 @Module({
   imports: [
@@ -22,20 +23,20 @@ import { JwtSuperadminGuard }    from './guards/jwt-superadmin.guard';
     ComplianceModule,
   ],
   providers: [
-    AuthService, 
-    JwtStrategy, 
-    JwtGuard, 
-    // Phase 1: Strategy register karo
-    JwtSuperadminStrategy, 
-    JwtSuperadminGuard
+    AuthService,
+    JwtStrategy,
+    JwtGuard,
+    JwtSuperadminStrategy,
+    JwtSuperadminGuard,
+    PasswordResetService,   // BUG 7 FIX: was missing
   ],
   controllers: [AuthController],
   exports: [
-    AuthService, 
-    JwtGuard, 
-    JwtStrategy, 
-    // Phase 1: Guard export karo taaki controllers ise use kar sakein
-    JwtSuperadminGuard
+    AuthService,
+    JwtGuard,
+    JwtStrategy,
+    JwtSuperadminGuard,
+    PasswordResetService,   // export so other modules can inject it if needed
   ],
 })
 export class AuthModule {}

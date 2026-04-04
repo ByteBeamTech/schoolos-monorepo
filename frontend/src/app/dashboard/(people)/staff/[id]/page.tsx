@@ -5,6 +5,8 @@ import { ArrowLeft, Edit2, Save, X, Mail, Phone, Briefcase } from "lucide-react"
 import { Badge }   from "@/components/ui/badge";
 import { useApi }  from "@/lib/hooks";
 import { apiClient } from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 const DEPARTMENTS = ["Academics","Administration","Finance","Sports","Library","Health","Transport","IT","Other"];
 
@@ -17,6 +19,8 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
   const router  = useRouter();
 
   const { data: staff, loading, refetch } = useApi<any>(`/staff/${id}`);
+  const { toast } = useToast();
+
   const [editing, setEditing] = useState(false);
   const [saving,  setSaving]  = useState(false);
   const [form, setForm] = useState({ designation: "", department: "", qualification: "", experience: "" });
@@ -43,7 +47,7 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
       setEditing(false);
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
+      toast.error(err?.response?.data?.message ?? "Failed");
     } finally {
       setSaving(false);
     }

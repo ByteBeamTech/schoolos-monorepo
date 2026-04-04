@@ -13,11 +13,15 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useApi } from "@/lib/hooks";
 import { apiClient } from "@/lib/api";
 import { UserPlus, Calendar, CheckCircle, XCircle, Settings } from "lucide-react";
+import { useToast } from '@/lib/use-toast';
+
 
 const LEAVE_TYPES = ["CASUAL","SICK","EARNED","MATERNITY","PATERNITY","UNPAID","COMPENSATORY"];
 const STATUS_COLORS: Record<string,string> = { PENDING:"bg-yellow-100 text-yellow-800", IN_REVIEW:"bg-blue-100 text-blue-800", APPROVED:"bg-green-100 text-green-800", REJECTED:"bg-red-100 text-red-800", ONBOARDED:"bg-purple-100 text-purple-800" };
 
 export default function HRPage() {
+  const { toast } = useToast();
+
   const [activeTab, setActiveTab] = useState("joining");
   const [showJoiningForm, setShowJoiningForm] = useState(false);
   const [showLeaveForm, setShowLeaveForm] = useState(false);
@@ -34,29 +38,29 @@ export default function HRPage() {
   const submitJoining = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try { await apiClient.post("/hr/joining", { ...jf, proposedSalary: jf.proposedSalary ? parseFloat(jf.proposedSalary) : undefined }); setShowJoiningForm(false); setJf({ candidateName:"", email:"", phone:"", position:"", department:"", proposedSalary:"", notes:"" }); refetchJoining(); }
-    catch { alert("Failed to create joining request"); } finally { setSaving(false); }
+    catch { toast.error("Failed to create joining request"); } finally { setSaving(false); }
   };
 
   const submitLeave = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try { await apiClient.post("/hr/leave/apply", lf); setShowLeaveForm(false); setLf({ leaveType:"CASUAL", fromDate:"", toDate:"", reason:"" }); refetchLeave(); }
-    catch { alert("Failed to apply for leave"); } finally { setSaving(false); }
+    catch { toast.error("Failed to apply for leave"); } finally { setSaving(false); }
   };
 
   const approve = async (type: "joining"|"leave", id: string) => {
     try { await apiClient.post(`/hr/${type === "joining" ? "joining" : "leave"}/${id}/approve`, {}); type === "joining" ? refetchJoining() : refetchLeave(); }
-    catch { alert("Failed to approve"); }
+    catch { toast.error("Failed to approve"); }
   };
 
   const reject = async (type: "joining"|"leave", id: string) => {
     const reason = prompt("Enter rejection reason:"); if (!reason) return;
     try { await apiClient.post(`/hr/${type === "joining" ? "joining" : "leave"}/${id}/reject`, { reason }); type === "joining" ? refetchJoining() : refetchLeave(); }
-    catch { alert("Failed to reject"); }
+    catch { toast.error("Failed to reject"); }
   };
 
   const saveWorkflow = async () => {
-    try { await apiClient.post("/hr/workflow/configure", wf); setShowWorkflow(false); alert("Workflow configured!"); }
-    catch { alert("Failed to save workflow"); }
+    try { await apiClient.post("/hr/workflow/configure", wf); setShowWorkflow(false); toast.error("Workflow configured!"); }
+    catch { toast.error("Failed to save workflow"); }
   };
 
   return (

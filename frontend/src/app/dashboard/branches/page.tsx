@@ -7,9 +7,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useApi } from "@/lib/hooks";
 import { apiClient } from "@/lib/api";
 import { Building2, Plus, Trash2, Phone, Mail, MapPin, User, KeyRound } from "lucide-react";
+import { useToast } from '@/lib/use-toast';
+
 
 export default function BranchesPage() {
   const { data, loading, refetch } = useApi<any[]>("/school-management/branches");
+  const { toast } = useToast();
+
   const [show, setShow] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -44,9 +48,9 @@ export default function BranchesPage() {
         licenseKey: "",
       });
       refetch();
-      if (result?.message) alert(result.message);
+      if (result?.message) toast.error(result.message);
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
+      toast.error(err?.response?.data?.message ?? "Failed");
     } finally {
       setSaving(false);
     }

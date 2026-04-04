@@ -1,6 +1,6 @@
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService }    from '@nestjs/jwt';
-import { PrismaService } from '../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { RedisService }  from '../../infra/cache/redis.service';
 import { ConfigService } from '@nestjs/config';
 

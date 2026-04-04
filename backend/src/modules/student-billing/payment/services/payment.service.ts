@@ -2,7 +2,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EVENTS } from '../../../../core/events/events.constants';
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService }  from '@nestjs/config';
-import { PrismaService }  from '../../../../infra/database/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }   from '../../../../core/compliance/audit.service';
 import { InitiatePaymentDto, VerifyRazorpayPaymentDto, RecordOfflinePaymentDto } from '../../dto/billing.dto';
 import * as crypto from 'crypto';

@@ -1,11 +1,6 @@
-/**
- * Add these endpoints to your AdmissionsController
- * POST /admissions/:id/transition — drives the state machine
- * GET  /admissions/funnel         — analytics for the owner
- */
 import { Body, Controller, Get, Param, Post, Request } from '@nestjs/common';
 import { AdmissionStateMachineService, AdmissionStatus } from './admission-state-machine.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 
 @Controller('admissions')
 export class AdmissionTransitionsController {
@@ -18,16 +13,16 @@ export class AdmissionTransitionsController {
   @Post(':id/transition')
   async transition(
     @Param('id') id: string,
-    @Request()   req: any,
+    @Request() req: any,
     @Body() body: {
       toStatus: AdmissionStatus;
-      note?:    string;
+      note?: string;
       payload?: Record<string, unknown>;
     },
   ) {
     return this.sm.transition(id, req.user.tenantId, body.toStatus, {
       actorId: req.user.id,
-      note:    body.note,
+      note: body.note,
       payload: body.payload,
     });
   }

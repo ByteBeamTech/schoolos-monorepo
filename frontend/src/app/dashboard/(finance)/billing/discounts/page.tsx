@@ -7,6 +7,8 @@ import { Badge }        from "@/components/ui/badge";
 import { StatCard }     from "@/components/ui/stat-card";
 import { useApi, useStudents } from "@/lib/hooks";
 import { apiClient }    from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 const CATEGORIES = ["SIBLING","MERIT","STAFF_CHILD","FINANCIAL_HARDSHIP","SCHOLARSHIP","CUSTOM"];
 const TYPES      = ["PERCENTAGE","FLAT"];
@@ -24,6 +26,8 @@ function fmtDiscount(type: string, value: number) {
 
 export default function DiscountsPage() {
   const router = useRouter();
+  const { toast } = useToast();
+
   const [statusFilter, setStatusFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [saving,   setSaving]   = useState(false);
@@ -61,7 +65,7 @@ export default function DiscountsPage() {
       setForm({ studentId:"", category:"MERIT", type:"PERCENTAGE", value:"", validFrom:"", validUntil:"", reason:"", notes:"" });
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
+      toast.error(err?.response?.data?.message ?? "Failed");
     } finally {
       setSaving(false);
     }
@@ -75,7 +79,7 @@ export default function DiscountsPage() {
       await apiClient.post(`/billing/discounts/${id}/approve`, { approvalNote: note });
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
+      toast.error(err?.response?.data?.message ?? "Failed");
     } finally {
       setActing("");
     }
@@ -89,7 +93,7 @@ export default function DiscountsPage() {
       await apiClient.post(`/billing/discounts/${id}/reject`, { rejectionNote: note });
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed");
+      toast.error(err?.response?.data?.message ?? "Failed");
     } finally {
       setActing("");
     }

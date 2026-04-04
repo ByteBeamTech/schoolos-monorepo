@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards }  from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { InventoryService }    from '../services/inventory.service';
 import { CreateAssetDto, CreateStockItemDto, AddMaintenanceLogDto } from '../dto/inventory.dto';

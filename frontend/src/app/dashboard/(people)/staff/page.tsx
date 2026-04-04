@@ -11,6 +11,8 @@ import { Pagination }      from "@/components/ui/pagination";
 import { STAFF_FILTER_SCHEMA } from "@/lib/filter-schemas";
 import { useApi }          from "@/lib/hooks";
 import { apiClient }       from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 interface StaffMember {
   id: string; employeeId: string; designation: string;
@@ -43,6 +45,8 @@ export default function StaffPage() {
 
   // Subjects list for the multi-select
   const { data: subjects } = useApi<any[]>("/academics/subjects");
+
+  const { toast } = useToast();
 
   const [showForm, setShowForm] = useState(false);
   const [saving,   setSaving]   = useState(false);
@@ -112,7 +116,7 @@ export default function StaffPage() {
       resetForm();
       refetch();
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? `Failed: ${step}`);
+      toast.error(err?.response?.data?.message ?? `Failed: ${step}`);
     } finally {
       setSaving(false);
       setStep("");

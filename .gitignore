@@ -87,3 +87,25 @@ android-sdk/ -e
 *.env.*
 .next/
 .turbo/
+
+# ── Secrets & environment ─────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.staging
+!.env.example
+
+# ── Backup files (use git instead) ────────────────────
+*.bak
+*.bak.*
+*.bkp
+*.bkp2
+*_bkp
+*.lala
+
+# ── Build artifacts ───────────────────────────────────
+dist/
+.next/
+build/

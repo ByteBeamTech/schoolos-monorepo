@@ -8,6 +8,8 @@ import { PageHeader }  from "@/components/ui/page-header";
 import { Badge }       from "@/components/ui/badge";
 import { useApi, useAcademicSessions, useExams, useClasses } from "@/lib/hooks";
 import { apiClient }   from "@/lib/api";
+import { useToast } from '@/lib/use-toast';
+
 
 //const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.50:3000/api/v1";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -149,6 +151,8 @@ function printReportCard(card: ReportCard, schoolName: string) {
 export default function ReportCardsPage() {
   const { data: sessions }     = useAcademicSessions();
   const currentSession         = sessions?.find(s => s.isCurrent) ?? sessions?.[0];
+  const { toast } = useToast();
+
   const [sessionId, setSessionId] = useState("");
   const activeSession          = sessionId || currentSession?.id || "";
 
@@ -178,7 +182,7 @@ export default function ReportCardsPage() {
       const res = await apiClient.get(`/examinations/${examId}/results/class/${classId}`);
       setListResults(res.data);
     } catch (err: any) {
-      alert(err?.response?.data?.message ?? "Failed to load results");
+      toast.error(err?.response?.data?.message ?? "Failed to load results");
     } finally {
       setLoading(false);
     }

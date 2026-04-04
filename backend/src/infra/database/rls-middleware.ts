@@ -12,7 +12,7 @@
 // RLS session vars are now belt-and-suspenders only.
 
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from './prisma.service';
+import { PrismaService } from '@infra/database/prisma.service';
 
 @Injectable()
 export class RlsMiddleware {
