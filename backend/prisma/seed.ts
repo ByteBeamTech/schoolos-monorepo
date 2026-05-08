@@ -65,7 +65,7 @@ async function main() {
       slug: 'demo-school',
       contactEmail: 'admin@demo-school.com',
       status: 'ACTIVE',
-      featureTier: 'GROWTH',
+      featureTier: 'PRO',
       region: 'IN',
       currency: 'INR',
     },

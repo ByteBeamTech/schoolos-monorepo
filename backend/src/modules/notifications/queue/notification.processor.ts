@@ -4,6 +4,7 @@ import { Job }                from 'bull';
 import { EmailChannel }       from '../channels/email.channel';
 import { SmsChannel }         from '../channels/sms.channel';
 import { WhatsAppChannel }    from '../channels/whatsapp.channel';
+import { PushChannel }        from '../channels/push/push.channel';
 import { PrismaService } from '@infra/database/prisma.service';
 import { QUEUE_NAMES }        from '../../../infra/queue/queue.module';
 
@@ -25,6 +26,7 @@ export class NotificationProcessor {
     private readonly email:      EmailChannel,
     private readonly sms:        SmsChannel,
     private readonly whatsapp:   WhatsAppChannel,
+    private readonly push:       PushChannel,
   ) {}
 
   @Process('send')
@@ -44,6 +46,13 @@ export class NotificationProcessor {
           break;
         case 'WHATSAPP':
           success = await this.whatsapp.send({ to: this.sms.formatPhone(to), body });
+          break;
+        case 'PUSH':
+          success = await this.push.send({
+            to:    to,
+            title: subject ?? 'SchoolOS Notification',
+            body,
+          });
           break;
         default:
           this.logger.warn(`Unknown channel: ${channel}`);

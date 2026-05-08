@@ -1,0 +1,30 @@
+model House {
+  id String @id @default(cuid())
+
+  // 🔐 Multi-tenant
+  tenantId String
+  branchId String?
+
+  // 🎨 Branding
+  name      String
+  colorCode String?
+
+  // 🧑‍🏫 Leadership
+  houseMasterId String?
+  houseMaster   Staff?  @relation("HouseMaster", fields: [houseMasterId], references: [id])
+
+  // 📊 Students
+  // ✅ Ye line bracket ke andar honi chahiye
+  students Student[] @relation("HouseStudents")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔒 Constraints (Ye bhi bracket ke andar)
+  @@unique([tenantId, branchId, name])
+  // ⚡ Indexes
+  @@index([tenantId])
+  @@index([tenantId, branchId])
+}
+
+// <--- 🔥 Bracket yahan band hoga!

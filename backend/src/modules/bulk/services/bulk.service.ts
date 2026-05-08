@@ -1,173 +1,519 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
+import { InvoiceService } from '../../student-billing/invoice/services/invoice.service';
 import { BulkInvoiceDto } from '../dto/bulk.dto';
+import * as _ from 'lodash';
+import pLimit from 'p-limit';
+import * as crypto from 'crypto';
 
-export interface BulkStudentRow {
-  firstName:       string;
-  lastName:        string;
-  admissionNumber: string;
-  academicYear:    string;
-  branchId:        string;
-  sectionId?:      string;
-  rollNumber?:     string;
-}
+type GenerateInvoiceOptions = any;
 
 @Injectable()
-export class BulkService {
+export class BulkService implements OnModuleInit {
   private readonly logger = new Logger(BulkService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly BATCH_CHUNK_SIZE = 500;
+  private readonly MAX_ROWS = 20000;
+  private readonly MAX_EXECUTION_MS = 180000;
 
-  // ── CSV Student Import ────────────────────────────────────────────────────
+  private hasUniqueIndex = false;
 
-  async importStudents(tenantId: string, rows: BulkStudentRow[], branchId: string) {
-  // Your logic to loop through rows and create students goes here  
-  const results = { created: 0, skipped: 0, errors: [] as string[] };
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly invoices: InvoiceService,
+  ) {}
 
-    for (const row of rows) {
-      if (!row.firstName || !row.lastName || !row.admissionNumber || !row.academicYear || !row.branchId) {
-        results.errors.push(`Row missing required fields: ${JSON.stringify(row)}`);
-        results.skipped++;
-        continue;
+  async onModuleInit() {
+    try {
+      const res = await this.prisma.$queryRawUnsafe<any[]>(`
+        SELECT indexname
+        FROM pg_indexes
+        WHERE tablename = 'Student'
+          AND indexdef LIKE '%UNIQUE%'
+          AND indexdef LIKE '%tenantId%'
+          AND indexdef LIKE '%admissionNumber%'
+      `);
+
+      this.hasUniqueIndex = res.length > 0;
+
+      if (!this.hasUniqueIndex) {
+        this.logger.error(
+          'CRITICAL: Missing UNIQUE INDEX on Student(tenantId, admissionNumber)',
+        );
       }
+    } catch (e) {
+      this.logger.error(
+        'Failed to verify unique index',
+      );
+    }
+  }
 
-      const existing = await this.prisma.student.findFirst({
-        where: { tenantId, admissionNumber: row.admissionNumber },
-      });
+  private normalizeIdentifier(v: string): string {
+    return v
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase();
+  }
 
-      if (existing) {
-        results.skipped++;
-        continue;
-      }
+  // =========================
+  // 📥 STUDENT IMPORT
+  // =========================
 
-      try {
-        await this.prisma.student.create({
-          data: {
-            tenantId,
-            branchId:        row.branchId,
-            firstName:       row.firstName.trim(),
-            lastName:        row.lastName.trim(),
-            admissionNumber: row.admissionNumber.trim(),
-            academicYear:    row.academicYear.trim(),
-            sectionId:       row.sectionId  ?? null,
-            rollNumber:      row.rollNumber ?? null,
-            isActive:        true,
-          } satisfies Prisma.StudentUncheckedCreateInput,
-        });
-        results.created++;
-      } catch (err: any) {
-        results.errors.push(`${row.admissionNumber}: ${err.message}`);
-        results.skipped++;
-      }
+  async importStudents(
+    tenantId: string,
+    rows: any[],
+  ) {
+    const startTime = Date.now();
+
+    const correlationId =
+      `bulk-import-${tenantId}-${startTime}`;
+
+    if (!this.hasUniqueIndex) {
+      throw new Error(
+        'System Index Error: Missing Unique Index',
+      );
     }
 
-    this.logger.log(`Bulk import: ${results.created} created, ${results.skipped} skipped`);
+    if (
+      !Array.isArray(rows) ||
+      rows.length > this.MAX_ROWS
+    ) {
+      throw new BadRequestException(
+        'Invalid file size',
+      );
+    }
+
+    const lockKey = `import:student:${tenantId}`;
+
+    const hash = crypto
+      .createHash('sha256')
+      .update(lockKey)
+      .digest();
+
+    const lockHash =
+      hash.readBigInt64BE(0);
+
+    const lockAcquired =
+      await this.prisma.$queryRawUnsafe<any[]>(
+        `SELECT pg_try_advisory_lock($1) as acquired`,
+        lockHash,
+      );
+
+    if (!lockAcquired?.[0]?.acquired) {
+      throw new BadRequestException(
+        'Another import is already in progress for this school',
+      );
+    }
+
+    try {
+      const results = {
+        created: 0,
+        skipped: 0,
+        errors: [] as any[],
+        totalErrors: 0,
+      };
+
+      const validRows: {
+        data: any;
+        index: number;
+      }[] = [];
+
+      const seenInFile =
+        new Set<string>();
+
+      for (const [i, row] of rows.entries()) {
+        if (
+          !row ||
+          typeof row.firstName !== 'string' ||
+          !row.admissionNumber
+        ) {
+          results.totalErrors++;
+
+          if (results.errors.length < 500) {
+            results.errors.push({
+              row: i + 1,
+              type: 'VALIDATION',
+              msg: 'Invalid format',
+            });
+          }
+
+          results.skipped++;
+          continue;
+        }
+
+        const admissionNumber =
+          this.normalizeIdentifier(
+            row.admissionNumber.toString(),
+          );
+
+        const firstName =
+          row.firstName.trim();
+
+        if (
+          !firstName ||
+          !admissionNumber ||
+          !row.branchId
+        ) {
+          results.totalErrors++;
+
+          if (results.errors.length < 500) {
+            results.errors.push({
+              row: i + 1,
+              type: 'VALIDATION',
+              msg: 'Missing fields',
+            });
+          }
+
+          results.skipped++;
+          continue;
+        }
+
+        if (
+          seenInFile.has(
+            admissionNumber,
+          )
+        ) {
+          results.skipped++;
+          continue;
+        }
+
+        seenInFile.add(
+          admissionNumber,
+        );
+
+        validRows.push({
+          data: {
+            ...row,
+            firstName,
+            admissionNumber,
+            lastName:
+              row.lastName
+                ?.toString()
+                ?.trim() || '',
+          },
+          index: i + 1,
+        });
+
+        if (i % 500 === 0) {
+          await new Promise((res) =>
+            setImmediate(res),
+          );
+        }
+
+        if (
+          Date.now() - startTime >
+          this.MAX_EXECUTION_MS
+        ) {
+          throw new BadRequestException(
+            'Import timeout',
+          );
+        }
+      }
+
+      if (!validRows.length) {
+        return results;
+      }
+
+      const allAdmNums =
+        validRows.map(
+          (r) =>
+            r.data.admissionNumber,
+        );
+
+      const existingSet =
+        new Set<string>();
+
+      for (const chunk of _.chunk(
+        allAdmNums,
+        1000,
+      )) {
+        const existing =
+          await this.prisma.student.findMany({
+            where: {
+              tenantId,
+              admissionNumber: {
+                in: chunk,
+              },
+            },
+            select: {
+              admissionNumber: true,
+            },
+          });
+
+        existing.forEach((e) =>
+          existingSet.add(
+            e.admissionNumber,
+          ),
+        );
+      }
+
+      const toCreate =
+        validRows.filter(
+          (r) =>
+            !existingSet.has(
+              r.data.admissionNumber,
+            ),
+        );
+
+      results.skipped +=
+        validRows.length -
+        toCreate.length;
+
+      for (const chunk of _.chunk(
+        toCreate,
+        this.BATCH_CHUNK_SIZE,
+      )) {
+        await new Promise((res) =>
+          setImmediate(res),
+        );
+
+        try {
+          const { count } =
+            await this.prisma.student.createMany({
+              data: chunk.map((r) => ({
+                tenantId,
+                branchId:
+                  r.data.branchId,
+                firstName:
+                  r.data.firstName,
+                lastName:
+                  r.data.lastName,
+                admissionNumber:
+                  r.data.admissionNumber,
+                academicYear:
+                  r.data.academicYear
+                    ?.toString()
+                    ?.trim(),
+                sectionId:
+                  r.data.sectionId ??
+                  null,
+                isActive: true,
+              })),
+              skipDuplicates: true,
+            });
+
+          results.created += count;
+        } catch (err: any) {
+          results.totalErrors++;
+
+          if (
+            results.errors.length <
+            500
+          ) {
+            results.errors.push({
+              row: chunk[0].index,
+              type: 'DB',
+              msg: err.message,
+            });
+          }
+        }
+      }
+
+      return results;
+    } finally {
+      try {
+        await this.prisma.$executeRawUnsafe(
+          `SELECT pg_advisory_unlock($1)`,
+          lockHash,
+        );
+      } catch (e: any) {
+        this.logger.error({
+          event:
+            'LOCK_RELEASE_FAILED',
+          correlationId,
+          error: e.message,
+        });
+      }
+    }
+  }
+
+  // =========================
+  // 🧾 BULK INVOICE
+  // =========================
+
+  async generateInvoicesForClass(
+    tenantId: string,
+    dto: BulkInvoiceDto,
+    actorId: string,
+  ) {
+    const students =
+      await this.prisma.student.findMany({
+        where: {
+          tenantId,
+          isActive: true,
+          section: {
+            classId: dto.classId,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+    if (!students.length) {
+      throw new BadRequestException(
+        'No active students found',
+      );
+    }
+
+    const results = {
+      generated: 0,
+      skipped: 0,
+      errors: [] as any[],
+      totalErrors: 0,
+    };
+
+    const limit = pLimit(10);
+
+    const resultsArr =
+      await Promise.all(
+        students.map((student) =>
+          limit(async () => {
+            for (
+              let attempt = 0;
+              attempt < 2;
+              attempt++
+            ) {
+              const controller =
+                new AbortController();
+
+              try {
+                return await this.prisma.$transaction(
+                  async (tx) => {
+                    const exists =
+                      await tx.invoice.findFirst({
+                        where: {
+                          tenantId,
+                          studentId:
+                            student.id,
+                        } as any,
+                        select: {
+                          id: true,
+                        },
+                      });
+
+                    if (exists) {
+                      return 'skipped';
+                    }
+
+                    const options: GenerateInvoiceOptions =
+                      {
+                        signal:
+                          controller.signal,
+                      };
+
+                    await Promise.race([
+                      this.invoices.generate(
+                        tenantId,
+                        {
+                          studentId:
+                            student.id,
+                          feePlanId:
+                            dto.feePlanId,
+                          dueDate:
+                            dto.dueDate,
+                        },
+                        actorId,
+                      ),
+
+                      new Promise(
+                        (_, reject) =>
+                          setTimeout(() => {
+                            controller.abort();
+
+                            reject({
+                              type:
+                                'TIMEOUT',
+                              message:
+                                'Execution timed out',
+                            });
+                          }, 12000),
+                      ),
+                    ]);
+
+                    return 'generated';
+                  },
+                  {
+                    timeout: 15000,
+                  },
+                );
+              } catch (err: any) {
+                const isDeadlock =
+                  err.code ===
+                    '40P01' ||
+                  err.message?.includes(
+                    'deadlock',
+                  );
+
+                const isTimeout =
+                  err.type ===
+                    'TIMEOUT' ||
+                  err.message?.includes(
+                    'timed out',
+                  );
+
+                if (
+                  attempt === 0 &&
+                  isDeadlock
+                ) {
+                  const jitter =
+                    Math.floor(
+                      Math.random() *
+                        200,
+                    );
+
+                  await new Promise(
+                    (res) =>
+                      setTimeout(
+                        res,
+                        100 + jitter,
+                      ),
+                  );
+
+                  continue;
+                }
+
+                results.totalErrors++;
+
+                if (
+                  results.errors.length <
+                  500
+                ) {
+                  results.errors.push({
+                    studentId:
+                      student.id,
+                    type: isTimeout
+                      ? 'TIMEOUT'
+                      : isDeadlock
+                        ? 'DEADLOCK'
+                        : 'BUSINESS_ERROR',
+                    msg:
+                      err.message ||
+                      'Unknown error',
+                  });
+                }
+
+                return 'error';
+              }
+            }
+          }),
+        ),
+      );
+
+    results.generated =
+      resultsArr.filter(
+        (r) => r === 'generated',
+      ).length;
+
+    results.skipped =
+      resultsArr.filter(
+        (r) => r === 'skipped',
+      ).length;
+
     return results;
   }
-
-  // ── Bulk Invoice Generation ───────────────────────────────────────────────
-
-  async generateInvoicesForClass(tenantId: string, dto: BulkInvoiceDto, _actorId: string) {
-    const feePlan = await this.prisma.feePlan.findFirst({
-      where:   { id: dto.feePlanId, tenantId },
-      include: { feeItems: true },
-    });
-    if (!feePlan) throw new BadRequestException('Fee plan not found');
-
-    const students = await this.prisma.student.findMany({
-      where: { tenantId, isActive: true, section: { classId: dto.classId } },
-    });
-
-    const totalAmount = feePlan.feeItems.reduce((s: number, i: any) => s + Number(i.amount), 0);
-    const year        = new Date().getFullYear();
-    let generated = 0;
-
-    for (const student of students) {
-      const existing = await this.prisma.invoice.findFirst({
-        where: { tenantId, studentId: student.id } as any,
-      });
-      if (existing) continue;
-
-      const count = await this.prisma.invoice.count({ where: { tenantId } });
-      const invoiceNumber = `INV-${year}-${String(count + 1).padStart(5, '0')}`;
-
-      await this.prisma.invoice.create({
-        data: {
-          tenantId,
-          studentId:     student.id,
-          feePlanId:     dto.feePlanId,
-          academicYear:  dto.academicYear ?? feePlan.academicYear,
-          invoiceNumber,
-          status:        'SENT' as any,
-          currency:      feePlan.currency as any,
-          totalAmount,
-          paidAmount:    0,
-          dueAmount:     totalAmount,
-          dueDate:       new Date(dto.dueDate),
-          invoiceItems: {
-            create: feePlan.feeItems.map((item: any) => ({
-              name:   item.name,
-              amount: Number(item.amount),
-            })),
-          },
-        } as any,
-      });
-      generated++;
-    }
-
-    this.logger.log(`Bulk invoices: ${generated} generated for class ${dto.classId}`);
-    return { generated, skipped: students.length - generated, total: students.length };
-  }
-
-  // ── Parse CSV ─────────────────────────────────────────────────────────────
-
-  parseStudentCsv(csvText: string, defaultBranchId: string): BulkStudentRow[] {
-    const lines = csvText.trim().split('\n');
-    if (lines.length < 2) throw new BadRequestException('CSV must have header + at least one row');
-
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
-    const rows: BulkStudentRow[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const cells: Record<string, string> = {};
-      lines[i].split(',').forEach((val, j) => { cells[headers[j]] = val?.trim() ?? ''; });
-
-      rows.push({
-        firstName:       cells['firstname']       || cells['first_name']       || '',
-        lastName:        cells['lastname']        || cells['last_name']        || '',
-        admissionNumber: cells['admissionnumber'] || cells['admission_number'] || cells['admno'] || '',
-        academicYear:    cells['academicyear']    || cells['academic_year']    || cells['year']  || '',
-        // branchId can be in CSV or fall back to the caller-supplied default
-        branchId:        cells['branchid']        || cells['branch_id']        || defaultBranchId,
-        sectionId:       cells['sectionid']       || cells['section_id']       || undefined,
-        rollNumber:      cells['rollnumber']      || cells['roll_number']      || cells['roll']  || undefined,
-      });
-    }
-
-    return rows;
-  }
-
- // ── Student CSV Template ──────────────────────────────────────────────────
-
-generateStudentTemplate(format: 'csv' | 'excel'): { buffer: Buffer; filename: string; mimeType: string } {
-  const headers = [
-    'firstName', 'lastName', 'admissionNumber', 'academicYear',
-    'sectionId', 'rollNumber', 'phone', 'email'
-  ];
-  const sample = [
-    'Rahul', 'Sharma', 'ADM-001', '2025-2026',
-    '', '', '9876543210', 'rahul@example.com'
-  ];
-
-  const csv = [headers.join(','), sample.join(',')].join('\n');
-  const buffer = Buffer.from(csv, 'utf-8');
-
-  return {
-    buffer,
-    filename: `students_template.${format === 'excel' ? 'csv' : 'csv'}`,
-    mimeType: 'text/csv',
-  };
-}
-
 }

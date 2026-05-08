@@ -473,3 +473,12 @@ export function useBulkActions() {
       
   };
 }
+
+// ── Staff (individual record) ─────────────────────────────────────────────────
+export function useStaffById(id?: string) {
+  return useApi<any>(id ? `/staff/${id}` : '', [id]);
+}
+
+export function useStaffSubjectPreferences(staffId?: string) {
+  return useApi<any[]>(staffId ? `/staff/${staffId}/subject-preferences` : '', [staffId]);
+}

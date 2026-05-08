@@ -67,7 +67,7 @@ export class RefundService {
 
     await this.prisma.refund.update({
       where: { id: refund.id },
-      data:  { status: 'SUCCESS', gatewayRefundId, processedAt: new Date() },
+      data:  { status: 'COMPLETED', gatewayRefundId, processedAt: new Date() },
     });
 
     // Update payment status based on refund totals

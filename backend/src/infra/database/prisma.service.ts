@@ -63,4 +63,60 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       return false;
     }
   }
+  /**
+   * forTenant(tenantId) — tenant-safe query proxy
+   *
+   * Returns a Proxy over PrismaService that auto-injects
+   * { tenantId } into the where clause of:
+   *   findMany, findFirst, findFirstOrThrow, count, aggregate, groupBy
+   *
+   * Usage (as documented in PRISMA_TENANT_GUIDE.md):
+   *   const db = this.prisma.forTenant(tenantId);
+   *   const students = await db.student.findMany();  // tenantId auto-added
+   *
+   * Core modules that intentionally query across tenants
+   * (audit, sessions, superadmin) should keep using this.prisma directly.
+   */
+  forTenant(tenantId: string): this {
+    const TENANT_METHODS = new Set([
+      'findMany', 'findFirst', 'findFirstOrThrow',
+      'count', 'aggregate', 'groupBy',
+    ]);
+
+    // Proxy the PrismaService instance so model accessors (e.g. .student)
+    // return a further proxy that intercepts read methods
+    return new Proxy(this, {
+      get(target: any, modelProp: string | symbol) {
+        const modelDelegate = target[modelProp];
+
+        // Only intercept Prisma model delegates (objects, not functions/scalars)
+        if (
+          typeof modelProp !== 'string' ||
+          typeof modelDelegate !== 'object' ||
+          modelDelegate === null
+        ) {
+          return modelDelegate;
+        }
+
+        return new Proxy(modelDelegate, {
+          get(model: any, method: string | symbol) {
+            const fn = model[method];
+            if (typeof method !== 'string' || !TENANT_METHODS.has(method) || typeof fn !== 'function') {
+              return typeof fn === 'function' ? fn.bind(model) : fn;
+            }
+
+            // Wrap the method to inject tenantId into the where clause
+            return (args: Record<string, any> = {}) => {
+              const patched = {
+                ...args,
+                where: { tenantId, ...args.where },
+              };
+              return fn.call(model, patched);
+            };
+          },
+        });
+      },
+    }) as this;
+  }
+
 }

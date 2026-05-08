@@ -6,11 +6,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Badge }      from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useApi }     from "@/lib/hooks";
+import { apiClient } from "@/lib/api";
 import { MessageSquare, Plus, Clock, CheckCircle, AlertCircle, Send, X } from "lucide-react";
 import { useToast } from '@/lib/use-toast';
 
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.50:3000/api/v1";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 function authHeaders(): Record<string, string> {
   const token    = typeof window !== "undefined" ? localStorage.getItem("accessToken")  : "";
@@ -65,14 +65,14 @@ export default function SupportPage() {
     if (!form.title.trim() || !form.description.trim()) return;
     setSaving(true);
     try {
-      const created = await apiFetch("/support/tickets", {
-        method: "POST",
-        body:   JSON.stringify(form),
-      });
+      const created = await apiClient.post(
+	 "/support/tickets",
+      form
+      );
       setShowForm(false);
       setForm({ title: "", description: "", category: "TECHNICAL", priority: "MEDIUM" });
       await refetch();
-      setSelected(created.id);
+      setSelected(created.data.id);
     } catch (err: any) {
       toast.error(err.message ?? "Failed to create ticket");
     } finally { setSaving(false); }
@@ -82,10 +82,10 @@ export default function SupportPage() {
     if (!reply.trim() || !selected) return;
     setSaving(true);
     try {
-      await apiFetch(`/support/tickets/${selected}/messages`, {
-        method: "POST",
-        body:   JSON.stringify({ message: reply }),
-      });
+      await apiClient.post(
+	      `/support/tickets/${selected}/messages`, 
+      { message: reply }
+      );
       setReply("");
       refetchTicket();
     } catch (err: any) {

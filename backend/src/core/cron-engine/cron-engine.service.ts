@@ -1,338 +1,229 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron }               from '@nestjs/schedule';
-import { InjectQueue }        from '@nestjs/bull';
-import { Queue }              from 'bull';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
 import { EVENTS } from '../events/events.constants';
 import { PrismaService } from '@infra/database/prisma.service';
-import { QUEUE_NAMES }        from '../../infra/queue/queue.module';
+import { QUEUE_NAMES } from '../../infra/queue/queue.module';
 import { FeatureFlagService } from '../feature-flags/feature-flags.service';
+import pLimit from 'p-limit';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+import { randomUUID } from 'crypto';
+import { RedisService } from '../../infra/cache/redis.service';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 @Injectable()
-export class CronEngine {
+export class CronEngine implements OnModuleInit {
   private readonly logger = new Logger(CronEngine.name);
+  private readonly limit = pLimit(50);
+  private readonly STRATEGY = 'cron-v10.9.1-enterprise-full';
 
   constructor(
     private readonly prisma: PrismaService,
-    @InjectQueue(QUEUE_NAMES.BILLING_CYCLE)  private readonly billingQueue:  Queue,
-    @InjectQueue(QUEUE_NAMES.DUNNING)         private readonly dunningQueue:  Queue,
-    @InjectQueue(QUEUE_NAMES.NOTIFICATIONS)   private readonly notifQueue:    Queue,
-    @InjectQueue(QUEUE_NAMES.BULK_OPERATIONS) private readonly bulkQueue:     Queue,
-    private readonly emitter: EventEmitter2, private readonly featureFlags: FeatureFlagService,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly featureFlags: FeatureFlagService,
+    @InjectQueue(QUEUE_NAMES.NOTIFICATIONS) private readonly notifQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.BULK_OPERATIONS) private readonly bulkQueue: Queue,
+    private readonly redisService: RedisService,
   ) {}
 
-  // ── Job 1: Billing Cycle — 1st of month 00:01 ────────────────────────────
-  @Cron('1 0 1 * *', { name: 'billing-cycle' })
-  async billingCycle() {
-    this.logger.log('CRON billing-cycle: generating SaaS invoices');
-    const subscriptions = await this.prisma.tenantSubscription.findMany({
-      where:   { status: 'ACTIVE' },
-      include: { plan: true, tenant: true },
-    });
-
-    for (const sub of subscriptions) {
-      await this.billingQueue.add('generate-invoice', {
-        subscriptionId: sub.id,
-        tenantId:       sub.tenantId,
-        billedAt:       new Date().toISOString(),
-      }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
-    }
-    this.logger.log(`billing-cycle: queued ${subscriptions.length} invoices`);
+  async onModuleInit() {
+    this.logger.log(`CronEngine Initialized with Strategy: ${this.STRATEGY}`);
   }
 
-  // ── Job 2: Fee Reminders — Daily 08:00 ───────────────────────────────────
-  @Cron('0 8 * * *', { name: 'fee-reminders' })
-  async feeReminders() {
-    this.logger.log('CRON fee-reminders: sending fee reminders');
-    const tenants = await this.prisma.tenant.findMany({ where: { status: 'ACTIVE' } });
+  @Cron(CronExpression.EVERY_MINUTE)
+  async masterScheduler() {
+    // 🛡️ Global Switch
+    const isEnabled = await this.featureFlags.isEnabled('system-cron-engine', { tenantId: 'system' });
+    if (!isEnabled) return;
 
-    for (const tenant of tenants) {
-      const session = await this.prisma.academicSession.findFirst({
-        where: { tenantId: tenant.id, isCurrent: true },
-      });
-      if (!session) continue;
-      await this.notifQueue.add('fee-reminders', {
-        tenantId:     tenant.id,
-        academicYear: session.name,
-        daysBeforeDue: 3,
-      }, { attempts: 2 });
-    }
-    // Emit fee-drop alert for tenants with no payments in last 30 days
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
-    for (const tenant of tenants) {
-      const recentPayments = await this.prisma.payment.count({
-        where: { tenantId: tenant.id, status: 'SUCCESS', paidAt: { gte: thirtyDaysAgo } },
-      });
-      if (recentPayments === 0) {
-        this.emitter.emit(EVENTS.ALERT_FEE_DROP, {
-          tenantId:    tenant.id,
-          description: 'No payments recorded in the last 30 days',
-        });
-      }
-    }
-    this.logger.log(`fee-reminders: queued for ${tenants.length} tenants`);
-  }
+    const baseTime = dayjs();
+    const nowUtc = baseTime.toDate();
 
-  // ── Job 3: Attendance Summary — Daily 17:00 ───────────────────────────────
-  @Cron('0 17 * * *', { name: 'attendance-summary' })
-  async attendanceSummary() {
-    this.logger.log('CRON attendance-summary: queuing summaries');
-    const today   = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const tenants = await this.prisma.tenant.findMany({ where: { status: 'ACTIVE' } });
+    this.eventEmitter.emit('cron.started', { timestamp: nowUtc, strategy: this.STRATEGY });
 
-    for (const tenant of tenants) {
-      await this.notifQueue.add('attendance-summary', {
-        tenantId: tenant.id,
-        date:     today.toISOString().split('T')[0],
-      }, { attempts: 2 });
-    }
-    // Emit attendance-drop alert for tenants with low attendance today
-    for (const tenant of tenants) {
-      const today = new Date(); today.setUTCHours(0,0,0,0);
-      const [present, absent] = await Promise.all([
-        this.prisma.attendance.count({ where: { tenantId: tenant.id, date: today, status: 'PRESENT' } }),
-        this.prisma.attendance.count({ where: { tenantId: tenant.id, date: today, status: 'ABSENT' } }),
-      ]);
-      const total = present + absent;
-      if (total >= 10) {
-        const pct = Math.round(present / total * 100);
-        if (pct < 70) {
-          this.emitter.emit(EVENTS.ALERT_ATTENDANCE_DROP, {
-            tenantId:    tenant.id,
-            percentage:  pct,
-            description: `School-wide attendance dropped to ${pct}% today`,
-          });
-        }
-      }
-    }
-    this.logger.log(`attendance-summary: queued for ${tenants.length} tenants`);
-  }
-
-  // ── Job 4: Dunning Retry — Every 6 hours ──────────────────────────────────
-  @Cron('0 */6 * * *', { name: 'dunning-retry' })
-  async dunningRetry() {
-    this.logger.log('CRON dunning-retry: retrying failed SaaS payments');
-    const pastDue = await this.prisma.tenantSubscription.findMany({
-      where: {
-        status: 'PAST_DUE',
-        dunningAttempts: { none: { status: 'EXHAUSTED' } },
-      },
-      include: {
-        dunningAttempts: { orderBy: { attemptNumber: 'desc' }, take: 1 },
-      },
-    });
-
-    for (const sub of pastDue) {
-      const lastAttempt   = sub.dunningAttempts[0];
-      const attemptNumber = (lastAttempt?.attemptNumber ?? 0) + 1;
-
-      if (attemptNumber > 4) {
-        await this.prisma.tenantSubscription.update({
-          where: { id: sub.id },
-          data:  { status: 'SUSPENDED' },
-        });
-        await this.prisma.dunningAttempt.updateMany({
-          where: { subscriptionId: sub.id, status: 'SCHEDULED' },
-          data:  { status: 'EXHAUSTED' },
-        });
-        this.logger.warn(`dunning-retry: exhausted for ${sub.id}`);
-        continue;
-      }
-
-      const attempt = await this.prisma.dunningAttempt.create({
-        data: {
-          subscriptionId: sub.id,
-          attemptNumber,
-          status:      'SCHEDULED',
-          scheduledAt: new Date(),
-          action:      `retry_payment_attempt_${attemptNumber}`,
-        },
-      });
-
-      await this.dunningQueue.add('retry-payment', {
-        subscriptionId:   sub.id,
-        dunningAttemptId: attempt.id,
-        attemptNumber,
-      }, { attempts: 1 });
-    }
-    this.logger.log(`dunning-retry: queued ${pastDue.length} subscriptions`);
-  }
-
-  // ── Job 5: Report Generation — Sunday 23:00 ───────────────────────────────
-  @Cron('0 23 * * 0', { name: 'report-generation' })
-  async reportGeneration() {
-    this.logger.log('CRON report-generation: pre-generating weekly reports');
-    const tenants = await this.prisma.tenant.findMany({ where: { status: 'ACTIVE' } });
-    for (const tenant of tenants) {
-      await this.bulkQueue.add('generate-weekly-report', {
-        tenantId: tenant.id,
-        week:     new Date().toISOString().split('T')[0],
-      }, { attempts: 2, priority: 10 });
-    }
-    this.logger.log(`report-generation: queued for ${tenants.length} tenants`);
-  }
-
-  // ── Job 6: Student Count Snapshot — Daily 23:59 ───────────────────────────
-  @Cron('59 23 * * *', { name: 'student-count-snapshot' })
-  async studentCountSnapshot() {
-    this.logger.log('CRON student-count-snapshot: snapshotting student counts');
-    const today   = new Date();
-    today.setUTCHours(0, 0, 0, 0);
-    const tenants = await this.prisma.tenant.findMany({
-      where: { status: { in: ['ACTIVE', 'TRIAL'] } },
-    });
-
-    for (const tenant of tenants) {
-      const count = await this.prisma.student.count({
-        where: { tenantId: tenant.id, isActive: true },
-      });
-
-      await this.prisma.studentDailyCount.upsert({
-        where:  { tenantId_date: { tenantId: tenant.id, date: today } },
-        create: { tenantId: tenant.id, date: today, count },
-        update: { count },
-      });
-
-      // Alert if ≥90% of student limit
-      if (count / tenant.maxStudents >= 0.9) {
-        this.logger.warn(
-          `student-count-snapshot: tenant ${tenant.slug} at ${Math.round(count / tenant.maxStudents * 100)}% limit`
-        );
-        await this.notifQueue.add('student-limit-warning', {
-          tenantId:    tenant.id,
-          currentCount: count,
-          maxStudents:  tenant.maxStudents,
-        }, { attempts: 1 });
-      }
-    }
-    // Detect inactive tenants (no audit log activity in 7 days)
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000);
-    const inactiveTenants = await this.prisma.tenant.findMany({
-      where: { status: 'ACTIVE' },
-      include: { _count: { select: { auditLogs: true } } },
-    });
-    for (const t of inactiveTenants) {
-      const recentActivity = await this.prisma.auditLog.count({
-        where: { tenantId: t.id, createdAt: { gte: sevenDaysAgo } },
-      });
-      if (recentActivity === 0) {
-        this.emitter.emit(EVENTS.TENANT_INACTIVE, {
-          tenantId: t.id, name: t.name,
-          description: 'No activity recorded in the last 7 days',
-        });
-      }
-    }
-    this.logger.log(`student-count-snapshot: done for ${tenants.length} tenants`);
-  }
-
-  // ── Job 7: Session Expiry — Daily 02:00 ───────────────────────────────────
-  @Cron('0 2 * * *', { name: 'session-expiry' })
-  async sessionExpiry() {
-    this.logger.log('CRON session-expiry: cleaning expired sessions');
-    const deleted = await this.prisma.session.deleteMany({
-      where: { expiresAt: { lt: new Date() } },
-    });
-    this.logger.log(`session-expiry: deleted ${deleted.count} expired sessions`);
-  }
-
-  // ── Job 8: Late Fee Calculation — Daily 00:30 ─────────────────────────────
-  // LateFee schema: { id, tenantId, invoiceId, amount, daysOverdue, appliedAt,
-  //                   waivedAt, waivedBy }
-  // NO 'reason' field, NO 'createdAt' — orderBy uses 'appliedAt'
-  @Cron('30 0 * * *', { name: 'late-fee-calculation' })
-  async lateFeeCalculation() {
-    this.logger.log('CRON late-fee-calculation: applying late fees to overdue invoices');
-
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setUTCHours(23, 59, 59, 999);
-
-    // Fetch overdue invoices WITH their late fees (using 'appliedAt' to order)
-    const overdue = await this.prisma.invoice.findMany({
-      where: {
-        status:  { in: ['SENT', 'PARTIALLY_PAID'] as any[] },
-        dueDate: { lt: yesterday },
-      },
-      include: {
-        lateFees: { orderBy: { appliedAt: 'desc' }, take: 1 },
-      },
-    });
-
-    let applied = 0;
-    const today = new Date();
-
-    for (const invoice of overdue) {
-      // Skip if a late fee was already applied today
-      const lastFee = invoice.lateFees[0];
-      if (lastFee) {
-        const lastFeeDate = new Date(lastFee.appliedAt);
-        if (lastFeeDate.toDateString() === today.toDateString()) continue;
-      }
-
-      // Calculate days overdue
-      const msPerDay  = 1000 * 60 * 60 * 24;
-      const daysOverdue = Math.floor((today.getTime() - new Date(invoice.dueDate).getTime()) / msPerDay);
-      if (daysOverdue < 1) continue;
-
-      // 1% per day, max ₹500
-      const lateFeeAmount = Math.min(Number(invoice.dueAmount) * 0.01, 500);
-      if (lateFeeAmount < 1) continue;
-
-      // Create LateFee with correct fields (no 'reason', daysOverdue is required)
-      await this.prisma.lateFee.create({
-        data: {
-          tenantId:   invoice.tenantId,
-          invoiceId:  invoice.id,
-          amount:     lateFeeAmount,
-          daysOverdue,              // required field
-          // appliedAt is @default(now()) — don't set manually
-        },
-      });
-
-      await this.prisma.invoice.update({
-        where: { id: invoice.id },
-        data: {
-          dueAmount: { increment: lateFeeAmount },
-          status:    'OVERDUE' as any,
-        },
-      });
-
-      applied++;
-    }
-
-    this.logger.log(
-      `late-fee-calculation: applied to ${applied} of ${overdue.length} overdue invoices`
-    );
-  }
-
-
-  // ── Job: SLA Check — Every 30 minutes ────────────────────────────────────
-
-  async getJobStatus() {
-    const [billingJobs, dunningJobs, notifJobs] = await Promise.all([
-      this.billingQueue.getJobCounts(),
-      this.dunningQueue.getJobCounts(),
-      this.notifQueue.getJobCounts(),
+    // 🚦 Backpressure Check
+    const [notifWaiting, bulkWaiting] = await Promise.all([
+      this.notifQueue.getWaitingCount(),
+      this.bulkQueue.getWaitingCount(),
     ]);
-    return { billing: billingJobs, dunning: dunningJobs, notifications: notifJobs };
+
+    const totalLoad = notifWaiting + bulkWaiting;
+
+    if (totalLoad > 3000) {
+      const deferMinutes = Math.min(5, Math.ceil(totalLoad / 1000));
+      this.logger.warn({ event: 'BACKPRESSURE_DETECTED', totalLoad, deferMinutes });
+
+      this.safeAudit({
+        status: 'DEFERRED',
+        reason: 'BACKPRESSURE',
+        affectedCount: totalLoad,
+        deferMinutes,
+        triggeredAt: nowUtc,
+        strategy: this.STRATEGY
+      });
+
+      await this.prisma.tenantJobSchedule.updateMany({
+        where: { nextRunAt: { lte: nowUtc }, priority: { gte: 3 } },
+        data: { nextRunAt: dayjs(nowUtc).add(deferMinutes, 'minute').toDate() }
+      });
+      return;
+    }
+
+    const BATCH_SIZE = 500;
+    let loopGuard = 0;
+
+    while (loopGuard < 20) {
+      const dueJobs = await this.prisma.tenantJobSchedule.findMany({
+        where: { nextRunAt: { lte: nowUtc } },
+        take: BATCH_SIZE,
+        orderBy: [{ priority: 'asc' }, { nextRunAt: 'asc' }, { id: 'asc' }],
+        include: {
+          tenant: { select: { id: true, timezone: true, slug: true, region: true } },
+        }
+      });
+
+      if (dueJobs.length === 0) break;
+
+      await Promise.allSettled(
+        dueJobs.map((job) => this.limit(() => this.processJob(job, baseTime)))
+      );
+
+      if (dueJobs.length < BATCH_SIZE) break;
+      loopGuard++;
+    }
   }
 
-@Cron('* * * * *', { name: 'feature-flag-orchestrator' })
- async featureFlagOrchestrator() {
-   try {
-     const result = await this.featureFlags.processSchedules();
-     
-     // FIX: Removed result.expired check
-     if (result.executed > 0 || result.revoked > 0 || result.slaBreaches > 0) {
-       this.logger.log(
-         `feature-flag-orchestrator: executed=${result.executed} ` +
-         `revoked=${result.revoked} slaBreaches=${result.slaBreaches}` // Removed expired
-       );
-     }
-   } catch (err) {
-     this.logger.error('feature-flag-orchestrator failed:', err);
-   }
- }
+  private async processJob(schedule: any, baseTime: dayjs.Dayjs) {
+    const { tenant, jobName, time, priority, interval, missedWindow } = schedule;
 
+    if (!(await this.featureFlags.isEnabled(`cron:${tenant.id}`, { tenantId: tenant.id }))) return;
+
+    const tz = tenant.timezone || 'Asia/Kolkata';
+    const [hour, minute] = time.split(':').map(Number);
+    
+    // 🕒 Correct Local Time Window
+    const expectedRun = baseTime.tz(tz).set('hour', hour).set('minute', minute).set('second', 0).set('millisecond', 0);
+    const latenessMs = Date.now() - expectedRun.valueOf();
+
+    // 🔑 Unique Job Identifier
+    const jobId = `${tenant.region}:${jobName}:${tenant.id}:${expectedRun.valueOf()}`;
+    const executionId = `${jobId}-${randomUUID()}`;
+
+    // 🔒 Distributed Lock
+    const LOCK_TTL = 150 + Math.floor(Math.random() * 30);
+    const lockKey = `lock:cron:${jobId}`;
+    const isLocked = await this.redisService.client.set(lockKey, '1', 'EX', LOCK_TTL, 'NX');
+
+    if (!isLocked) {
+      if (Math.random() < 0.1) {
+        this.safeAudit({ tenantId: tenant.id, jobName, jobId, status: 'SKIPPED', reason: 'LOCK_NOT_ACQUIRED', strategy: this.STRATEGY });
+      }
+      return;
+    }
+
+    try {
+      // 🗓️ Restore: Advanced Interval Calculation (Daily, Weekly, Monthly)
+      let nextRun = expectedRun;
+      switch (interval) {
+        case 'WEEKLY': nextRun = expectedRun.add(1, 'week'); break;
+        case 'MONTHLY': nextRun = expectedRun.add(1, 'month'); break;
+        case 'DAILY':
+        default: nextRun = expectedRun.add(1, 'day');
+      }
+
+      // 🛡️ Atomic DB Guard with Missed Window logic
+      const windowMs = (missedWindow || 60) * 60 * 1000;
+      const isMissed = latenessMs > windowMs;
+
+      const updated = await this.prisma.tenantJobSchedule.updateMany({
+        where: { 
+          id: schedule.id, 
+          nextRunAt: { lte: baseTime.toDate() },
+          OR: [
+            { lastRunAt: null },
+            { lastRunAt: { lt: expectedRun.toDate() } }
+          ]
+        },
+        data: {
+          nextRunAt: nextRun.toDate(),
+          lastRunAt: baseTime.toDate()
+        }
+      });
+
+      if (updated.count === 0) {
+        if (Math.random() < 0.1) {
+          this.safeAudit({ tenantId: tenant.id, jobName, jobId, status: 'SKIPPED', reason: 'ALREADY_PROCESSED', strategy: this.STRATEGY });
+        }
+        return;
+      }
+
+      // 🚦 If job is too old (Missed Window), log it and move next run without firing
+      if (isMissed) {
+        this.safeAudit({
+          tenantId: tenant.id, jobName, jobId, status: 'SKIPPED',
+          reason: 'MISSED_WINDOW_EXCEEDED', strategy: this.STRATEGY,
+          error: `Job delayed by ${latenessMs}ms, exceeding ${windowMs}ms window`
+        });
+        return;
+      }
+
+      // 🏎️ Queue Selection Logic
+      const queue = jobName.includes('fee') || jobName.includes('invoice') 
+        ? this.bulkQueue 
+        : this.notifQueue;
+
+      // 🎲 SLA-Aware Jitter
+      const baseJitter = priority <= 2 ? Math.floor(Math.random() * 5000) : Math.floor(Math.random() * 60000);
+      const jitter = latenessMs > 0 ? Math.min(baseJitter, 1000) : baseJitter;
+
+      await queue.add(jobName, {
+        tenantId: tenant.id,
+        branchId: schedule.branchId || null,
+        date: expectedRun.format('YYYY-MM-DD'),
+        _metadata: { executionId, scheduledFor: expectedRun.toISOString(), lagMs: latenessMs }
+      }, {
+        jobId, priority, delay: jitter, attempts: 3, 
+        backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: true, removeOnFail: false
+      });
+
+      this.logger.debug({ event: 'JOB_QUEUED', jobId, tenant: tenant.slug });
+
+      // ✅ Sampled Success Audit
+      if (Math.random() < 0.2) {
+        this.safeAudit({
+          tenantId: tenant.id, branchId: schedule.branchId, tenantSlug: tenant.slug, 
+          jobName, jobId, executionId, priority, status: 'SUCCESS',
+          lagMs: latenessMs, scheduledFor: expectedRun.toDate(), triggeredAt: baseTime.toDate(), strategy: this.STRATEGY
+        });
+      }
+
+    } catch (err) {
+      this.logger.error({ event: 'SCHEDULER_FAILURE', jobId, error: err.message });
+      this.safeAudit({
+        tenantId: tenant.id, branchId: schedule.branchId, jobName, jobId, executionId, priority,
+        status: 'FAILED', reason: 'EXECUTION_ERROR', error: err.message,
+        lagMs: latenessMs, scheduledFor: expectedRun.toDate(), triggeredAt: baseTime.toDate(), strategy: this.STRATEGY
+      });
+      
+      await this.redisService.client.del(lockKey); // Release lock for retry
+    }
+  }
+
+  private async safeAudit(data: any) {
+    try {
+      await this.bulkQueue.add('cron-audit-log', data, {
+        removeOnComplete: { age: 3600 },
+        removeOnFail: { age: 86400 }
+      });
+    } catch (e) {
+      this.logger.error({ event: 'AUDIT_DISPATCH_FAIL', error: e.message });
+    }
+  }
 }

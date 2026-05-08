@@ -24,13 +24,13 @@ export class BillingCycleProcessor {
 
     // Calculate amount based on pricing model
     let subtotal = 0;
-    if (subscription.model === 'SUBSCRIPTION') {
+    if (subscription.model === 'FLAT_FEE') {
       subtotal = Number(subscription.customBaseFee ?? subscription.plan.baseFee ?? 0);
     } else if (subscription.model === 'PER_STUDENT') {
       const rate  = Number(subscription.customPerStudentRate ?? subscription.plan.perStudentRate ?? 0);
       const count = subscription.studentCountAtBilling ?? 0;
       subtotal    = rate * count;
-    } else if (subscription.model === 'HYBRID') {
+    } else {
       const base  = Number(subscription.customBaseFee ?? subscription.plan.baseFee ?? 0);
       const rate  = Number(subscription.customPerStudentRate ?? subscription.plan.perStudentRate ?? 0);
       const count = subscription.studentCountAtBilling ?? 0;

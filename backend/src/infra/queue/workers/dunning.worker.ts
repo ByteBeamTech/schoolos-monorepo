@@ -61,7 +61,7 @@ export class DunningWorker {
 
       await this.prisma.dunningAttempt.update({
         where: { id: attempt.id },
-        data: { status: 'SENT', executedAt: new Date(), result },
+        data: { status: 'SUCCESS', executedAt: new Date(), result },
       });
     } catch (err: any) {
       await this.prisma.dunningAttempt.update({

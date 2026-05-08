@@ -1,3 +1,9 @@
+export interface GenerateInvoiceOptions {
+  tenantId: string; branchId: string;
+  studentIds?: string[]; feePlanId?: string;
+  dueDate?: Date; actorId?: string;
+}
+
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EVENTS } from '../../../../core/events/events.constants';
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';

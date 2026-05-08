@@ -1,18 +1,18 @@
 model admissionActivity {
-  id           String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  tenantId     String
-  admissionId  String
+  tenantId    String
+  admissionId String
 
   // 🔹 actor tracking
-  actorId      String?
+  actorId String?
 
-  action       String
-  note         String?
+  action String
+  note   String?
 
-  meta         Json?
+  meta Json?
 
-  createdAt    DateTime @default(now())
+  createdAt DateTime @default(now())
 
   admission Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
 

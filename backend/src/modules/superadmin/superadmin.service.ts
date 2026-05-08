@@ -25,13 +25,13 @@ export class SuperadminService {
     // MRR calculation
     let mrr = 0;
     for (const sub of subs) {
-      if (sub.model === 'SUBSCRIPTION') {
+      if (sub.model === 'FLAT_FEE') {
         mrr += Number(sub.customBaseFee ?? sub.plan.baseFee ?? 0);
       } else if (sub.model === 'PER_STUDENT') {
         const rate  = Number(sub.customPerStudentRate ?? sub.plan.perStudentRate ?? 0);
         const count = sub.studentCountAtBilling ?? 0;
         mrr += rate * count;
-      } else if (sub.model === 'HYBRID') {
+      } else {
         const base  = Number(sub.customBaseFee ?? sub.plan.baseFee ?? 0);
         const rate  = Number(sub.customPerStudentRate ?? sub.plan.perStudentRate ?? 0);
         const count = sub.studentCountAtBilling ?? 0;

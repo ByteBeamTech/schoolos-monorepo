@@ -154,8 +154,8 @@ export default function SettingsPage() {
             <h2 className="font-semibold text-slate-900 mb-4">API Configuration</h2>
             <div className="space-y-3">
               {[
-                { label: "API Base URL",  value: process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.50:3000/api/v1" },
-                { label: "Swagger Docs", value: (process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.50:3000/api/v1") + "/docs" },
+                { label: "API Base URL",  value: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1" },
+                { label: "Swagger Docs", value: (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1") + "/docs" },
                 { label: "Environment",  value: process.env.NODE_ENV ?? "development" },
               ].map(({ label, value }) => (
                 <div key={label} className="flex items-start justify-between gap-4">
@@ -166,7 +166,7 @@ export default function SettingsPage() {
             </div>
             <div className="mt-4 pt-4 border-t border-slate-100">
               <a
-                href={(process.env.NEXT_PUBLIC_API_URL || "http://192.168.1.50:3000/api/v1") + "/docs"}
+                href={(process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1") + "/docs"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-blue-600 hover:text-blue-800 font-medium">

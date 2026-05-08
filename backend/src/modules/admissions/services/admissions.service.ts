@@ -1,36 +1,50 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
+import { AdmissionStepStatus } from '@prisma/client';
 import { PrismaService } from '@infra/database/prisma.service';
-import { CreateAdmissionDto, UpdateAdmissionStatusDto } from '../dto/admissions.dto';
+import {
+  CreateAdmissionDto,
+  UpdateAdmissionStatusDto,
+} from '../dto/admissions.dto';
 
 @Injectable()
 export class AdmissionsService {
+  private readonly logger = new Logger(AdmissionsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
+  // =========================
+  // 📊 STATS
+  // =========================
   async stats(tenantId: string) {
-    const pipeline = await this.prisma.admission.groupBy({
-      by: ['status'],
-      where: { tenantId },
-      _count: true,
-    });
+    const now = new Date();
+    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const map: Record<string, number> = {};
-    pipeline.forEach((r: any) => { map[r.status] = r._count; });
-
-    const [total, thisMonth] = await Promise.all([
+    const [pipeline, total, thisMonth] = await Promise.all([
+      this.prisma.admission.groupBy({
+        by: ['status'],
+        where: { tenantId },
+        _count: { _all: true },
+      }),
       this.prisma.admission.count({ where: { tenantId } }),
       this.prisma.admission.count({
-        where: {
-          tenantId,
-          createdAt: {
-            gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-          },
-        },
+        where: { tenantId, createdAt: { gte: startMonth } },
       }),
     ]);
 
-    const enrolled  = map['ENROLLED'] ?? 0;
+    const map: Record<string, number> = {};
+
+    for (const r of pipeline) {
+      map[r.status] = r._count._all;
+    }
+
+    const enrolled = map['ENROLLED'] ?? 0;
     const inquiries = map['INQUIRY'] ?? 0;
-    const convRate  = total > 0 ? Math.round((enrolled / total) * 100) : 0;
+    const convRate = total > 0 ? Math.round((enrolled / total) * 100) : 0;
 
     return {
       total,
@@ -42,206 +56,291 @@ export class AdmissionsService {
     };
   }
 
+  // =========================
+  // 📋 LIST (Ultimate Query Engine)
+  // =========================
   async list(
     tenantId: string,
-    filters: { status?: string; source?: string; search?: string } = {},
+    filters: {
+      status?: string;
+      source?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    } = {},
   ) {
+    const startTime = Date.now();
+    const traceId = `adm-list-${tenantId}-${startTime}`;
+
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.max(1, Math.min(100, filters.limit ?? 50));
+
     const where: any = { tenantId };
 
     if (filters.status) where.status = filters.status;
-    if (filters.source) where.source = filters.source;
+    if (filters.source)
+      where.source = filters.source.trim().toUpperCase();
 
-    if (filters.search) {
-      const s = filters.search;
+    // 🔍 Search (Safe + Fast-ready)
+    if (filters.search?.trim()) {
+      const s = filters.search.trim();
+
+      if (s.length > 50) {
+        throw new BadRequestException('Search query too long');
+      }
+
+      const normalizedPhone = s.replace(/\D/g, '');
 
       where.OR = [
         { firstName: { contains: s, mode: 'insensitive' } },
         { lastName: { contains: s, mode: 'insensitive' } },
-
-        // 🔹 Father
-        { fatherFirstName: { contains: s, mode: 'insensitive' } },
-        { fatherLastName: { contains: s, mode: 'insensitive' } },
-
-        // 🔹 Mother
-        { motherFirstName: { contains: s, mode: 'insensitive' } },
-        { motherLastName: { contains: s, mode: 'insensitive' } },
-
-        // 🔹 Guardian
-        { guardianFirstName: { contains: s, mode: 'insensitive' } },
-        { guardianLastName: { contains: s, mode: 'insensitive' } },
-
-        // 🔹 Phones
-        { guardianPhone: { contains: s } },
-        { alternatePhone: { contains: s } },
-
-        // 🔹 Email
-	{ fatherEmail: { contains: s, mode: 'insensitive' } },
-	{ motherEmail: { contains: s, mode: 'insensitive' } },
-        //{ email: { contains: s, mode: 'insensitive' } },
+        ...(normalizedPhone
+          ? [{ guardianPhone: { contains: normalizedPhone } }]
+          : []),
       ];
     }
 
-    return this.prisma.admission.findMany({
-      where,
-      orderBy: [{ followUpDate: 'asc' }, { createdAt: 'desc' }],
-      take: 200,
+    const [data, total] = await Promise.all([
+      this.prisma.admission.findMany({
+        where,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+
+          // 👨‍👩‍👧 Parent Info
+          fatherFirstName: true,
+          fatherLastName: true,
+          motherFirstName: true,
+          motherLastName: true,
+
+          // 📞 Contact
+          guardianPhone: true,
+          alternatePhone: true,
+          email: true,
+
+          // 📍 Address
+          addressLine1: true,
+          addressLine2: true,
+          city: true,
+          state: true,
+          pincode: true,
+
+          // 🎯 Status
+          status: true,
+          source: true,
+          followUpDate: true,
+
+          createdAt: true,
+        },
+        orderBy: [
+          { followUpDate: { sort: 'asc', nulls: 'last' } },
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.admission.count({ where }),
+    ]);
+
+    const lastPage = Math.max(1, Math.ceil(total / limit));
+
+    if (total > 0 && page > lastPage) {
+      throw new BadRequestException(
+        `Page ${page} out of bounds. Max: ${lastPage}`,
+      );
+    }
+
+    this.logger.debug({
+      traceId,
+      event: 'ADMISSION_LIST_FETCH',
+      tenantId,
+      total,
+      page,
+      limit,
+      latencyMs: Date.now() - startTime,
     });
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        lastPage,
+      },
+    };
   }
 
+  // =========================
+  // 🔍 GET BY ID
+  // =========================
   async getById(tenantId: string, id: string) {
-    const a = await this.prisma.admission.findFirst({
+    const admission = await this.prisma.admission.findFirst({
       where: { id, tenantId },
-      include: { activities: { orderBy: { createdAt: 'desc' } } },
+      include: {
+        activities: { orderBy: { createdAt: 'desc' } },
+      },
     });
 
-    if (!a) throw new NotFoundException('Admission not found');
+    if (!admission) {
+      throw new NotFoundException('Admission not found');
+    }
 
-    return a;
+    return admission;
   }
 
+  // =========================
+  // ➕ CREATE
+  // =========================
   async create(
     tenantId: string,
     dto: CreateAdmissionDto,
     actorId: string,
   ) {
-    const admission = await this.prisma.admission.create({
-      data: {
-        tenantId,
+    if (!dto.firstName?.trim()) {
+      throw new BadRequestException('First name is required');
+    }
 
-        // 🔹 Student
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
-        gender: dto.gender ?? null,
+    return this.prisma.$transaction(async (tx) => {
+      const admission = await tx.admission.create({
+        data: {
 
-        // 🔹 Contact
-        guardianPhone: dto.phone ?? null,
-        alternatePhone: dto.alternatePhone ?? null,
-        fatherEmail: dto.fatherEmail ?? null,
-	motherEmail: dto.motherEmail ?? null,
+          tenantId,
+          branchId: dto.branchId,
+          academicYear: dto.academicYear || '2024-2025',
 
+          firstName: dto.firstName.trim(),
+          lastName: dto.lastName?.trim() ?? null,
 
-        // 🔹 Parent Info
-        fatherFirstName: dto.fatherFirstName ?? null,
-        fatherLastName: dto.fatherLastName ?? null,
+          fatherFirstName: dto.fatherFirstName ?? null,
+          fatherLastName: dto.fatherLastName ?? null,
+          motherFirstName: dto.motherFirstName ?? null,
+          motherLastName: dto.motherLastName ?? null,
 
-        motherFirstName: dto.motherFirstName ?? null,
-        motherLastName: dto.motherLastName ?? null,
+          guardianPhone: dto.phone ?? null,
+          alternatePhone: dto.alternatePhone ?? null,
+          email: dto.email ?? null,
 
-        guardianFirstName: dto.guardianFirstName ?? null,
-        guardianLastName: dto.guardianLastName ?? null,
+          addressLine1: dto.addressLine1 ?? null,
+          addressLine2: dto.addressLine2 ?? null,
+          city: dto.city ?? null,
+          state: dto.state ?? null,
+          pincode: dto.pincode ?? null,
 
-        // 🔹 Academic
-        academicYear: dto.academicYear,
+          source: dto.source?.trim().toUpperCase() ?? 'DIRECT',
+          notes: dto.notes ?? null,
 
-        // 🔹 Address
-        addressLine1: dto.addressLine ?? null,
-        city: dto.city ?? null,
-        state: dto.state ?? null,
-        pincode: dto.pincode ?? null,
+          followUpDate: dto.followUpDate
+            ? new Date(dto.followUpDate)
+            : null,
 
-        // 🔹 Source
-        source: (dto.source ?? 'DIRECT') as any,
+          status: 'INQUIRY' as AdmissionStepStatus,
+        },
+      });
 
-        // 🔹 Notes
-	//
-	branchId: dto.branchId,
-        notes: dto.notes ?? null,
-        followUpDate: dto.followUpDate
-          ? new Date(dto.followUpDate)
-          : null,
+      await tx.admissionActivity.create({
+        data: {
 
-        // 🔹 Status
-        status: 'INQUIRY' as any,
-      },
+          admissionId: admission.id,
+          tenantId,
+          actorId,
+          action: 'INQUIRY_CREATED',
+          note: dto.notes ?? null,
+        },
+      });
+
+      return admission;
     });
-
-    await this.prisma.admissionActivity.create({
-      data: {
-        admissionId: admission.id,
-        tenantId,
-        actorId,
-        action: 'INQUIRY_CREATED',
-        note: dto.notes ?? null,
-      } as any,
-    });
-
-    return admission;
   }
 
+  // =========================
+  // 🔄 UPDATE STATUS
+  // =========================
   async updateStatus(
     tenantId: string,
     id: string,
     dto: UpdateAdmissionStatusDto,
     actorId: string,
   ) {
-    const a = await this.prisma.admission.findFirst({
-      where: { id, tenantId },
+    const existing = await this.getById(tenantId, id);
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.admission.update({
+        where: {
+          id,
+          updatedAt: existing.updatedAt, // 🔒 optimistic locking
+        },
+        data: {
+
+          status: dto.status as any as any,
+          rejectionReason: dto.rejectionReason ?? null,
+          followUpDate: dto.followUpDate
+            ? new Date(dto.followUpDate)
+            : null,
+        },
+      });
+
+      await tx.admissionActivity.create({
+        data: {
+
+          admissionId: id,
+          tenantId,
+          actorId,
+          action: `STATUS_${dto.status}`,
+          note: dto.note ?? null,
+        },
+      });
+
+      return updated;
     });
-
-    if (!a) throw new NotFoundException('Admission not found');
-
-    const updated = await this.prisma.admission.update({
-      where: { id },
-      data: {
-        status: dto.status as any,
-        rejectionReason: dto.rejectionReason ?? null,
-        followUpDate: dto.followUpDate
-          ? new Date(dto.followUpDate)
-          : null,
-      },
-    });
-
-    await this.prisma.admissionActivity.create({
-      data: {
-        admissionId: id,
-        tenantId,
-        actorId,
-        action: `STATUS_${dto.status}`,
-        note: dto.note ?? null,
-      },
-    });
-
-    return updated;
   }
 
+  // =========================
+  // 📝 ADD NOTE
+  // =========================
   async addNote(
     tenantId: string,
     id: string,
     note: string,
     actorId: string,
   ) {
-    const a = await this.prisma.admission.findFirst({
-      where: { id, tenantId },
-    });
+    await this.getById(tenantId, id);
 
-    if (!a) throw new NotFoundException('Admission not found');
+    return this.prisma.$transaction(async (tx) => {
+      await tx.admission.update({
+        where: { id },
+        data: {
+ notes: note },
+      });
 
-    await this.prisma.admission.update({
-      where: { id },
-      data: { notes: note },
-    });
+      return tx.admissionActivity.create({
+        data: {
 
-    return this.prisma.admissionActivity.create({
-      data: {
-        admissionId: id,
-        tenantId,
-        actorId,
-        action: 'NOTE_ADDED',
-        note,
-      },
+          admissionId: id,
+          tenantId,
+          actorId,
+          action: 'NOTE_ADDED',
+          note,
+        },
+      });
     });
   }
 
+  // =========================
+  // 📊 SOURCE REPORT
+  // =========================
   async sourceReport(tenantId: string) {
-    const bySource = await this.prisma.admission.groupBy({
+    const rows = await this.prisma.admission.groupBy({
       by: ['source'],
       where: { tenantId },
-      _count: true,
+      _count: { _all: true },
     });
 
-    return bySource
-      .map((r: any) => ({ source: r.source, count: r._count }))
-      .sort((a: any, b: any) => b.count - a.count);
+    return rows.map((r) => ({
+      source: r.source ?? 'UNKNOWN',
+      count: r._count._all,
+    }));
   }
 }

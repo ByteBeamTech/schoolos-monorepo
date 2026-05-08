@@ -1,35 +1,47 @@
-enum UserRole {
-  SUPER_ADMIN
-  SCHOOL_OWNER
-  SCHOOL_ADMIN
-  PRINCIPAL
-  ACCOUNTANT
-  TEACHER
-  CLASS_TEACHER
-  LIBRARIAN
-  NURSE
-  PARENT
-  STUDENT
-  STAFF
-  VICE_PRINCIPAL
-  HR_MANAGER
-  RECEPTIONIST
-  TRANSPORT_MANAGER
-}
-
-enum TenantStatus {
-  TRIAL
-  ACTIVE
-  SUSPENDED
-  CANCELLED
-}
+// ==========================================================
+// 🌍 GLOBAL & PLATFORM (The Stable Contracts)
+// ==========================================================
 
 enum Region {
   IN
   US
-  EU
   UK
+  EU
   GLOBAL
+}
+
+enum Country {
+  INDIA
+  USA
+  UK
+  UAE
+  OTHER
+  UNKNOWN
+}
+
+enum Language {
+  ENGLISH
+  HINDI
+  ARABIC
+  OTHER
+  UNKNOWN
+}
+
+enum SubscriptionTier {
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum PricingModel {
+  FLAT_FEE
+  PER_STUDENT
+}
+
+enum PaymentGatewayProvider {
+  STRIPE
+  RAZORPAY
+  CASH
 }
 
 enum Currency {
@@ -38,81 +50,22 @@ enum Currency {
   GBP
   EUR
   AED
+  UNKNOWN
 }
 
-enum PricingModel {
-  PER_STUDENT
-  SUBSCRIPTION
-  HYBRID
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
 }
 
-enum SubscriptionTier {
-  STARTER
-  GROWTH
-  PRO
-  ENTERPRISE
-}
-
-enum SubscriptionStatus {
-  TRIAL
-  ACTIVE
-  PAST_DUE
-  SUSPENDED
-  CANCELLED
-}
-
-enum PaymentGatewayProvider {
-  RAZORPAY
-  STRIPE
-  PAYPAL
-}
-
-enum PaymentStatus {
-  PENDING
-  PROCESSING
-  SUCCESS
-  FAILED
-  REFUNDED
-  PARTIALLY_REFUNDED
-}
-
-enum InvoiceStatus {
-  DRAFT
-  SENT
-  PARTIALLY_PAID
-  PAID
-  OVERDUE
-  CANCELLED
-}
-
-enum DiscountType {
-  PERCENTAGE
-  FLAT
-}
-
-enum DiscountCategory {
-  SIBLING
-  MERIT
-  STAFF_CHILD
-  FINANCIAL_HARDSHIP
-  PRINCIPAL_OVERRIDE
-  SCHOLARSHIP
-  EARLY_PAYMENT
-  CUSTOM
-}
-
-enum ApprovalStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  REVOKED
-}
-
-enum RefundStatus {
-  PENDING
-  PROCESSING
-  SUCCESS
-  FAILED
+enum DeviceType {
+  DESKTOP
+  MOBILE
+  TABLET
+  OTHER
+  UNKNOWN
 }
 
 enum NotificationChannel {
@@ -124,65 +77,141 @@ enum NotificationChannel {
 
 enum NotificationStatus {
   PENDING
+  SCHEDULED
   SENT
   DELIVERED
-  FAILED
   READ
-}
-
-enum AuditAction {
-  CREATE
-  UPDATE
-  DELETE
-  LOGIN
-  LOGOUT
-  APPROVE
-  REJECT
-  REVOKE
-  PAYMENT_INITIATED
-  PAYMENT_SUCCESS
-  PAYMENT_FAILED
-  REFUND_INITIATED
-  DISCOUNT_APPLIED
-  INVOICE_GENERATED
-  RECEIPT_GENERATED
-}
-
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-  LATE
-  HALF_DAY
-  ON_LEAVE
-  HOLIDAY
-}
-
-enum LeaveStatus {
-  PENDING
-  APPROVED
-  REJECTED
+  FAILED
   CANCELLED
 }
 
-enum ExamType {
-  UNIT_TEST
-  MID_TERM
-  FINAL
-  PRACTICAL
-  INTERNAL
+// ================== 👥 USER, AUTH & SESSIONS ==================
+
+enum UserRole {
+  SUPER_ADMIN
+  SCHOOL_OWNER
+  SCHOOL_ADMIN
+  PRINCIPAL
+  VICE_PRINCIPAL
+  ACCOUNTANT
+  TEACHER
+  CLASS_TEACHER
+  LIBRARIAN
+  NURSE
+  HR_MANAGER
+  RECEPTIONIST
+  TRANSPORT_MANAGER
+  STAFF
+  PARENT
+  STUDENT
+  UNKNOWN
 }
 
-enum BookIssueStatus {
-  ISSUED
-  RETURNED
-  OVERDUE
-  LOST
+enum SessionStatus {
+  ACTIVE
+  EXPIRED
+  LOGGED_OUT
+  REVOKED
 }
 
-enum TransportRouteStatus {
+enum OTPStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  FAILED
+}
+
+enum TenantStatus {
+  TRIAL
   ACTIVE
   INACTIVE
+  SUSPENDED
+  CANCELLED
+  ARCHIVED
+  DELETED
 }
+
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  ARCHIVED
+  DELETED
+}
+
+// ================== 💳 SAAS BILLING, LICENSING & ORDERS ==================
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  INACTIVE
+  EXPIRED
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+enum LicenseType {
+  PER_STUDENT
+  PER_BRANCH
+  UNLIMITED
+  MODULE_BASED
+}
+
+enum LicenseStatus {
+  UNUSED
+  ACTIVE
+  EXPIRED
+  REVOKED
+  PENDING_ACTIVATION
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CHEQUE
+  BANK_TRANSFER
+  UPI
+  CREDIT_CARD
+  DEBIT_CARD
+  OTHER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  EXPIRED
+  CANCELLED
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  DISCONNECTED
+  PENDING
+  ERROR
+}
+
+// ================== 🛡️ FRAUD & SECURITY ==================
 
 enum FraudAlertSeverity {
   LOW
@@ -198,23 +227,221 @@ enum FraudAlertStatus {
   FALSE_POSITIVE
 }
 
-enum DunningStatus {
-  SCHEDULED
-  SENT
-  SUCCESS
-  FAILED
-  EXHAUSTED
+// ================== 💸 ACCOUNTING & FINANCE ==================
+
+enum TransactionType {
+  DEBIT
+  CREDIT
 }
 
-enum GuardianRelation {
-  FATHER
-  MOTHER
-  GRANDFATHER
-  GRANDMOTHER
-  UNCLE
-  AUNT
-  SIBLING
-  LEGAL_GUARDIAN
+enum AccountType {
+  CASH
+  BANK
+  LEDGER
+  EQUITY
+  LIABILITY
+}
+
+enum TaxType {
+  NONE
+  GST_5
+  GST_12
+  GST_18
+  TDS
+  EXEMPT
+}
+
+enum AccountingPeriodStatus {
+  OPEN
+  CLOSED
+  ARCHIVED
+}
+
+enum ExpenseCategory {
+  SALARY
+  RENT
+  UTILITIES
+  MAINTENANCE
+  MARKETING
+  STATIONERY
+  TRANSPORT_FUEL
+  EVENTS
+  LEGAL
+  TAX
+  PETTY_CASH
+  MISC
+}
+
+enum ExpenseStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PAID
+  REJECTED
+}
+
+// ================== 🛡️ ADMISSIONS & WORKFLOW ==================
+
+enum AdmissionStep {
+  FORM_SUBMISSION
+  DOCUMENT_VERIFICATION
+  INTERVIEW
+  FEE_PAYMENT
+  FINAL_REVIEW
+  ADMISSION_GRANTED
+  UNKNOWN
+}
+
+enum AdmissionStepStatus {
+UNDER_REVIEW
+  INQUIRY
+  DOCUMENT_UPLOAD
+  VERIFICATION
+  FEE_DEPOSIT
+  CONVERTED
+  WAITLISTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum AdmissionType {
+  REGULAR
+  RTE
+  STAFF_WARD
+  SCHOLARSHIP
+}
+
+enum AdmissionAction {
+  CREATE
+  UPDATE
+  SUBMIT
+  RE_SUBMIT
+  DOCUMENT_UPLOAD
+  INTERVIEW_SCHEDULE
+  APPROVE
+  REJECT
+  COMMENT
+  CONVERT
+  REPLAY
+}
+
+// ================== 📅 APPOINTMENTS & VISITORS ==================
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  RESCHEDULED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum AppointmentMode {
+  IN_PERSON
+  VIRTUAL
+  PHONE_CALL
+}
+
+enum VisitorType {
+  PARENT
+  VENDOR
+  ALUMNI
+  GUEST
+  DELIVERY
+  PROSPECTIVE_ADMISSION
+  OTHER
+}
+
+enum VisitorPassStatus {
+  PENDING
+  APPROVED
+  CHECKED_IN
+  CHECKED_OUT
+  REJECTED
+  EXPIRED
+}
+
+// ================== 📄 DOCUMENT & FILE HANDLING ==================
+
+enum DocumentStatus {
+  PENDING
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  RE_UPLOAD_REQUESTED
+}
+
+enum UploadStatus {
+  PENDING
+  UPLOADING
+  COMPLETED
+  FAILED
+}
+
+enum DocumentType {
+  AADHAAR
+  APAAR
+  BIRTH_CERTIFICATE
+  TRANSFER_CERTIFICATE
+  MARKSHEET
+  STUDENT_PHOTO
+  GUARDIAN_AADHAAR
+  GUARDIAN_ID
+  GUARDIAN_PHOTO
+  FAMILY_PHOTO
+  OTHER
+  UNKNOWN
+}
+
+// ================== 🎓 ACADEMICS & STUDENT CORE ==================
+
+enum StudentStatus {
+  ENROLLED
+  ACTIVE
+  INACTIVE
+  ALUMNI
+  DROPPED
+  TRANSFERRED
+  ARCHIVED
+  DELETED
+}
+
+enum FeeStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  ON_LEAVE
+  HOLIDAY
+}
+
+enum ExamType {
+  UNIT_TEST
+  MID_TERM
+  FINAL
+  PRACTICAL
+  INTERNAL
+}
+
+enum ResultStatus {
+  DRAFT
+  PUBLISHED
+  LOCKED
+}
+
+enum SubjectType {
+  THEORY
+  PRACTICAL
+  LAB
+  VOCATIONAL
+  EXTRACURRICULAR
   OTHER
 }
 
@@ -223,99 +450,237 @@ enum Gender {
   FEMALE
   OTHER
   PREFER_NOT_TO_SAY
+  UNKNOWN
 }
 
-enum ResourceType {
-  CLASSROOM
-  LAB
-  AUDITORIUM
-  SPORTS_GROUND
-  MEETING_ROOM
-  LIBRARY_HALL
+enum BloodGroup {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+  UNKNOWN
+}
+
+enum Religion {
+  HINDU
+  MUSLIM
+  SIKH
+  CHRISTIAN
+  JAIN
+  BUDDHIST
   OTHER
+  UNKNOWN
 }
 
-enum BookingStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  COMPLETED
-}
+// ================== 🏗️ VENDOR, PROCUREMENT & LIBRARY ==================
 
-enum ExpenseCategory {
-  UTILITIES
+enum VendorType {
   STATIONERY
-  MAINTENANCE
-  SALARIES
+  UNIFORM
+  CATERING
   TRANSPORT
-  EVENTS
-  EQUIPMENT
-  PETTY_CASH
+  MAINTENANCE
+  TECHNOLOGY
+  FURNITURE
   OTHER
 }
 
-enum CertificateType {
-  TRANSFER
-  BONAFIDE
-  CHARACTER
-  ACHIEVEMENT
-  MIGRATION
-  CONDUCT
-}
-
-enum AdmissionStatus {
-  INQUIRY
-  APPLIED // पुराना फ्लो
-  DOCUMENT_UPLOAD // नया (Part 2 से)
-  SCREENING // पुराना फ्लो
-  VERIFICATION // नया (Part 2 से)
-  WAITLISTED
-  FEE_DEPOSIT // नया (Part 2 से)
-  ENROLLED // (इसे CONVERTED भी कह सकते हैं)
-  REJECTED
-  WITHDRAWN
-}
-
-enum BranchStatus {
+enum PurchaseOrderStatus {
   DRAFT
-  ACTIVE
-  SUSPENDED
+  PENDING_APPROVAL
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
 }
 
-enum LicenseType {
-  BRANCH
-  TENANT
+enum LibraryMemberType {
+  STUDENT
+  TEACHER
+  STAFF
+  ALUMNI
+  EXTERNAL
 }
 
-enum LicenseStatus {
-  UNUSED
-  ACTIVE
-  EXPIRED
-  REVOKED
+enum BookIssueStatus {
+  ISSUED
+  RETURNED
+  OVERDUE
+  LOST
+  DAMAGED
 }
 
-enum OrderStatus {
+enum AssetStatus {
+  FUNCTIONAL
+  DAMAGED
+  UNDER_REPAIR
+  DISPOSED
+  LOST
+}
+
+enum TransportStatus {
+  IDLE
+  EN_ROUTE
+  DELAYED
+  COMPLETED
+  CANCELLED
+  MAINTENANCE
+}
+
+// ================== 📝 AUDIT, STAFF & CONTENT ==================
+
+enum ApprovalStatus {
   PENDING
-  PAID
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ActorType {
+  USER
+  ADMIN
+  SYSTEM
+  API
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  RESTORE
+  LOGIN
+  LOGOUT
+  PASSWORD_CHANGE
+  PASSWORD_RESET_REQUEST
+  MFA_ENABLE
+  MFA_DISABLE
+  SESSION_REVOKE
+  UNAUTHORIZED_ACCESS
+  PAYMENT_INITIATED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  REFUND_PROCESSED
+  RESULT_PUBLISHED
+  RESULT_LOCKED
+  ATTENDANCE_OVERRIDE
+  ADMISSION_CONVERTED
+  IMPORT
+  EXPORT
+  SYSTEM_ACTION
+}
+
+enum StaffStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+  EXITED
+  SUSPENDED
+  ARCHIVED
+  DELETED
+}
+
+enum DunningStatus {
+  SCHEDULED
+  FAILED
+  SUCCESS
+}
+
+enum StaffType {
+  TEACHING
+  NON_TEACHING
+}
+
+enum DiscountSource {
+  USER
+  SYSTEM
+  IMPORT
+}
+
+enum RefundStatus {
+  PENDING
+  COMPLETED
   FAILED
 }
 
 enum RelationType {
-  SIBLING
-  COUSIN
-  RELATIVE
-  OTHER
+  FATHER
+  MOTHER
+  GUARDIAN
+}
+
+enum Category {
+  GENERAL
+  OBC
+  SC
+  ST
 }
 
 enum AdmissionMode {
-  CRM
-  DIRECT
+  ONLINE
+  OFFLINE
 }
 
 enum ApplicationStatus {
   PENDING
-  REVIEWED
+  REVIEWING
   APPROVED
   REJECTED
-  CONVERTED
+}
+
+enum GuardianRelation {
+  FATHER
+  MOTHER
+  OTHER
+}
+
+enum SiblingRelation {
+  BROTHER
+  SISTER
+}
+
+enum TransportRouteStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum LateFeeStatus {
+  ACTIVE
+  PAID
+  WAIVED
+  REVERSED
+}
+
+enum CronStatus {
+  SUCCESS
+  FAILED
+  SKIPPED // when lock not acquired / already processed
+  DEFERRED // backpressure me delay hua
+}
+
+enum CronSkipReason {
+  LOCK_NOT_ACQUIRED
+  ALREADY_PROCESSED
+  BACKPRESSURE
+  MISSED_WINDOW_EXCEEDED
 }

@@ -12,7 +12,7 @@ export class LicenseService {
       where: {
         tenantId,
         branchId,
-        type:      'BRANCH',
+        type:      'PER_BRANCH',
         status:    'ACTIVE',
         expiresAt: { gt: new Date() },
       },
@@ -24,7 +24,7 @@ export class LicenseService {
         where: {
           tenantId,
           branchId: null,
-          type:     'TENANT',
+          type:     'PER_STUDENT',
           status:   'ACTIVE',
           expiresAt: { gt: new Date() },
         },
@@ -48,7 +48,7 @@ export class LicenseService {
 
     // Student model uses `isActive: boolean`, not `status: string`
     const currentCount = await prisma.student.count({
-      where: license.type === 'BRANCH'
+      where: license.type === 'PER_BRANCH'
         ? { branchId, isActive: true }
         : { tenantId, isActive: true },
     });

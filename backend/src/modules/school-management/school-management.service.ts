@@ -217,7 +217,7 @@ export class SchoolManagementService {
   async createSubject(tenantId: string, dto: CreateSubjectDto, actorId: string) {
     const existing = await this.prisma.subject.findFirst({ where: { tenantId, name: dto.name } });
     if (existing) throw new ConflictException(`Subject "${dto.name}" already exists.`);
-    const subject = await this.prisma.subject.create({ data: { tenantId, name: dto.name, code: dto.code ?? null, description: dto.description ?? null } });
+    const subject = await this.prisma.subject.create({ data: { tenantId, name: dto.name, code: dto.code ?? null } });
     await this.audit.logCreate({ tenantId, actorId, entityType: 'Subject', entityId: subject.id, after: { name: subject.name } });
     return subject;
   }
@@ -236,7 +236,7 @@ export class SchoolManagementService {
     const existing = await this.prisma.feeType.findFirst({ where: { tenantId, name: dto.name } });
     if (existing) throw new ConflictException(`Fee type "${dto.name}" already exists.`);
     const feeType = await this.prisma.feeType.create({
-      data: { tenantId, name: dto.name, description: dto.description ?? null, isMandatory: dto.isMandatory ?? false, isRecurring: dto.isRecurring ?? true },
+      data: { tenantId, name: dto.name, isMandatory: dto.isMandatory ?? false, isRecurring: dto.isRecurring ?? true },
     });
     await this.audit.logCreate({ tenantId, actorId, entityType: 'FeeType', entityId: feeType.id, after: { name: feeType.name } });
     return feeType;

@@ -36,6 +36,9 @@ export enum AdmGender {
 }
 
 export class CreateAdmissionDto {
+  addressLine1?: string;
+  fatherEmail?: string;
+  email?: string;
   // 🔹 Student Info
   @ApiProperty()
   @IsString()
@@ -82,7 +85,7 @@ export class CreateAdmissionDto {
   @ApiPropertyOptional()
   @IsEmail()
   @IsOptional()
-  fatherEmail?: string;
+  // DUPLICATE REMOVED:   fatherEmail?: string;
 
   // 🔹 Mother
   @ApiPropertyOptional()
@@ -127,7 +130,12 @@ export class CreateAdmissionDto {
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
-  addressLine?: string;
+  // DUPLICATE REMOVED:   addressLine1?: string;
+
+   @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  addressLine2?: string;
 
   @ApiPropertyOptional()
   @IsString()
@@ -168,6 +176,9 @@ export class CreateAdmissionDto {
 }
 
 export class UpdateAdmissionStatusDto {
+  addressLine1?: string;
+  fatherEmail?: string;
+  email?: string;
   @ApiProperty({ enum: AdmStatus })
   @IsEnum(AdmStatus)
   status!: AdmStatus;

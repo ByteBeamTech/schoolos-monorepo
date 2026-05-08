@@ -86,7 +86,7 @@ export class LateFeeService {
         if (lastFee && new Date(lastFee.appliedAt) >= today) continue;
 
         // Invoice has no lateFeeAmount field — use LateFee relation model
-        await this.prisma.lateFee.create({
+        await (this.prisma as any).lateFee.create({
           data: {
             tenantId: invoice.tenantId,
             invoiceId:   invoice.id,

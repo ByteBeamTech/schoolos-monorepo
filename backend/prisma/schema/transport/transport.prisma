@@ -1,6 +1,7 @@
 model TransportRoute {
   id            String                @id @default(cuid())
   tenantId      String
+  branchId      String?
   name          String
   description   String?
   status        TransportRouteStatus  @default(ACTIVE)
@@ -12,9 +13,12 @@ model TransportRoute {
   currency      Currency              @default(INR)
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
+  tenant        Tenant                @relation(fields: [tenantId], references: [id])
+  branch        Branch?               @relation(fields: [branchId], references: [id])
   assignments   TransportAssignment[]
 
   @@index([tenantId])
+  @@index([tenantId, branchId])
 }
 
 model TransportAssignment {

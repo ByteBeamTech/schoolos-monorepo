@@ -1,127 +1,145 @@
-// path: apps/schoolos/backend/prisma/schema/students/student.prisma
-
 model Student {
-  id                String    @id @default(cuid())
-  tenantId          String
+  id String @id @default(cuid())
 
-  // ❌ removed global unique (multi-tenant safe)
-  admissionNumber   String
+  // 🔐 Multi-tenant core
+  tenantId String
+  branchId String
 
-  firstName         String
-  lastName          String
-  dateOfBirth       DateTime?
-  gender            Gender?
-  bloodGroup        String?
-  photoUrl          String?
+  // 🔢 Identity
+  admissionNumber String
+  admissionDate   DateTime?
 
-  sectionId         String?
-  rollNumber        String?
-  academicYear      String
+  // 🔄 Lifecycle & Type
+  status        StudentStatus @default(ENROLLED)
+  admissionType AdmissionType @default(REGULAR)
 
-  isActive          Boolean   @default(true)
+  // 🧾 Basic Info
+  firstName   String
+  lastName    String
+  dateOfBirth DateTime?
+  gender      Gender?
+  bloodGroup  BloodGroup?
+  religion    Religion?
+  category    Category?
+  photoUrl    String?
 
-  enrolledAt        DateTime  @default(now())
-  leftAt            DateTime?
+  // 🎓 Academic
+  sectionId      String?
+  rollNumber     String?
+  rollAssignedAt DateTime?
+  academicYear   String
 
+  // ⚙️ Flags
+  isActive             Boolean @default(true)
+  isDuplicate          Boolean @default(false)
+  duplicateOfStudentId String?
+
+  // 🚩 RTE Specific (Lucknow/UP Govt Compliance)
+  isRte            Boolean @default(false)
+  rteRegNumber     String?
+  rteApplicationId String?
+
+  // ⏱ Temporal
+  enrolledAt DateTime  @default(now())
+  leftAt     DateTime?
+
+  // 📦 Extra Data
   address           Json?
-  metadata          Json?     @default("{}")
+  metadata          Json? @default("{}")
   additionalDetails Json?
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // 🔐 Aadhaar safe storage
-  aadharHash        String?   @unique
-  aadharLast4       String?
+  // 🔐 Aadhaar (Encrypted/Hashed)
+  aadharHash      String?
+  aadharLast4     String?
+  aadharUpdatedAt DateTime?
+  aadharVerified  Boolean   @default(false)
 
-  admissionDate     DateTime?
-  branchId          String
+  // 🎓 APAAR (One Nation One ID)
+  apaarId       String?
+  apaarLinkedAt DateTime?
 
-  email             String?
-  phone             String?
+  // 📞 Contact
+  email String?
+  phone String?
 
-  familyId          String?
+  // 🏥 Health
+  heightCm        Float?
+  weightKg        Float?
+  lastHealthCheck DateTime?
 
-  heightCm          Float?
-  weightKg          Float?
-  lastHealthCheck   DateTime?
+  // 🏫 Previous School Info
+  previousClass          String?
+  previousSchool         String?
+  previousSchoolTcNumber String?
 
-  previousClass     String?
-  previousSchool    String?
+  // 🔐 User/Staff Relations
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id])
 
-  isDuplicate       Boolean   @default(false)
+  staffId String?
+  staff   Staff?  @relation("StudentStaff", fields: [staffId], references: [id])
 
-  // 🔗 Relations
-  attendances         Attendance[]
-  discounts           Discount[]
-  feeAssignments      FeeAssignment[]
-  guardianLinks       GuardianStudent[]
-  invoices            Invoice[]
+  referredByStaffId String?
+  referredByStaff   Staff?  @relation("StudentReferral", fields: [referredByStaffId], references: [id])
 
-  family              Family?               @relation(fields: [familyId], references: [id])
-  section             Section?              @relation(fields: [sectionId], references: [id])
-  tenant              Tenant                @relation(fields: [tenantId], references: [id])
+  // 🏫 House & Family
+  houseId  String?
+  house    House?  @relation("HouseStudents", fields: [houseId], references: [id])
+  familyId String?
+  family   Family? @relation(fields: [familyId], references: [id])
 
-  relatedToMe         StudentRelationship[] @relation("RelatedTo")
-  relations           StudentRelationship[] @relation("StudentRelations")
+  // 🔥 ADMISSION ENGINE (The Clean Handshake)
+  // 1:1 - Current/Primary link
+  admissionApplicationId String?               @unique
+  admissionApplication   AdmissionApplication? @relation("PrimaryApplication", fields: [admissionApplicationId], references: [id])
+
+  // 1:N - Application History
+  admissionApplications AdmissionApplication[] @relation("StudentApplications")
+
+  // Relative Tracking in other applications
+  relativeInApplications AdmissionApplication[] @relation("CrmRelativeLink")
+
+  // 🔗 MODULE RELATIONS
+  duplicateOf Student?  @relation("DuplicateStudent", fields: [duplicateOfStudentId], references: [id])
+  duplicates  Student[] @relation("DuplicateStudent")
+
+  siblings  StudentSibling[] @relation("StudentSiblings")
+  siblingOf StudentSibling[] @relation("SiblingOf")
+
+  attendances    Attendance[]
+  discounts      Discount[]
+  feeAssignments FeeAssignment[]
+  guardianLinks  GuardianStudent[]
+  invoices       Invoice[]
+  documents      Document[]
+  lateFees       LateFee[]
+
+  section Section? @relation(fields: [sectionId], references: [id])
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  branch  Branch   @relation(fields: [branchId], references: [id])
+
+  relatedToMe StudentRelationship[] @relation("RelatedTo")
+  relations   StudentRelationship[] @relation("StudentRelations")
 
   transportAssignment TransportAssignment?
 
-  // 🔥 Indexes (optimized)
+  // 🔥 MULTI-TENANT & INTEGRITY RULES
   @@unique([tenantId, admissionNumber])
+  @@unique([tenantId, aadharHash])
+  @@unique([tenantId, apaarId])
+  @@unique([tenantId, admissionApplicationId])
+  @@unique([tenantId, sectionId, academicYear, rollNumber])
+  // 🚀 PERFORMANCE INDEXES
   @@index([tenantId])
   @@index([tenantId, branchId])
+  @@index([tenantId, status])
+  @@index([tenantId, sectionId])
+  @@index([sectionId, rollNumber])
+  @@index([tenantId, firstName, lastName])
   @@index([academicYear])
-  @@index([firstName, lastName])
   @@index([aadharLast4])
-}
-
-model Guardian {
-  id         String   @id @default(cuid())
-  tenantId   String
-
-  firstName  String
-  lastName   String
-
-  phone      String
-  altPhone   String?
-
-  email      String?
-  occupation String?
-
-  address    Json?
-  photoUrl   String?
-
-  isActive   Boolean  @default(true)
-
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // 🔗 Relations
-  studentLinks GuardianStudent[]
-  tenant       Tenant @relation(fields: [tenantId], references: [id])
-
-  @@unique([tenantId, phone])
-  @@index([tenantId])
   @@index([phone])
-}
-
-model GuardianStudent {
-  id         String   @id @default(cuid())
-
-  guardianId String
-  studentId  String
-
-  relation   String   // father, mother, guardian
-  isPrimary  Boolean  @default(false)
-
-  createdAt  DateTime @default(now())
-
-  // 🔗 Relations
-  guardian Guardian @relation(fields: [guardianId], references: [id])
-  student  Student  @relation(fields: [studentId], references: [id])
-
-  @@unique([guardianId, studentId])
-  @@index([studentId])
-  @@index([guardianId])
 }

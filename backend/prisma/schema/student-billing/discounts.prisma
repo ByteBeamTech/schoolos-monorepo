@@ -1,56 +1,140 @@
-model Discount {
-  id             String             @id @default(cuid())
-  tenantId       String
-  studentId      String
-  category       DiscountCategory
-  type           DiscountType
-  value          Decimal            @db.Decimal(10, 2)
-  reason         String?
-  notes          String?
-  validFrom      DateTime
-  validUntil     DateTime?
-  approvalStatus ApprovalStatus     @default(PENDING)
-  invoiceId      String?
-  revokedAt      DateTime?
-  revokedBy      String?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  student        Student            @relation(fields: [studentId], references: [id])
-  approvals      DiscountApproval[]
+// ==========================================================
+// 💸 PART 1: DISCOUNT ENGINE (Rule-Based & Approved)
+// ==========================================================
 
-  @@index([tenantId])
-  @@index([studentId])
-  @@index([approvalStatus])
+model Discount {
+  id             String @id @default(cuid())
+  tenantId       String
+  branchId       String
+  studentId      String
+  academicYearId String
+
+  categoryId String
+  category   DiscountCategory @relation(fields: [categoryId], references: [id])
+
+  type          DiscountType
+  value         Decimal      @db.Decimal(10, 2)
+  appliedAmount Decimal      @db.Decimal(12, 2) // Rule Output Snapshot
+  finalAmount   Decimal?     @db.Decimal(12, 2) // 🔥 Final value after stacking/caps
+
+  source   DiscountSource @default(USER)
+  priority Int            @default(1)
+
+  reason   String?
+  isActive Boolean @default(true)
+
+  validFrom  DateTime  @default(now())
+  validUntil DateTime?
+
+  approvalStatus ApprovalStatus @default(PENDING)
+  invoiceId      String?
+  paymentId      String? // Trace to payment reconciliation
+
+  // Audit Trail (The Golden Ledger)
+  createdById String
+  createdBy   User   @relation("DiscountCreator", fields: [createdById], references: [id])
+
+  revokedAt   DateTime?
+  revokedById String?
+  revokedBy   User?     @relation("DiscountRevoker", fields: [revokedById], references: [id])
+
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  branch    Branch             @relation(fields: [branchId], references: [id])
+  student   Student            @relation(fields: [studentId], references: [id])
+  approvals DiscountApproval[]
+
+  @@index([tenantId, branchId])
+  @@index([tenantId, studentId])
+  @@index([tenantId, invoiceId])
+  @@index([studentId, academicYearId])
+  @@index([categoryId])
+  @@index([approvalStatus, isActive])
 }
 
 model DiscountApproval {
-  id           String         @id @default(cuid())
-  discountId   String
-  requesterId  String
-  approverId   String?
+  id         String @id @default(cuid())
+  tenantId   String
+  branchId   String
+  discountId String
+
+  requesterId String // Who requested it
+  approverId  String? // Who approved/rejected it
+
   status       ApprovalStatus @default(PENDING)
   requestNote  String?
   approvalNote String?
-  requestedAt  DateTime       @default(now())
-  decidedAt    DateTime?
-  approver     User?          @relation("Approver", fields: [approverId], references: [id])
-  discount     Discount       @relation(fields: [discountId], references: [id])
-  requester    User           @relation("Requester", fields: [requesterId], references: [id])
 
-  @@index([discountId])
+  requestedAt DateTime  @default(now())
+  decidedAt   DateTime?
+
+  approver  User? @relation("Approver", fields: [approverId], references: [id])
+  requester User  @relation("Requester", fields: [requesterId], references: [id])
+
+  discount Discount @relation(fields: [discountId], references: [id])
+
+  @@index([tenantId, branchId])
+  @@index([discountId, status])
 }
 
-model LateFee {
-  id          String    @id @default(cuid())
-  tenantId    String
-  invoiceId   String
-  amount      Decimal   @db.Decimal(12, 2)
-  daysOverdue Int
-  appliedAt   DateTime  @default(now())
-  waivedAt    DateTime?
-  waivedBy    String?
-  invoice     Invoice   @relation(fields: [invoiceId], references: [id])
+// ==========================================================
+// ⏰ PART 2: LATE FEE ENGINE (Penalty & Recovery)
+// ==========================================================
 
-  @@index([tenantId])
-  @@index([invoiceId])
+model LateFee {
+  id             String @id @default(cuid())
+  tenantId       String
+  branchId       String
+  invoiceId      String
+  studentId      String // Denormalized for rapid dashboard queries
+  academicYearId String
+
+  status   LateFeeStatus @default(ACTIVE)
+  currency Currency      @default(INR)
+
+  // Snapshots (Historical Integrity)
+  dueDate    DateTime
+  baseAmount Decimal? @db.Decimal(12, 2)
+  graceDays  Int?
+
+  // Money Trail (Invariant: finalAmount = amount - paidAmount - amountWaived)
+  amount       Decimal  @db.Decimal(12, 2)
+  taxAmount    Decimal  @default(0) @db.Decimal(12, 2)
+  paidAmount   Decimal  @default(0) @db.Decimal(12, 2)
+  amountWaived Decimal  @default(0) @db.Decimal(12, 2)
+  finalAmount  Decimal? @db.Decimal(12, 2)
+
+  daysOverdue Int
+
+  // Audit Trail
+  waivedAt   DateTime?
+  waivedById String?
+  waivedBy   User?     @relation("LateFeeWaiver", fields: [waivedById], references: [id])
+
+  appliedById String?
+  appliedBy   User?   @relation("LateFeeApplier", fields: [appliedById], references: [id])
+
+  reversedAt   DateTime?
+  reversedById String?
+  reversedBy   User?     @relation("LateFeeReverser", fields: [reversedById], references: [id])
+
+  // Integration & Engine Trace
+  paymentId       String?
+  calculationType String  @default("FIXED")
+  engineVersion   Int     @default(1)
+  computationHash String?
+
+  reason String?
+  meta   Json?
+
+  appliedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+  student   Student  @relation(fields: [studentId], references: [id])
+
+  @@index([tenantId, branchId])
+  @@index([tenantId, studentId])
+  @@index([tenantId, invoiceId])
+  @@index([invoiceId, status])
 }

@@ -1,0 +1,31 @@
+model TeacherAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
+  teacherId String
+  subjectId String
+  classId   String
+  sectionId String
+
+  academicYearId String
+
+  isClassTeacher Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  teacher StaffProfile @relation(fields: [teacherId], references: [id])
+  subject Subject      @relation(fields: [subjectId], references: [id])
+  class   Class        @relation(fields: [classId], references: [id])
+  section Section      @relation(fields: [sectionId], references: [id])
+
+  // Prevent duplicate mapping
+  @@unique([teacherId, subjectId, classId, sectionId, academicYearId])
+  @@index([tenantId, branchId])
+  @@index([teacherId])
+  @@index([subjectId])
+  @@index([classId, sectionId])
+  @@index([academicYearId])
+}

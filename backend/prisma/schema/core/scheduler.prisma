@@ -1,0 +1,54 @@
+model TenantJobSchedule {
+  id           String    @id @default(cuid())
+  tenantId     String
+  jobName      String // e.g., "fee-reminders"
+  time         String    @default("08:00")
+  priority     Int       @default(5) // 1: High, 5: Low
+  missedWindow Int       @default(60) // Minutes
+  nextRunAt    DateTime
+  lastRunAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, jobName])
+  @@index([nextRunAt])
+}
+
+model CronExecutionLog {
+  id String @id @default(cuid())
+
+  tenantId String
+  branchId String?
+
+  tenantSlug String? // snapshot only
+  branchSlug String? // snapshot only
+
+  jobName     String
+  jobId       String
+  executionId String
+
+  scheduledFor DateTime
+  triggeredAt  DateTime
+  lagMs        Int
+  durationMs   Int?
+
+  attempt Int @default(1)
+
+  status CronStatus
+  error  String?
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@index([tenantId, jobName])
+  @@index([status])
+  @@index([jobId])
+  @@index([executionId])
+  @@index([tenantId, createdAt])
+  @@index([branchId])
+}

@@ -1,0 +1,27 @@
+model Subject {
+  id       String  @id @default(cuid())
+  tenantId String
+  branchId String?
+
+  name String
+  code String? // e.g., PHY-101, ENG-XII
+
+  // ⚙️ Status & Type
+  isActive Boolean     @default(true)
+  type     SubjectType @default(THEORY)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔗 Relations (Pro Version with Explicit Naming)
+  teacherPreferences TeacherSubjectPreference[] @relation("SubjectTeachers")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id])
+  branch            Branch?             @relation(fields: [branchId], references: [id])
+  TeacherAssignment TeacherAssignment[]
+
+  // 🔒 Constraints & Performance
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, branchId])
+}

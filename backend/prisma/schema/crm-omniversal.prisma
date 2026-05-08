@@ -22,59 +22,72 @@ model Role {
 }
 
 model Campaign {
-  id        String    @id @default(cuid())
-  tenantId  String
-  branchId  String?
-  name      String
-  type      String
-  startDate DateTime
-  endDate   DateTime?
-  budget    Float?
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  leads     Lead[]
+  id                    String                 @id @default(cuid())
+  tenantId              String
+  branchId              String?
+  name                  String
+  type                  String
+  startDate             DateTime
+  endDate               DateTime?
+  budget                Float?
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  leads                 Lead[]
+  admissionApplications AdmissionApplication[]
 
   @@index([tenantId, branchId])
 }
 
 model LeadSource {
-  id        String   @id @default(cuid())
-  tenantId  String
-  name      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  leads     Lead[]
+  id                    String                 @id @default(cuid())
+  tenantId              String
+  name                  String
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  leads                 Lead[]
+  admissionApplications AdmissionApplication[]
 
   @@index([tenantId])
 }
 
 model Lead {
-  id                 String                @id @default(cuid())
-  tenantId           String
-  branchId           String
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
   parentName         String
   parentPhone        String
   parentEmail        String?
   studentName        String?
   gradeInterestedIn  String
   expectedEnrollYear Int
-  sourceId           String?
-  campaignId         String?
-  assignedToId       String?
-  referredById       String?
-  status             LeadStatus            @default(NEW)
-  temperature        LeadTemperature       @default(WARM)
-  applicationId      String?               @unique
-  notes              Json?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
-  tasks              FollowUpTask[]
-  interactions       InteractionLog[]
-  application        AdmissionApplication? @relation(fields: [applicationId], references: [id])
-  assignedTo         User?                 @relation("AssignedLeads", fields: [assignedToId], references: [id])
-  campaign           Campaign?             @relation(fields: [campaignId], references: [id])
-  referredBy         User?                 @relation("ReferredLeads", fields: [referredById], references: [id])
-  source             LeadSource?           @relation(fields: [sourceId], references: [id])
+
+  sourceId     String?
+  campaignId   String?
+  assignedToId String?
+  referredById String?
+
+  status      LeadStatus      @default(NEW)
+  temperature LeadTemperature @default(WARM)
+
+  // 🔗 1:1 FK
+  applicationId String? @unique
+
+  notes     Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔄 Relations
+  tasks        FollowUpTask[]
+  interactions InteractionLog[]
+
+  assignedTo User?       @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  campaign   Campaign?   @relation(fields: [campaignId], references: [id])
+  referredBy User?       @relation("ReferredLeads", fields: [referredById], references: [id])
+  source     LeadSource? @relation(fields: [sourceId], references: [id])
+
+  // ✅ DEFINING SIDE (FIXED)
+  application AdmissionApplication? @relation("LeadToApplication", fields: [applicationId], references: [id])
 
   @@index([tenantId, branchId, status])
   @@index([parentPhone])

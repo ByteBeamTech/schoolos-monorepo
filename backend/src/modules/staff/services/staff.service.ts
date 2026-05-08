@@ -18,46 +18,48 @@ export class StaffService {
   ) {}
 
   async create(tenantId: string, dto: CreateStaffDto, actorId: string) {
-    const existing = await this.prisma.staffProfile.findFirst({
+    // Guard: duplicate employeeId
+    const existing = await this.prisma.staff.findFirst({
       where: { tenantId, employeeId: dto.employeeId },
     });
     if (existing) {
-      throw new ConflictException(
-        `Employee ID "${dto.employeeId}" already exists.`,
-      );
+      throw new ConflictException(`Employee ID "${dto.employeeId}" already exists.`);
     }
 
+    // Guard: user exists
     const user = await this.prisma.user.findFirst({
       where: { id: dto.userId, tenantId },
     });
     if (!user) throw new NotFoundException(`User not found: ${dto.userId}`);
 
-    const userAlreadyStaff = await this.prisma.staffProfile.findUnique({
+    // Guard: user already linked to staff
+    const userAlreadyStaff = await this.prisma.staff.findUnique({
       where: { userId: dto.userId },
     });
     if (userAlreadyStaff) {
-      throw new ConflictException('User already has a staff profile.');
+      throw new ConflictException('User already has a staff record.');
     }
 
-    const staff = await this.prisma.staffProfile.create({
+    const staff = await this.prisma.staff.create({
       data: {
         tenantId,
+        branchId:      dto.branchId     ?? null,
         userId:        dto.userId,
         employeeId:    dto.employeeId,
         designation:   dto.designation,
         department:    dto.department    ?? null,
+        type:          dto.type          ?? 'TEACHING' as any,
         dateOfJoining: new Date(dto.dateOfJoining),
-        dateOfBirth:   dto.dateOfBirth   ? new Date(dto.dateOfBirth) : null,
-        qualification: dto.qualification ?? null,
-        experience:    dto.experience    ?? null,
         isActive:      true,
       },
-      include: { user: { select: { id: true, email: true, firstName: true, lastName: true, role: true } } },
+      include: {
+        user: { select: { id: true, email: true, firstName: true, lastName: true, role: true } },
+      },
     });
 
     await this.audit.logCreate({
       tenantId, actorId,
-      entityType: 'StaffProfile', entityId: staff.id,
+      entityType: 'Staff', entityId: staff.id,
       after: { employeeId: staff.employeeId, designation: staff.designation },
     });
 
@@ -74,11 +76,14 @@ export class StaffService {
     if (filters.department) where.department = filters.department;
     if (filters.isActive !== undefined) where.isActive = filters.isActive;
 
-    const staff = await this.prisma.staffProfile.findMany({
+    const staff = await this.prisma.staff.findMany({
       where,
       include: {
         user: {
           select: { id: true, email: true, firstName: true, lastName: true, role: true, phone: true },
+        },
+        profile: {
+          select: { qualification: true, experience: true, dateOfBirth: true, gender: true },
         },
       },
       orderBy: { user: { firstName: 'asc' } },
@@ -88,8 +93,8 @@ export class StaffService {
       const s = filters.search.toLowerCase();
       return staff.filter((st: any) =>
         st.user.firstName.toLowerCase().includes(s) ||
-        st.user.lastName.toLowerCase().includes(s) ||
-        st.employeeId.toLowerCase().includes(s) ||
+        st.user.lastName.toLowerCase().includes(s)  ||
+        st.employeeId.toLowerCase().includes(s)     ||
         st.designation.toLowerCase().includes(s),
       );
     }
@@ -98,10 +103,11 @@ export class StaffService {
   }
 
   async findById(tenantId: string, id: string) {
-    const staff = await this.prisma.staffProfile.findFirst({
+    const staff = await this.prisma.staff.findFirst({
       where:   { id, tenantId },
       include: {
-        user: { select: { id: true, email: true, firstName: true, lastName: true, role: true, phone: true } },
+        user:    { select: { id: true, email: true, firstName: true, lastName: true, role: true, phone: true } },
+        profile: { select: { qualification: true, experience: true, dateOfBirth: true, gender: true } },
       },
     });
     if (!staff) throw new NotFoundException(`Staff not found: ${id}`);
@@ -109,24 +115,26 @@ export class StaffService {
   }
 
   async findByUserId(tenantId: string, userId: string) {
-    const staff = await this.prisma.staffProfile.findFirst({
+    const staff = await this.prisma.staff.findFirst({
       where:   { userId, tenantId },
       include: {
         user: { select: { id: true, email: true, firstName: true, lastName: true, role: true } },
       },
     });
-    if (!staff) throw new NotFoundException(`Staff profile not found for user: ${userId}`);
+    if (!staff) throw new NotFoundException(`Staff not found for user: ${userId}`);
     return staff;
   }
 
-  async update(
-    tenantId: string, id: string,
-    dto: UpdateStaffDto, actorId: string,
-  ) {
+  async update(tenantId: string, id: string, dto: UpdateStaffDto, actorId: string) {
     const staff = await this.findById(tenantId, id);
-    const updated = await this.prisma.staffProfile.update({
+
+    const updated = await this.prisma.staff.update({
       where: { id },
-      data:  dto,
+      data:  {
+        ...(dto.designation && { designation: dto.designation }),
+        ...(dto.department  !== undefined && { department: dto.department }),
+        ...(dto.isActive    !== undefined && { isActive:   dto.isActive }),
+      },
       include: {
         user: { select: { id: true, email: true, firstName: true, lastName: true, role: true } },
       },
@@ -134,7 +142,7 @@ export class StaffService {
 
     await this.audit.logUpdate({
       tenantId, actorId,
-      entityType: 'StaffProfile', entityId: id,
+      entityType: 'Staff', entityId: id,
       before: { designation: staff.designation, department: staff.department },
       after:  dto,
     });

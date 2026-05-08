@@ -50,6 +50,7 @@ model FraudAlert {
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
+  @@unique([tenantId, entityType, entityId])
   @@index([tenantId, status])
   @@index([severity])
   @@index([createdAt]) // ← Added: For auditing fraud trends over time

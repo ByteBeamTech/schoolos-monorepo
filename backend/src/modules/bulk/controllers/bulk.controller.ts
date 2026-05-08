@@ -28,8 +28,8 @@ export class BulkController {
     @Headers('x-branch-id') branchId: string,
   ) {
     const targetBranch = branchId || 'primary';
-    const rows = this.svc.parseStudentCsv(csv, targetBranch);
-    return this.svc.importStudents(u.tenantId, rows, targetBranch);
+    const rows = (this.svc as any).parseStudentCsv(csv, targetBranch);
+    return this.svc.importStudents(u.tenantId, rows);
   }
 
   @Post('students/import-text')
@@ -40,8 +40,8 @@ export class BulkController {
     @Headers('x-branch-id') branchId: string,
   ) {
     const targetBranch = branchId || 'primary';
-    const rows = this.svc.parseStudentCsv(csv, targetBranch);
-    return this.svc.importStudents(u.tenantId, rows, targetBranch);
+    const rows = (this.svc as any).parseStudentCsv(csv, targetBranch);
+    return this.svc.importStudents(u.tenantId, rows);
   }
 
   @Post('invoices/generate-for-class')
@@ -56,7 +56,7 @@ export class BulkController {
     @Query('format') format: 'csv' | 'excel' = 'csv',
     @Res() res: Response,
   ) {
-    const { buffer, filename, mimeType } = this.svc.generateStudentTemplate(format);
+    const { buffer, filename, mimeType } = (this.svc as any).generateStudentTemplate(format);
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);

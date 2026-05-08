@@ -5,6 +5,7 @@ import { QUEUE_NAMES }      from '../../infra/queue/queue.module';
 import { EmailChannel }     from './channels/email.channel';
 import { SmsChannel }       from './channels/sms.channel';
 import { WhatsAppChannel }  from './channels/whatsapp.channel';
+import { PushChannel }      from './channels/push/push.channel';
 
 import { NotificationProcessor }  from './queue/notification.processor';
 import { NotificationService }    from './services/notification.service';
@@ -19,6 +20,7 @@ import { NotificationController } from './controllers/notification.controller';
     EmailChannel,
     SmsChannel,
     WhatsAppChannel,
+    PushChannel,
     // Queue processor
     NotificationProcessor,
     // Service

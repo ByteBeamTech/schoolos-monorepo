@@ -1,31 +1,129 @@
-model StaffProfile {
-  id            String    @id @default(cuid())
-  tenantId      String
-  userId        String    @unique
-  employeeId    String
-  designation   String
-  department    String?
-  dateOfJoining DateTime
-  dateOfBirth   DateTime?
-  gender        Gender?
-  qualification String?
-  experience    Int?
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  user          User      @relation(fields: [userId], references: [id])
+// ============================================================
+// STAFF (Employment Core)
+// ============================================================
+model Staff {
+  documents Document[]
+  user      User       @relation(fields: [userId], references: [id])
+  id        String     @id @default(cuid())
 
+  // 🔐 Multi-tenant & Branch
+  tenantId String
+  branchId String?
+
+  // 🔗 Auth
+  userId String @unique
+
+  // 🔢 Identity (System Generated)
+  employeeId String
+
+  // 👔 Employment
+  designation String
+  department  String?
+  type        StaffType @default(TEACHING)
+
+  dateOfJoining DateTime
+  dateOfLeaving DateTime?
+
+  // ⚙️ Status
+  isActive Boolean     @default(true)
+  status   StaffStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ================== RELATIONS ==================
+
+  // 👤 Profile (1:1)
+  profile StaffProfile? @relation("StaffToProfile")
+
+  // 👨‍👩‍👧 Students
+  studentWards Student[] @relation("StudentStaff")
+  studentRefs  Student[] @relation("StudentReferral")
+
+  // 🏫 Houses
+  housesManaged House[] @relation("HouseMaster")
+
+  // 📚 Academic
+  subjectPreferences TeacherSubjectPreference[]
+
+  // 📄 Documents (Audit)
+  uploadedDocuments Document[] @relation("DocumentUploadedBy")
+  verifiedDocuments Document[] @relation("DocumentVerifiedBy")
+
+  // 🔗 Core
+  tenant Tenant  @relation("TenantMembers", fields: [tenantId], references: [id])
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  // ================== CONSTRAINTS ==================
   @@unique([tenantId, employeeId])
+  // ================== INDEXES ==================
   @@index([tenantId])
+  @@index([tenantId, branchId])
+  @@index([tenantId, department])
+  @@index([tenantId, status])
+  @@index([tenantId, employeeId])
 }
 
+// ============================================================
+// STAFF PROFILE (Personal)
+// ============================================================
+model StaffProfile {
+  id String @id @default(cuid())
+
+  tenantId String
+  branchId String?
+
+  staffId     String    @unique
+  userId      String    @unique
+  firstName   String
+  lastName    String
+  dateOfBirth DateTime?
+  gender      Gender?
+
+  qualification String?
+  experience    Int?
+  tenant        Tenant     @relation("TenantProfiles", fields: [tenantId], references: [id])
+  // 📄 Documents
+  documents     Document[] @relation("StaffProfileDocuments")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔗 Relations
+  staff             Staff               @relation("StaffToProfile", fields: [staffId], references: [id])
+  branch            Branch?             @relation(fields: [branchId], references: [id])
+  TeacherAssignment TeacherAssignment[]
+
+  @@unique([tenantId, staffId])
+  @@index([tenantId])
+  @@index([branchId])
+}
+
+// ============================================================
+// TEACHER SUBJECT PREFERENCE
+// ============================================================
+
 model TeacherSubjectPreference {
-  id        String   @id @default(cuid())
-  tenantId  String
+  id String @id @default(cuid())
+
+  tenantId String
+  branchId String?
+
   staffId   String
   subjectId String
-  createdAt DateTime @default(now())
 
-  @@unique([tenantId, staffId, subjectId])
+  // 🔗 Relations (CLEAN + NAMED)
+  staff   Staff   @relation(fields: [staffId], references: [id])
+  subject Subject @relation("SubjectTeachers", fields: [subjectId], references: [id])
+
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation("TenantTeacherPrefs", fields: [tenantId], references: [id])
+
+  @@unique([tenantId, branchId, staffId, subjectId])
+  @@index([tenantId])
+  @@index([tenantId, branchId])
   @@index([tenantId, staffId])
+  @@index([subjectId])
 }

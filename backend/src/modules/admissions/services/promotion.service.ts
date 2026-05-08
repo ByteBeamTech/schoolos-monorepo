@@ -196,7 +196,7 @@ export class PromotionService {
 
   async approveAdmission(tenantId: string, admissionId: string, dto: ApproveAdmissionDto, userId: string) {
     const admission = await this.prisma.admission.findFirst({ where: { id: admissionId, tenantId } });
-    if (!admission || admission.status === 'ENROLLED') throw new BadRequestException('Already enrolled');
+    if (!admission || admission.status === 'CONVERTED') throw new BadRequestException('Already enrolled');
 
     return this.prisma.$transaction(async (tx) => {
       const student = await tx.student.create({

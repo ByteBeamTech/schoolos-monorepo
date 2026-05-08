@@ -1,70 +1,187 @@
-model Family {
-  id           String                 @id @default(cuid())
-  tenantId     String
-  branchId     String?
-  familyName   String?
-  createdAt    DateTime               @default(now())
-  applications AdmissionApplication[]
-  students     Student[]
-
-  @@index([tenantId])
-  @@index([tenantId, branchId])
-}
+// ==========================================================
+// 🏫 SCHOOLOS MASTER ADMISSION & CRM SCHEMA (FINAL VERDICT)
+// ==========================================================
 
 model StudentRelationship {
-  id           String       @id @default(cuid())
-  tenantId     String
-  branchId     String?
-  studentId    String
-  relatedToId  String
+  id       String  @id @default(cuid())
+  tenantId String
+  branchId String?
+
+  studentId   String
+  relatedToId String
+
   type         RelationType
   isVerified   Boolean      @default(false)
   verifiedById String?
-  metadata     Json?
-  notes        String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  relatedTo    Student      @relation("RelatedTo", fields: [relatedToId], references: [id])
-  student      Student      @relation("StudentRelations", fields: [studentId], references: [id])
+
+  metadata Json?
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔗 SELF RELATIONS
+  student   Student @relation("StudentRelations", fields: [studentId], references: [id])
+  relatedTo Student @relation("RelatedTo", fields: [relatedToId], references: [id])
 
   @@unique([studentId, relatedToId])
   @@index([tenantId])
-  @@index([tenantId, branchId, studentId])
-  @@index([tenantId, branchId, relatedToId])
+  @@index([tenantId, branchId])
 }
 
-model AdmissionApplication {
-  id               String                @id @default(cuid())
-  tenantId         String
-  branchId         String
-  firstName        String
-  lastName         String
-  photoUrl         String?
-  dob              DateTime
-  gender           String
-  aadharHash       String?
-  aadharLast4      String?
-  phone            String?
-  email            String?
-  crmNo            String                @unique
-  admissionMode    AdmissionMode
-  familyId         String?
-  linkedRelativeId String?
-  relationType     RelationType?
-  duplicateOfId    String?
-  status           ApplicationStatus     @default(PENDING)
-  formDetails      Json?
-  notes            Json?
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  isStaffWard      Boolean               @default(false)
-  referredById     String?
-  staffParentId    String?
-  Family           Family?               @relation(fields: [familyId], references: [id])
-  referredBy       User?                 @relation("ReferredApplications", fields: [referredById], references: [id])
-  staffParent      User?                 @relation("StaffChildren", fields: [staffParentId], references: [id])
-  approvals        ApplicationApproval[]
-  lead             Lead?
+model AdmissionActivity {
+  id            String               @id @default(cuid())
+  applicationId String
+  application   AdmissionApplication @relation(fields: [applicationId], references: [id])
+  performedById String
+  performedBy   User                 @relation("PerformedActivities", fields: [performedById], references: [id])
+  description   String
+  createdAt     DateTime             @default(now())
+}
 
-  @@index([tenantId, branchId])
+model AdmissionStepLog {
+  id            String               @id @default(cuid())
+  applicationId String
+  application   AdmissionApplication @relation(fields: [applicationId], references: [id])
+  updatedById   String
+  updatedBy     User                 @relation("UpdatedStepLogs", fields: [updatedById], references: [id])
+  oldStatus     String
+  newStatus     String
+  updatedAt     DateTime             @updatedAt
+}
+
+// ================== ADMISSION APPLICATION (MASTER) ==================
+
+model AdmissionApplication {
+  id String @id @default(cuid())
+
+  // 🔐 Multi-tenant Core
+  tenantId String
+  branchId String
+
+  // 🔢 Identity & Versioning
+  crmNo   String
+  version Int    @default(1)
+
+  // 🛡️ Soft Delete
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  // 👶 Student Info
+  firstName  String
+  middleName String?
+  lastName   String
+  photoUrl   String?
+  dob        DateTime
+  gender     Gender
+
+  bloodGroup  BloodGroup?
+  category    Category?
+  religion    Religion?
+  nationality String?     @default("Indian")
+
+  // 🔐 Identity (Note: Apply Partial Unique Index via Raw SQL Migration)
+  aadharHash  String?
+  aadharLast4 String?
+  apaarId     String?
+
+  // Opposite of 1:N (History)
+  studentId String?
+  student   Student? @relation("StudentApplications", fields: [studentId], references: [id])
+
+  // Opposite of 1:1 (Primary)
+  primaryStudent Student? @relation("PrimaryApplication")
+
+  // 📞 Contact
+  phone String? @db.VarChar(15)
+  email String?
+
+  // 👨‍👩‍👧 Family & Parent Info
+  fatherName       String?
+  fatherPhone      String?
+  fatherOccupation String?
+  fatherIncome     Float?
+  motherName       String?
+  motherPhone      String?
+  motherOccupation String?
+  motherIncome     Float?
+  guardianName     String?
+  guardianPhone    String?
+  guardianRelation String?
+
+  // 🎓 Academic Detail
+  applyingClassId String?
+  academicYear    String
+  admissionMode   AdmissionMode
+  previousSchool  String?
+  previousClass   String?
+  lastPercentage  Float?
+
+  // 🏥 Health & Transport
+  medicalConditions String?
+  allergies         String?
+  transportRequired Boolean? @default(false)
+  pickupLocation    String?
+
+  // 🤝 RELATIONS (The Clean Handshake)
+  lead Lead? @relation("LeadToApplication")
+
+  familyId String?
+  family   Family? @relation(fields: [familyId], references: [id])
+
+  linkedRelativeId String?
+  linkedRelative   Student? @relation("CrmRelativeLink", fields: [linkedRelativeId], references: [id])
+
+  // 🎯 Strategic CRM Tracking
+  sourceId   String?
+  campaignId String?
+  source     LeadSource? @relation(fields: [sourceId], references: [id])
+  campaign   Campaign?   @relation(fields: [campaignId], references: [id])
+
+  // 🧑‍🏫 Staff / Referral
+  isStaffWard  Boolean @default(false)
+  referredById String?
+  referredBy   User?   @relation("ReferredApplications", fields: [referredById], references: [id])
+
+  staffParentId String?
+  staffParent   User?   @relation("StaffChildren", fields: [staffParentId], references: [id])
+
+  // 📂 System Integration
+  documents Document[]
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  branch    Branch     @relation(fields: [branchId], references: [id])
+
+  // 💰 Payment & Workflow
+  admissionFeePaid Boolean?              @default(false)
+  paymentReference String?
+  status           ApplicationStatus     @default(PENDING)
+  activities       AdmissionActivity[]
+  stepLogs         AdmissionStepLog[]
+  approvals        ApplicationApproval[]
+
+  // 🧾 JSON & Audit
+  formDetails Json?
+  notes       Json?
+  convertedAt DateTime?
+
+  createdById String?
+  updatedById String?
+  createdBy   User?   @relation("CreatedApplications", fields: [createdById], references: [id])
+  updatedBy   User?   @relation("UpdatedApplications", fields: [updatedById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔥 HIGH-PERFORMANCE CONSTRAINTS & INDEXES
+  @@unique([tenantId, crmNo])
+  // Combined Index for Phone & Year (Bloat removed)
+  @@index([tenantId, phone, academicYear])
+  @@index([tenantId, email])
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, apaarId])
+  @@index([sourceId])
+  @@index([campaignId])
+  @@index([familyId])
+  @@index([linkedRelativeId])
+  @@index([aadharHash])
 }

@@ -7,6 +7,7 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url(),
   SUPERADMIN_URL: z.string().url(),
   API_PREFIX: z.string().default('api/v1'),
+  DATABASE_URL: z.string().url(),
   // Connection pool — tune for your server RAM (12GB = 10–15 connections safe)
   DATABASE_POOL_SIZE:    z.coerce.number().default(10),
   DATABASE_POOL_TIMEOUT: z.coerce.number().default(30),

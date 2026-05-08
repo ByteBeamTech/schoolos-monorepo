@@ -1,0 +1,73 @@
+model Document {
+  id String @id @default(cuid())
+
+  // 🔐 Multi-tenant
+  tenantId String
+  branchId String?
+
+  // 📄 Metadata
+  type   DocumentType
+  status DocumentStatus @default(PENDING)
+
+  // ☁️ Storage
+  fileUrl  String
+  fileKey  String?
+  fileName String?
+  fileSize Int?
+  mimeType String?
+
+  // 🔄 Versioning
+  version Int @default(1)
+
+  // 🕵️ Audit
+  uploadedById    String?
+  verifiedById    String?
+  rejectionReason String?
+
+  // 🔥 MISSING SCALAR FIELDS (IDs) - Inke bina validate fail hota
+  uploadedByStaffId String?
+  verifiedByStaffId String?
+
+  // 🗑️ Soft delete
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  // 🔗 Polymorphic Links
+  studentId              String?
+  guardianId             String?
+  familyId               String?
+  admissionApplicationId String?
+
+  // 🕒 Timestamps (Sirf ek baar rakha hai duplicates hata kar)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔌 Relations
+  tenant               Tenant                @relation(fields: [tenantId], references: [id])
+  student              Student?              @relation(fields: [studentId], references: [id])
+  guardian             Guardian?             @relation(fields: [guardianId], references: [id])
+  family               Family?               @relation(fields: [familyId], references: [id])
+  admissionApplication AdmissionApplication? @relation(fields: [admissionApplicationId], references: [id])
+
+  // ✅ Ab ye error nahi denge kyunki upar Ids add ho gayi hain
+  uploadedByStaff Staff? @relation("DocumentUploadedBy", fields: [uploadedByStaffId], references: [id])
+  verifiedByStaff Staff? @relation("DocumentVerifiedBy", fields: [verifiedByStaffId], references: [id])
+
+  // 🔥 Fix for StaffProfile error
+  staffProfile   StaffProfile? @relation("StaffProfileDocuments", fields: [staffProfileId], references: [id])
+  staffProfileId String?
+  Staff          Staff?        @relation(fields: [staffId], references: [id])
+  staffId        String?
+
+  // 🚀 Indexes (Added staff and delete indexes for performance)
+  @@index([tenantId])
+  @@index([branchId])
+  @@index([studentId])
+  @@index([guardianId])
+  @@index([familyId])
+  @@index([admissionApplicationId])
+  @@index([status])
+  @@index([uploadedByStaffId])
+  @@index([verifiedByStaffId])
+  @@index([isDeleted])
+}

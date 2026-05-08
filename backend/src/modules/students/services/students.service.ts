@@ -4,9 +4,9 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, BloodGroup, Gender, GuardianRelation } from '@prisma/client';
 import { PrismaService } from '@infra/database/prisma.service';
-import { AuditService }  from '../../../core/compliance/audit.service';
+import { AuditService } from '../../../core/compliance/audit.service';
 import {
   CreateStudentDto,
   UpdateStudentDto,
@@ -26,8 +26,25 @@ export class StudentsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit:  AuditService,
+    private readonly audit: AuditService,
   ) {}
+
+  /**
+   * Helper to map DTO string blood groups to Prisma Enums
+   */
+  private mapBloodGroup(bg: string): BloodGroup | null {
+    const map: Record<string, BloodGroup> = {
+      'A+': BloodGroup.A_POS,
+      'A-': BloodGroup.A_NEG,
+      'B+': BloodGroup.B_POS,
+      'B-': BloodGroup.B_NEG,
+      'AB+': BloodGroup.AB_POS,
+      'AB-': BloodGroup.AB_NEG,
+      'O+': BloodGroup.O_POS,
+      'O-': BloodGroup.O_NEG,
+    };
+    return map[bg] || (bg as BloodGroup); // Fallback to direct enum if already mapped
+  }
 
   async create(tenantId: string, dto: CreateStudentDto, actorId: string) {
     const existing = await this.prisma.student.findFirst({
@@ -49,10 +66,10 @@ export class StudentsService {
         lastName:        dto.lastName,
         academicYear:    dto.academicYear,
         dateOfBirth:     dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
-        gender:          dto.gender      ?? null,
-        bloodGroup:      dto.bloodGroup  ?? null,
-        sectionId:       dto.sectionId   ?? null,
-        rollNumber:      dto.rollNumber  ?? null,
+        gender:          dto.gender as Gender,
+        bloodGroup:      dto.bloodGroup ? this.mapBloodGroup(dto.bloodGroup) : null,
+        sectionId:       dto.sectionId ?? null,
+        rollNumber:      dto.rollNumber ?? null,
         isActive:        true,
       } satisfies Prisma.StudentUncheckedCreateInput,
       include: { section: { include: { class: true } } },
@@ -148,8 +165,8 @@ export class StudentsService {
         ...(dto.firstName   !== undefined && { firstName:   dto.firstName   }),
         ...(dto.lastName    !== undefined && { lastName:    dto.lastName    }),
         ...(dto.dateOfBirth !== undefined && { dateOfBirth: new Date(dto.dateOfBirth) }),
-        ...(dto.gender      !== undefined && { gender:      dto.gender      }),
-        ...(dto.bloodGroup  !== undefined && { bloodGroup:  dto.bloodGroup  }),
+        ...(dto.gender      !== undefined && { gender:      dto.gender as Gender }),
+        ...(dto.bloodGroup  !== undefined && { bloodGroup:  this.mapBloodGroup(dto.bloodGroup) }),
         ...(dto.sectionId   !== undefined && { sectionId:   dto.sectionId   }),
         ...(dto.rollNumber  !== undefined && { rollNumber:  dto.rollNumber  }),
         ...(dto.isActive    !== undefined && { isActive:    dto.isActive    }),
@@ -168,18 +185,16 @@ export class StudentsService {
     return sanitizeStudent(updated);
   }
 
-  // BUG 1 FIX: method was missing — controller called it, causing runtime crash
   async getStats(tenantId: string, academicYear: string) {
     const [total, active, boys, girls] = await Promise.all([
       this.prisma.student.count({ where: { tenantId, academicYear } }),
       this.prisma.student.count({ where: { tenantId, academicYear, isActive: true } }),
-      this.prisma.student.count({ where: { tenantId, academicYear, gender: 'MALE' as any } }),
-      this.prisma.student.count({ where: { tenantId, academicYear, gender: 'FEMALE' as any } }),
+      this.prisma.student.count({ where: { tenantId, academicYear, gender: Gender.MALE } }),
+      this.prisma.student.count({ where: { tenantId, academicYear, gender: Gender.FEMALE } }),
     ]);
     return { total, active, inactive: total - active, boys, girls };
   }
 
-  // BUG 1 FIX: method was missing — controller called it, causing runtime crash
   async createGuardian(tenantId: string, dto: CreateGuardianDto, actorId: string) {
     const existing = await this.prisma.guardian.findFirst({
       where: { tenantId, phone: dto.phone },
@@ -212,14 +227,12 @@ export class StudentsService {
     return guardian;
   }
 
-  // BUG 1 FIX: method was missing — controller called it, causing runtime crash
   async linkGuardian(
     tenantId:  string,
     studentId: string,
     dto:       LinkGuardianDto,
     actorId:   string,
   ) {
-    // findById enforces tenantId — prevents cross-tenant student access
     await this.findById(tenantId, studentId);
 
     const guardian = await this.prisma.guardian.findFirst({
@@ -227,7 +240,6 @@ export class StudentsService {
     });
     if (!guardian) throw new NotFoundException(`Guardian not found: ${dto.guardianId}`);
 
-    // Demote existing primary before promoting new one
     if (dto.isPrimary) {
       await this.prisma.guardianStudent.updateMany({
         where: { studentId, isPrimary: true },
@@ -240,11 +252,11 @@ export class StudentsService {
       create: {
         guardianId: dto.guardianId,
         studentId,
-        relation:   dto.relation  as any,
+        relation:   dto.relation as GuardianRelation,
         isPrimary:  dto.isPrimary ?? false,
       },
       update: {
-        relation:  dto.relation  as any,
+        relation:  dto.relation as GuardianRelation,
         isPrimary: dto.isPrimary ?? false,
       },
     });
@@ -259,9 +271,7 @@ export class StudentsService {
     return link;
   }
 
-  // BUG 1 FIX: method was missing — controller called it, causing runtime crash
   async getGuardians(tenantId: string, studentId: string) {
-    // findById enforces tenantId — prevents cross-tenant guardian reads
     await this.findById(tenantId, studentId);
 
     return this.prisma.guardianStudent.findMany({

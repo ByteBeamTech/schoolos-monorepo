@@ -9,9 +9,11 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   'http://localhost:8000/api/v1';
 
-if (typeof window !== 'undefined') {
-  initApiClient(API_URL);
-}
+initApiClient(API_URL);
+
+//if (typeof window !== 'undefined') {
+ // initApiClient(API_URL);
+//}
 
 export const apiClient = {
   get:    (url: string, config?: any) => getClient().get(url, config),
@@ -27,7 +29,7 @@ export {
   timetableApi, notificationsApi, transportApi, homeworkApi,
   libraryApi, inventoryApi, certificatesApi, communicationApi,
   hrApi, receptionApi, payrollApi, admissionsApi, examsApi, sessionsApi,
-  bulkApi, behaviorApi,
+  bulkApi, behaviorApi, staffApi,
 } from '@schoolos/api-client';
 
 export const setTokens   = (t: any)    => { 

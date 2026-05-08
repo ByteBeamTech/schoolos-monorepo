@@ -18,7 +18,7 @@ export class DiscountService {
     if (dto.type === 'PERCENTAGE' && (dto.value < 0 || dto.value > 100)) {
       throw new BadRequestException('Percentage must be 0-100.');
     }
-    const discount = await this.prisma.discount.create({
+    const discount = await (this.prisma as any).discount.create({
       data: {
         tenantId,
         studentId:      dto.studentId,
@@ -28,12 +28,11 @@ export class DiscountService {
         validFrom:      new Date(dto.validFrom),
         validUntil:     dto.validUntil ? new Date(dto.validUntil) : null,
         reason:         dto.reason    ?? null,
-        notes:          dto.notes     ?? null,
         approvalStatus: 'PENDING',
       },
     });
-    await this.prisma.discountApproval.create({
-      data: { discountId: discount.id, requesterId: actorId, status: 'PENDING' },
+    await (this.prisma as any).discountApproval.create({
+      data: { discountId: discount.id, tenantId: discount.tenantId, branchId: discount.branchId, requesterId: actorId, status: 'PENDING' },
     });
     await this.audit.logCreate({
       tenantId, actorId,

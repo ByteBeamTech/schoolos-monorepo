@@ -2,7 +2,7 @@ model Invoice {
   id             String        @id @default(cuid())
   tenantId       String
   studentId      String
-  invoiceNumber  String        @unique
+  invoiceNumber  String
   academicYear   String
   status         InvoiceStatus @default(DRAFT)
   currency       Currency      @default(INR)
@@ -25,6 +25,7 @@ model Invoice {
   payments       Payment[]
   receipt        Receipt?
 
+  @@unique([tenantId, invoiceNumber])
   @@index([tenantId])
   @@index([studentId])
   @@index([status])

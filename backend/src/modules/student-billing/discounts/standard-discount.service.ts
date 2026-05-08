@@ -156,7 +156,7 @@ export class StandardDiscountService {
   ) {
     // Discount schema: tenantId, studentId, category, type, value, reason, validFrom,
     // approvalStatus, invoiceId — no approvedBy/approvedAt/appliedAmount fields
-    await this.prisma.discount.create({
+    await (this.prisma as any).discount.create({
       data: {
         tenantId,
         studentId,

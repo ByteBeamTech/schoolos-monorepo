@@ -1,0 +1,22 @@
+// student-billing/discount-categories.prisma
+// FIX-11: Added proper @relation declarations to Tenant and Branch.
+// Removed the incorrect `branches Branch[]` back-relation (a discount
+// category doesn't own branches — it belongs to one branch).
+
+model DiscountCategory {
+  id       String  @id @default(cuid())
+  tenantId String
+  branchId String
+  name     String
+  code     String // e.g. "SIBLING", "MERIT", "STAFF_CHILD"
+  isActive Boolean @default(true)
+
+  discounts Discount[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, code])
+  @@index([tenantId])
+  @@index([branchId])
+}

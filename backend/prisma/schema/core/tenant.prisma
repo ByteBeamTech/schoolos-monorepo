@@ -1,28 +1,51 @@
 model Tenant {
-  id                   String                   @id @default(cuid())
-  name                 String
-  slug                 String                   @unique
-  domain               String?                  @unique
-  region               Region                   @default(IN)
-  currency             Currency                 @default(INR)
-  timezone             String                   @default("Asia/Kolkata")
-  locale               String                   @default("en-IN")
-  status               TenantStatus             @default(TRIAL)
-  logoUrl              String?
-  address              Json?
-  contactEmail         String
-  contactPhone         String?
-  gstNumber            String?
-  panNumber            String?
-  licenseKey           String?                  @unique
-  licenseExpiresAt     DateTime?
-  maxStudents          Int                      @default(500)
-  featureTier          SubscriptionTier         @default(STARTER)
-  settings             Json?                    @default("{}")
-  metadata             Json?                    @default("{}")
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
-  deletedAt            DateTime?
+  id        String  @id @default(cuid())
+  name      String
+  slug      String  @unique
+  subdomain String? @unique // 🔥 URL: stmarys.schoolos.com
+  domain    String? @unique // 🔥 Custom: school.com
+
+  // --- 🌍 Localization & Smart Scheduling ---
+  timezone String   @default("Asia/Kolkata")
+  locale   String   @default("en-IN")
+  region   Region   @default(IN)
+  currency Currency @default(INR)
+
+  // 🔥 NEXT-GEN SCHEDULER FIELDS (Scalability ke liye)
+  nextRunAt       DateTime? // Performance Indexing
+  lastRunAt       DateTime? // Disaster Recovery
+  schedulerConfig Json?     @default("{\"feeReminderTime\": \"08:00\", \"attendanceTime\": \"17:00\"}")
+
+  // --- 🎨 Branding & UI ---
+  logoUrl        String?
+  faviconUrl     String?
+  primaryColor   String? @default("#1E40AF")
+  secondaryColor String? @default("#DBEAFE")
+
+  // --- 📊 Quotas & Status ---
+  status       TenantStatus @default(TRIAL)
+  maxStudents  Int          @default(500)
+  storageLimit Int          @default(1024) // MB mein
+  smsBalance   Int          @default(0)
+
+  // --- Contact & Business ---
+  contactEmail     String
+  contactPhone     String?
+  address          Json?
+  gstNumber        String?
+  panNumber        String?
+  licenseKey       String?          @unique
+  licenseExpiresAt DateTime?
+  featureTier      SubscriptionTier @default(STARTER)
+
+  settings Json? @default("{}")
+  metadata Json? @default("{}")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // --- 🔗 ALL EXISTING RELATIONS (Nothing Missed) ---
   academicSessions     AcademicSession[]
   alumni               Alumni[]
   workflowConfigs      ApprovalWorkflowConfig[]
@@ -46,8 +69,23 @@ model Tenant {
   behaviorRecords      BehaviorRecord[]
   communicationLogs    CommunicationLog[]
   bulkNotificationJobs BulkNotificationJob[]
+  discountCategories   DiscountCategory[]
+  subjects             Subject[]
+  staffMembers         Staff[]                    @relation("TenantMembers")
+  staffProfiles        StaffProfile[]             @relation("TenantProfiles")
+  teacherPreferences   TeacherSubjectPreference[] @relation("TenantTeacherPrefs")
+  admissions           AdmissionApplication[]
+  families             Family[]
+  documents            Document[]
+  transportRoutes      TransportRoute[]
+  branches             Branch[]
+  cronLogs             CronExecutionLog[]
+  jobSchedules         TenantJobSchedule[]
 
+  // --- ⚡ Speed Indices ---
   @@index([slug])
+  @@index([subdomain])
   @@index([status])
   @@index([region])
+  @@index([nextRunAt]) // Performance index for scheduler
 }

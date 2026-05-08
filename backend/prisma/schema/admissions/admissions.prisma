@@ -1,7 +1,7 @@
 model Admission {
-  id     String          @id @default(cuid())
-  status AdmissionStatus @default(INQUIRY)
-
+  id          String              @id @default(cuid())
+  step        AdmissionStep       @default(FORM_SUBMISSION)
+  status      AdmissionStepStatus @default(INQUIRY)
   // 🔹 Basic Info
   firstName   String
   middleName  String?
@@ -31,34 +31,34 @@ model Admission {
   lastPercentage     Float?
 
   // 🔹 Parent Info
-// 🔹 Parent Info
+  // 🔹 Parent Info
 
-fatherFirstName String?
-fatherLastName  String?
-fatherPhone     String?
-fatherEmail     String?
-fatherOccupation String?
-fatherIncome     Float?
-email String?
-motherFirstName String?
-motherLastName  String?
-motherPhone     String?
-motherEmail     String?
-motherOccupation String?
-motherIncome     Float?
+  fatherFirstName  String?
+  fatherLastName   String?
+  fatherPhone      String?
+  fatherEmail      String?
+  fatherOccupation String?
+  fatherIncome     Float?
+  email            String?
+  motherFirstName  String?
+  motherLastName   String?
+  motherPhone      String?
+  motherEmail      String?
+  motherOccupation String?
+  motherIncome     Float?
 
-guardianFirstName String?
-guardianLastName  String?
-guardianRelation  String?
-guardianPhone     String?
+  guardianFirstName String?
+  guardianLastName  String?
+  guardianRelation  String?
+  guardianPhone     String?
 
-alternatePhone   String?   // already needed
+  alternatePhone String? // already needed
   // 🔹 Address
-  addressLine1 String?
-  addressLine2 String?
-  city         String?
-  state        String?
-  pincode      String?
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  state          String?
+  pincode        String?
 
   // 🔹 Medical
   medicalConditions String?
@@ -100,7 +100,6 @@ alternatePhone   String?   // already needed
 
   // 🔹 Relations
   activities admissionActivity[]
-  stepLogs   admissionStepLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

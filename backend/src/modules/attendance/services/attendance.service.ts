@@ -4,6 +4,8 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EVENTS }        from '../../../core/events/events.constants';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }  from '../../../core/compliance/audit.service';
 import {
@@ -17,8 +19,9 @@ export class AttendanceService {
   private readonly logger = new Logger(AttendanceService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly audit:  AuditService,
+    private readonly prisma:   PrismaService,
+    private readonly audit:    AuditService,
+    private readonly emitter:  EventEmitter2,
   ) {}
 
   async bulkMarkDaily(tenantId: string, dto: BulkMarkAttendanceDto, actorId: string) {
@@ -72,13 +75,41 @@ export class AttendanceService {
 
     this.logger.log(`Daily attendance: ${results.length} students | section: ${dto.sectionId} | ${dto.date}`);
 
+    const present          = dto.attendance.filter(a => a.status === 'PRESENT').length;
+    const absent           = dto.attendance.filter(a => a.status === 'ABSENT').length;
+    const late             = dto.attendance.filter(a => a.status === 'LATE').length;
+    const total            = results.length;
+    const percentage       = total > 0 ? Math.round((present + late * 0.5) / total * 100) : 0;
+    const absentStudentIds = dto.attendance.filter(a => a.status === 'ABSENT').map(a => a.studentId);
+
+    // Emit ATTENDANCE_MARKED — drives absent SMS alerts to guardians via EventListenerService
+    this.emitter.emit(EVENTS.ATTENDANCE_MARKED, {
+      tenantId,
+      sectionId:        dto.sectionId,
+      date:             dto.date,
+      present,
+      absent,
+      percentage,
+      absentStudentIds,
+    });
+
+    // Emit ATTENDANCE_LOW when section drops below 75% — creates FraudAlert
+    if (total >= 5 && percentage < 75) {
+      this.emitter.emit(EVENTS.ATTENDANCE_LOW, {
+        tenantId,
+        sectionId:  dto.sectionId,
+        date:       dto.date,
+        percentage,
+      });
+    }
+
     return {
       date:      dto.date,
       sectionId: dto.sectionId,
-      marked:    results.length,
-      present:   dto.attendance.filter(a => a.status === 'PRESENT').length,
-      absent:    dto.attendance.filter(a => a.status === 'ABSENT').length,
-      late:      dto.attendance.filter(a => a.status === 'LATE').length,
+      marked:    total,
+      present,
+      absent,
+      late,
     };
   }
 

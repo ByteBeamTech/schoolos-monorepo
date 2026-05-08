@@ -26,11 +26,9 @@ async function bootstrap() {
 // --- main.ts CORS Fix ---
   
   app.enableCors({
-    // ✅ मल्टीपल origins के लिए हमेशा Array का इस्तेमाल कर
-    origin: [
-      'https://schoolos.bytebeamtech.com',
-      'https://superadmin.bytebeamtech.com',
-    ],
+    // Origin is driven by CORS_ORIGINS env var — set in .env.production
+    // e.g. CORS_ORIGINS=https://schoolos.bytebeamtech.com,https://superadmin.bytebeamtech.com
+    origin: allowedOrigins.length ? allowedOrigins : false,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [

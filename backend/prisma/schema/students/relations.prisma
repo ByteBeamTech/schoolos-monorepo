@@ -1,0 +1,100 @@
+// ================== GUARDIAN ==================
+
+model Guardian {
+  id       String @id @default(cuid())
+  tenantId String
+
+  firstName String
+  lastName  String
+
+  phone      String
+  altPhone   String?
+  email      String?
+  occupation String?
+
+  address  Json?
+  photoUrl String?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔗 Relations
+  studentLinks GuardianStudent[]
+  documents    Document[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  // 🔐 Multi-tenant safety
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@index([phone])
+}
+
+// ================== GUARDIAN ↔ STUDENT ==================
+
+model GuardianStudent {
+  id String @id @default(cuid())
+
+  guardianId String
+  studentId  String
+
+  relation  GuardianRelation
+  isPrimary Boolean          @default(false)
+
+  createdAt DateTime @default(now())
+
+  // 🔗 Relations
+  guardian Guardian @relation(fields: [guardianId], references: [id])
+  student  Student  @relation(fields: [studentId], references: [id])
+
+  // 🔥 Constraints
+  @@unique([guardianId, studentId])
+  @@index([studentId])
+  @@index([guardianId])
+}
+
+// ================== STUDENT ↔ SIBLING ==================
+
+model StudentSibling {
+  id String @id @default(cuid())
+
+  studentId String
+  siblingId String
+
+  relation SiblingRelation
+
+  createdAt DateTime @default(now())
+
+  // 🔥 MUST MATCH Student model relation names
+  student Student @relation("StudentSiblings", fields: [studentId], references: [id])
+  sibling Student @relation("SiblingOf", fields: [siblingId], references: [id])
+
+  // 🔐 Prevent duplicate pairs (use sorted IDs in service)
+  @@unique([studentId, siblingId])
+  // 🚀 Indexes
+  @@index([studentId])
+  @@index([siblingId])
+}
+
+// ================== FAMILY ==================
+
+model Family {
+  id       String @id @default(cuid())
+  tenantId String
+
+  familyName String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 🔗 Relations
+  students  Student[]
+  documents Document[]
+
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
+  admissionApplications AdmissionApplication[]
+
+  @@index([tenantId])
+}

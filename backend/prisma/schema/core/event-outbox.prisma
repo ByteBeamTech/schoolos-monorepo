@@ -1,0 +1,20 @@
+// ============================================================
+// EVENT OUTBOX (Transactional Outbox Pattern)
+// ============================================================
+model EventOutbox {
+  id          String    @id @default(cuid())
+  uniqueKey   String    @unique
+  type        String
+  payload     Json
+  status      String    @default("PENDING") // PENDING | PROCESSING | DONE | FAILED
+  retryCount  Int       @default(0)
+  nextRetryAt DateTime?
+  processedAt DateTime?
+  error       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, nextRetryAt])
+  @@index([type])
+  @@index([createdAt])
+}

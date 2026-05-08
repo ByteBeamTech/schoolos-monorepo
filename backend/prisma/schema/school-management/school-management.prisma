@@ -1,5 +1,5 @@
 model Branch {
-  id                  String       @id @default(cuid())
+  id                  String                     @id @default(cuid())
   tenantId            String
   name                String
   address             String?
@@ -7,19 +7,33 @@ model Branch {
   phone               String?
   email               String?
   principal           String?
-  isActive            Boolean      @default(true)
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  isActive            Boolean                    @default(true)
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
   activatedAt         DateTime?
   branchCode          String?
-  currentStaffCount   Int          @default(0)
-  currentStudentCount Int          @default(0)
+  currentStaffCount   Int                        @default(0)
+  currentStudentCount Int                        @default(0)
   deletedAt           DateTime?
   licenseId           String?
   slug                String?
-  status              BranchStatus @default(ACTIVE)
+  status              BranchStatus               @default(ACTIVE)
   suspendedAt         DateTime?
   License             License[]
+  transportRoutes     TransportRoute[]
+  // 🔥 ADD THESE BACK-RELATIONS (Mandatory for Validation)
+  tenant              Tenant                     @relation(fields: [tenantId], references: [id])
+  students            Student[]
+  subjects            Subject[]
+  admissions          AdmissionApplication[]
+  staffMembers        Staff[]
+  staffProfiles       StaffProfile[]
+  teacherPreferences  TeacherSubjectPreference[]
+  cronLogs            CronExecutionLog[]
+  // Billing links (Jo humne billing.prisma mein banaye hain)
+  discountCategories  DiscountCategory[]
+  discounts           Discount[]
+  lateFees            LateFee[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, branchCode])

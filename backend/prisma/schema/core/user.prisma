@@ -1,45 +1,84 @@
+// ==========================================================
+// 🏫 SCHOOLOS MASTER USER & AUTH SCHEMA (v2.2 FINAL)
+// ==========================================================
+
 model User {
-  id                   String                 @id @default(cuid())
-  tenantId             String
-  email                String
-  phone                String?
-  passwordHash         String?
-  firstName            String
-  lastName             String
-  role                 UserRole
-  isActive             Boolean                @default(true)
-  isEmailVerified      Boolean                @default(false)
-  isPhoneVerified      Boolean                @default(false)
-  avatarUrl            String?
-  lastLoginAt          DateTime?
-  mfaEnabled           Boolean                @default(false)
-  mfaSecret            String?
-  preferences          Json?                  @default("{}")
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
-  deletedAt            DateTime?
-  roleId               String?
+  id           String   @id @default(cuid())
+  tenantId     String
+  email        String
+  phone        String? // 📞 Service layer ensures NULL if empty
+  passwordHash String?
+  firstName    String
+  lastName     String
+  role         UserRole
+
+  // 🛡️ Lifecycle & Security
+  isActive  Boolean   @default(true)
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  isEmailVerified Boolean   @default(false)
+  isPhoneVerified Boolean   @default(false)
+  avatarUrl       String?
+  lastLoginAt     DateTime?
+  mfaEnabled      Boolean   @default(false)
+  mfaSecret       String?
+  preferences     Json?     @default("{}")
+  sessions        Session[]
+  roleId          String?
+  customRole      Role?     @relation(fields: [roleId], references: [id])
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+
+  staff Staff?
+
+  // 🤝 CRM & Admission Master Handshake
+  createdApplications  AdmissionApplication[] @relation("CreatedApplications")
+  updatedApplications  AdmissionApplication[] @relation("UpdatedApplications")
   referredApplications AdmissionApplication[] @relation("ReferredApplications")
   staffChildren        AdmissionApplication[] @relation("StaffChildren")
+
+  // 👤 Admission Audit Trail
+  // Must match @relation names in AdmissionActivity/StepLog
+
+  // 🔗 Other Module Relations
   applicationApprovals ApplicationApproval[]
   auditLogs            AuditLog[]
-  discountApprovals    DiscountApproval[]     @relation("Approver")
-  discountRequests     DiscountApproval[]     @relation("Requester")
+  discountApprovals    DiscountApproval[]    @relation("Approver")
+  discountRequests     DiscountApproval[]    @relation("Requester")
   followUpTasks        FollowUpTask[]
   interactionLogs      InteractionLog[]
-  assignedLeads        Lead[]                 @relation("AssignedLeads")
-  referredLeads        Lead[]                 @relation("ReferredLeads")
+  assignedLeads        Lead[]                @relation("AssignedLeads")
+  referredLeads        Lead[]                @relation("ReferredLeads")
   oauthAccounts        OAuthAccount[]
-  sessions             Session[]
-  staffProfile         StaffProfile?
-  customRole           Role?                  @relation(fields: [roleId], references: [id])
-  tenant               Tenant                 @relation(fields: [tenantId], references: [id])
+  performedActivities  AdmissionActivity[]   @relation("PerformedActivities")
+  updatedStepLogs      AdmissionStepLog[]    @relation("UpdatedStepLogs")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
+  discountsCreated Discount[] @relation("DiscountCreator")
+  discountsRevoked Discount[] @relation("DiscountRevoker")
+
+  lateFeesWaived   LateFee[] @relation("LateFeeWaiver")
+  lateFeesApplied  LateFee[] @relation("LateFeeApplier")
+  lateFeesReversed LateFee[] @relation("LateFeeReverser")
+
+  studentProfile Student? // Back-relation for Student.user
+  // 🔥 HIGH-PERFORMANCE CONSTRAINTS & INDEXES
+
+  // 🔐 Uniqueness Scoped to Tenant
   @@unique([tenantId, email])
+  @@unique([tenantId, phone])
+  // ⚡ Auth & System Performance
   @@index([tenantId])
-  @@index([email])
+  @@index([tenantId, email, isActive]) // Auth query booster
+  @@index([tenantId, isDeleted]) // Soft delete query booster
+  // 🚀 THE SCALING INDEX
+  // Fast lookup for active Teachers/Admins in a branch/tenant
+  @@index([tenantId, role, isActive])
   @@index([role])
 }
+
+// ================== AUTH SUPPORT MODELS ==================
 
 model Session {
   id           String    @id @default(cuid())
