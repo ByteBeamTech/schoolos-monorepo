@@ -73,10 +73,12 @@ enum NotificationChannel {
   SMS
   PUSH
   WHATSAPP
+  TELEGRAM
 }
 
 enum NotificationStatus {
   PENDING
+  RETRYING
   SCHEDULED
   SENT
   DELIVERED

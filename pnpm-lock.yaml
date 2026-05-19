@@ -27,7 +27,7 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0(@nestjs/common@10.4.22)(@nestjs/core@10.4.22)(ioredis@5.10.1)
       '@nestjs/bull':
-        specifier: ^10.1.1
+        specifier: ^10.2.3
         version: 10.2.3(@nestjs/common@10.4.22)(@nestjs/core@10.4.22)(bull@4.16.5)
       '@nestjs/common':
         specifier: ^10.3.0
@@ -105,8 +105,11 @@ importers:
         specifier: ^2.4.3
         version: 2.4.3
       bull:
-        specifier: ^4.12.2
+        specifier: ^4.16.5
         version: 4.16.5
+      bullmq:
+        specifier: ^5.76.8
+        version: 5.76.8
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1
@@ -128,6 +131,9 @@ importers:
       firebase-admin:
         specifier: ^12.0.0
         version: 12.7.0
+      handlebars:
+        specifier: ^4.7.8
+        version: 4.7.8
       helmet:
         specifier: ^7.1.0
         version: 7.2.0
@@ -147,7 +153,7 @@ importers:
         specifier: ^6.2.0
         version: 6.2.0(@nestjs/common@10.4.22)(@nestjs/core@10.4.22)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       nodemailer:
-        specifier: ^6.9.12
+        specifier: ^6.10.1
         version: 6.10.1
       p-limit:
         specifier: ^7.3.0
@@ -238,7 +244,7 @@ importers:
         specifier: ^20.19.37
         version: 20.19.37
       '@types/nodemailer':
-        specifier: ^6.4.14
+        specifier: ^6.4.23
         version: 6.4.23
       '@types/passport-google-oauth20':
         specifier: ^2.0.14
@@ -6534,6 +6540,20 @@ packages:
     transitivePeerDependencies:
       - supports-color
 
+  /bullmq@5.76.8:
+    resolution: {integrity: sha512-v3WTwA8diFtsADaJ8eK2ozyi2CYK9rDZCeoKF+dIPF/MUL8HxAOa3H72Gmu1lC4yKlho6t1PwNr/QpDVqaNEZQ==}
+    engines: {node: '>=12.22.0'}
+    dependencies:
+      cron-parser: 4.9.0
+      ioredis: 5.10.1
+      msgpackr: 2.0.1
+      node-abort-controller: 3.1.1
+      semver: 7.8.0
+      tslib: 2.8.1
+    transitivePeerDependencies:
+      - supports-color
+    dev: false
+
   /busboy@1.6.0:
     resolution: {integrity: sha512-8SFQbg/0hQ9xy3UNTB0YEnsNBbWfhf7RtnzpL7TkBiTBRfrQ9Fxcnz7VJsleJpyp6rVLvXiuORqjlHi5q+PYuA==}
     engines: {node: '>=10.16.0'}
@@ -10243,6 +10263,12 @@ packages:
     optionalDependencies:
       msgpackr-extract: 3.0.3
 
+  /msgpackr@2.0.1:
+    resolution: {integrity: sha512-9J+tqTEsbHqY8YohazYgty7LgerFIWxvMLpUjqETSmjHojtJm2WnX2kK/2a1fLI7CO7ERP1YSEUXMucz4j+yBA==}
+    optionalDependencies:
+      msgpackr-extract: 3.0.3
+    dev: false
+
   /multer@1.4.5-lts.2:
     resolution: {integrity: sha512-VzGiVigcG9zUAoCNU+xShztrlr1auZOlurXynNvO9GiWD1/mTBbUljOKY+qMeazBqXgRnjzeEgJI/wyjJUHg9A==}
     engines: {node: '>= 6.0.0'}
@@ -10371,7 +10397,6 @@ packages:
 
   /node-abort-controller@3.1.1:
     resolution: {integrity: sha512-AGK2yQKIjRuqnc6VkX2Xj5d+QW8xZ87pa1UK6yA6ouUyuxfHuMP6umE5QK7UmTeOAymo+Zx1Fxiuw9rVx8taHQ==}
-    dev: true
 
   /node-addon-api@8.6.0:
     resolution: {integrity: sha512-gBVjCaqDlRUk0EwoPNKzIr9KkS9041G/q31IBShPs1Xz6UTA+EXdZADbzqAJQrpDRq71CIMnOP5VMut3SL0z5Q==}
@@ -11498,6 +11523,12 @@ packages:
     resolution: {integrity: sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA==}
     engines: {node: '>=10'}
     hasBin: true
+
+  /semver@7.8.0:
+    resolution: {integrity: sha512-AcM7dV/5ul4EekoQ29Agm5vri8JNqRyj39o0qpX6vDF2GZrtutZl5RwgD1XnZjiTAfncsJhMI48QQH3sN87YNA==}
+    engines: {node: '>=10'}
+    hasBin: true
+    dev: false
 
   /send@0.19.2:
     resolution: {integrity: sha512-VMbMxbDeehAxpOtWJXlcUS5E8iXh6QmN+BkRX1GARS3wRaXEEgzCcB10gTQazO42tpNIya8xIyNx8fll1OFPrg==}

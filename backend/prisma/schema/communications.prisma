@@ -1,0 +1,103 @@
+model NotificationLog {
+  id                String   @id @default(cuid())
+
+  tenantId          String
+  userId            String?
+
+  eventType         String?
+  priority          Priority?
+
+  channel           NotificationChannel
+
+  recipient         String
+
+  provider          String?
+  providerMessageId String?
+
+  status            NotificationStatus @default(PENDING)
+
+  retryCount        Int @default(0)
+
+  traceId           String?
+  workerId          String?
+
+  error             String?
+
+  metadata          Json?
+
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([tenantId, channel])
+  @@index([recipient])
+  @@index([traceId])
+}
+
+model CommunicationTemplate {
+  id                    String   @id @default(cuid())
+
+  tenantId              String
+
+  eventType             String
+
+  channel               NotificationChannel
+
+  language              Language @default(ENGLISH)
+
+  subject               String?
+  body                  String
+
+  variables             Json?
+
+  // SMS DLT
+  dltTemplateId         String?
+  dltPeId               String?
+
+  // WhatsApp
+  whatsappTemplateId    String?
+
+  active                Boolean @default(true)
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([tenantId, eventType])
+}
+
+model CommunicationPolicy {
+  id                String   @id @default(cuid())
+
+  tenantId          String
+
+  eventType         String
+
+  channels          NotificationChannel[]
+
+  fallbackEnabled   Boolean @default(false)
+
+  priority          Priority @default(MEDIUM)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([tenantId, eventType])
+}
+
+
+model NotificationPreference {
+  id                String   @id @default(cuid())
+
+  userId            String   @unique
+
+  emailEnabled      Boolean @default(true)
+  smsEnabled        Boolean @default(true)
+  whatsappEnabled   Boolean @default(true)
+  pushEnabled       Boolean @default(true)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

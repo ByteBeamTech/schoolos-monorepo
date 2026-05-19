@@ -1,0 +1,17 @@
+export const NOTIFICATION_EVENTS = {
+  USER_LOGIN_OTP:
+    'USER_LOGIN_OTP',
+
+  PASSWORD_RESET_OTP:
+    'PASSWORD_RESET_OTP',
+
+  FEE_REMINDER:
+    'FEE_REMINDER',
+
+  ANNOUNCEMENT:
+    'ANNOUNCEMENT',
+} as const;
+
+export type NotificationEvent =
+  typeof NOTIFICATION_EVENTS[keyof typeof NOTIFICATION_EVENTS];
+

@@ -1,0 +1,17 @@
+import {
+  NOTIFICATION_EVENTS,
+} from './notification-events.constants';
+
+export const EVENT_CHANNEL_REGISTRY = {
+  [NOTIFICATION_EVENTS.USER_LOGIN_OTP]:
+    ['EMAIL'],
+
+  [NOTIFICATION_EVENTS.PASSWORD_RESET_OTP]:
+    ['EMAIL'],
+
+  [NOTIFICATION_EVENTS.FEE_REMINDER]:
+    ['EMAIL'],
+
+  [NOTIFICATION_EVENTS.ANNOUNCEMENT]:
+    ['EMAIL'],
+};
