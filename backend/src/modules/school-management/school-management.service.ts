@@ -5,7 +5,7 @@ import { Injectable, NotFoundException, ConflictException, BadRequestException, 
 import { PrismaService } from '@infra/database/prisma.service';
 
 import { AuditService } from '@core/compliance/audit.service';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma, UserRole, Currency } from '@prisma/client';
 import {
   UpdateSchoolProfileDto,
   CreateBranchDto,
@@ -64,7 +64,7 @@ export class SchoolManagementService {
         ...(dto.registrationNumber && { registrationNumber: dto.registrationNumber }),
         ...(dto.gstin              && { gstin:              dto.gstin              }),
         ...(dto.timezone           && { timezone:           dto.timezone           }),
-        ...(dto.currency           && { currency:           dto.currency as any    }),
+        ...(dto.currency           && { currency:           dto.currency}),
       },
     });
     await this.audit.logUpdate({ tenantId, actorId, entityType: 'Tenant', entityId: tenantId, before: { name: before.name }, after: dto });
@@ -99,7 +99,7 @@ export class SchoolManagementService {
   }
 
   async updateBranch(tenantId: string, id: string, dto: UpdateBranchDto, actorId: string) {
-    const branch = await this.prisma.branch.findUnique({ where: { id, tenantId } });
+    const branch = await this.prisma.branch.findFirst({ where: { id, tenantId } });
     if (!branch) throw new NotFoundException(`Branch not found: ${id}`);
 
     const updated = await this.prisma.branch.update({
@@ -120,7 +120,7 @@ export class SchoolManagementService {
   }
 
   async deleteBranch(tenantId: string, id: string, actorId: string) {
-    const branch = await this.prisma.branch.findUnique({ where: { id, tenantId } });
+    const branch = await this.prisma.branch.findFirst({ where: { id, tenantId } });
     if (!branch) throw new NotFoundException(`Branch not found: ${id}`);
     
     await this.prisma.branch.update({ where: { id }, data: { isActive: false } });
@@ -130,7 +130,7 @@ export class SchoolManagementService {
 
   // ── 3. Users ────────────────────────────────────────────────────────────────
 
-  async getUsers(tenantId: string, filters: { role?: StaffRole; isActive?: boolean; search?: string } = {}) {
+  async getUsers(tenantId: string, filters: { role?: UserRole; isActive?: boolean; search?: string } = {}) {
     const where: Prisma.UserWhereInput = { tenantId };
     if (filters.role)     where.role     = filters.role;
     if (filters.isActive !== undefined) where.isActive = filters.isActive;
@@ -162,12 +162,12 @@ export class SchoolManagementService {
   }
 
   async updateUserRole(tenantId: string, userId: string, dto: UpdateUserRoleDto, actorId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId, tenantId } });
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException(`User not found: ${userId}`);
     
     const updated = await this.prisma.user.update({
       where: { id: userId },
-      data: { role: dto.role as StaffRole, ...(dto.isActive !== undefined && { isActive: dto.isActive }) },
+      data: { role: dto.role, ...(dto.isActive !== undefined && { isActive: dto.isActive }) },
       select: { id: true, email: true, role: true, isActive: true },
     });
     await this.audit.logUpdate({ tenantId, actorId, entityType: 'User', entityId: userId, before: { role: user.role }, after: { role: dto.role } });
@@ -176,7 +176,7 @@ export class SchoolManagementService {
 
   async removeUser(tenantId: string, userId: string, actorId: string) {
     if (userId === actorId) throw new ConflictException('You cannot remove yourself.');
-    const user = await this.prisma.user.findUnique({ where: { id: userId, tenantId } });
+    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
     if (!user) throw new NotFoundException(`User not found: ${userId}`);
     
     await this.prisma.user.update({ where: { id: userId }, data: { isActive: false } });
@@ -228,7 +228,7 @@ export class SchoolManagementService {
   }
 
   async createSection(tenantId: string, branchId: string, dto: CreateSectionDto, actorId: string) {
-    const cls = await this.prisma.class.findUnique({ where: { id: dto.classId, tenantId, branchId } });
+    const cls = await this.prisma.class.findFirst({ where: { id: dto.classId, tenantId, branchId } });
     if (!cls) throw new NotFoundException(`Class context verification failure: ID ${dto.classId} does not exist on this campus.`);
     
     const existing = await this.prisma.section.findFirst({ where: { classId: dto.classId, name: dto.name, branchId } });
@@ -302,11 +302,10 @@ export class SchoolManagementService {
   }
 
   async createFeeStructure(tenantId: string, dto: CreateFeeStructureDto, actorId: string) {
-    const cls = await this.prisma.class.findUnique({ where: { id: dto.classId, tenantId } });
+    const cls = await this.prisma.class.findFirst({ where: { id: dto.classId, tenantId } });
     if (!cls) throw new NotFoundException(`Class not found: ${dto.classId}`);
     
     const structure = await this.prisma.feeStructure.create({
-      //data: { tenantId, name: dto.name, classId: dto.classId, frequency: dto.frequency as FeeFrequency, amount: dto.amount, feeTypeId: dto.feeTypeId ?? null },
       data: { tenantId, name: dto.name, classId: dto.classId, frequency: dto.frequency, amount: dto.amount, feeTypeId: dto.feeTypeId ?? null },
       include: { class: true, feeType: true },
     });
@@ -315,7 +314,7 @@ export class SchoolManagementService {
   }
 
   async deleteFeeStructure(tenantId: string, id: string, actorId: string) {
-    const s = await this.prisma.feeStructure.findUnique({ where: { id, tenantId } });
+    const s = await this.prisma.feeStructure.findFirst({ where: { id, tenantId } });
     if (!s) throw new NotFoundException(`Fee structure not found: ${id}`);
     
     await this.prisma.feeStructure.delete({ where: { id } });

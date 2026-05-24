@@ -1,18 +1,8 @@
 // /apps/schoolos/backend/src/modules/school-management/school-management.dto.ts
 
-import { 
-  IsString, 
-  IsOptional, 
-  IsNotEmpty, 
-  IsEmail, 
-  IsEnum, 
-  IsBoolean, 
-  IsNumber, 
-  Min, 
-  Max 
-} from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty, IsEmail, IsEnum, IsBoolean, IsNumber, IsArray, ArrayMinSize, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { UserRole, Currency } from '@prisma/client';
 
 // ============================================================================
 // 🏫 CORE SCHOOL & BRANCH CONTRACTS (RESTORED)
@@ -20,9 +10,20 @@ import { UserRole } from '@prisma/client';
 
 export class UpdateSchoolProfileDto {
   @ApiPropertyOptional() @IsString() @IsOptional() name?: string;
-  @ApiPropertyOptional() @IsString() @IsOptional() address?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() shortName?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() phone?: string;
   @ApiPropertyOptional() @IsEmail() @IsOptional() email?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() website?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() address?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() city?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() state?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() pincode?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() country?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() board?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() registrationNumber?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() gstin?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() timezone?: string;
+  @ApiPropertyOptional({ enum: Currency }) @IsEnum(Currency) @IsOptional() currency?: Currency;
 }
 
 export class CreateBranchDto {
@@ -30,16 +31,26 @@ export class CreateBranchDto {
   @IsString() @IsNotEmpty()
   name!: string;
 
-  @ApiProperty({ example: 'LKO-01' })
-  @IsString() @IsNotEmpty()
-  code!: string;
+  @ApiPropertyOptional({ example: 'LKO-01' })
+  @IsString() @IsOptional()
+  code?: string;
 
   @ApiPropertyOptional() @IsString() @IsOptional() address?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() city?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() phone?: string;
+  @ApiPropertyOptional() @IsEmail() @IsOptional() email?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() principal?: string;
 }
 
 export class UpdateBranchDto {
   @ApiPropertyOptional() @IsString() @IsOptional() name?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() code?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() address?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() city?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() phone?: string;
+  @ApiPropertyOptional() @IsEmail() @IsOptional() email?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() principal?: string;
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() isActive?: boolean;
 }
 
 // ============================================================================
@@ -100,27 +111,49 @@ export class UpdateSectionDto {
 
 export class CreateSubjectDto {
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
-  @ApiProperty() @IsString() @IsNotEmpty() code!: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() code?: string;
 }
 
 export class CreateFeeTypeDto {
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
-  @ApiProperty() @IsString() @IsNotEmpty() code!: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() code?: string;
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() isMandatory?: boolean;
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() isRecurring?: boolean;
 }
 
 export class CreateFeeStructureDto {
-  @ApiProperty() @IsString() @IsNotEmpty() academicYear!: string;
-  @ApiProperty() @IsNumber() @IsNotEmpty() amount!: number;
+  @ApiProperty({ example: 'Tuition Fee Q1' })
+  @IsString() @IsNotEmpty()
+  name!: string;
+
+  @ApiProperty({ example: 'cls_abc123' })
+  @IsString() @IsNotEmpty()
+  classId!: string;
+
+  @ApiProperty({ example: 'MONTHLY', description: 'FeeFrequency enum value' })
+  @IsString() @IsNotEmpty()
+  frequency!: string;
+
+  @ApiProperty({ example: 5000 })
+  @IsNumber() @IsNotEmpty()
+  amount!: number;
+
+  @ApiPropertyOptional({ example: 'ft_abc123' })
+  @IsString() @IsOptional()
+  feeTypeId?: string;
 }
 
 export class CreateRouteDto {
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
-  @ApiPropertyOptional() @IsString() @IsOptional() details?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() description?: string;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() feeAmount?: number;
 }
 
 export class CreateVehicleDto {
   @ApiProperty() @IsString() @IsNotEmpty() registrationNumber!: string;
-  @ApiPropertyOptional() @IsString() @IsOptional() capacity?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() capacity?: number;
+  @ApiPropertyOptional() @IsString() @IsOptional() driverName?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() driverPhone?: string;
 }
 
 // ============================================================================
@@ -128,13 +161,21 @@ export class CreateVehicleDto {
 // ============================================================================
 
 export class UpdateBrandingDto {
-  @ApiPropertyOptional() @IsString() @IsOptional() logoUrl?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() primaryColor?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() secondaryColor?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() logoUrl?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() faviconUrl?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() portalTitle?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() tagline?: string;
 }
 
 export class UpdateSecuritySettingsDto {
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() enforceMfa?: boolean;
-  @ApiPropertyOptional() @IsNumber() @IsOptional() sessionTimeout?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() sessionTimeoutMinutes?: number;
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() requireMfaForAdmins?: boolean;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() maxLoginAttempts?: number;
+  @ApiPropertyOptional() @IsOptional() allowedIpRanges?: string[];
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() enforcePasswordPolicy?: boolean;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() passwordExpiryDays?: number;
 }
 
 // ============================================================================
