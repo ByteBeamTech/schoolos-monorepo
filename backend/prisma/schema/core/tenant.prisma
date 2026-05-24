@@ -52,6 +52,7 @@ model Tenant {
   auditLogs            AuditLog[]
   complaints           Complaint[]
   featureFlags         FeatureFlag[]
+  features             TenantFeatureMatrix[]
   fraudAlerts          FraudAlert[]
   guardians            Guardian[]
   idCards              IDCard[]
@@ -88,4 +89,26 @@ model Tenant {
   @@index([status])
   @@index([region])
   @@index([nextRunAt]) // Performance index for scheduler
+}
+
+// =========================================================================
+// 🎯 ENTERPRISE CONFIG: CONTRACT-DRIVEN FEATURE CAPABILITY MATRIX
+// =========================================================================
+model TenantFeatureMatrix {
+  id         String    @id @default(cuid())
+  tenantId   String
+  featureKey String // e.g., "SMS_AUTOMATION", "LMS_PREMIUM", "TRANSPORT_TRACKING"
+  enabled    Boolean   @default(false)
+  expiresAt  DateTime? // Contract-driven license bounds tracking
+  metadata   Json? // Custom rate limits or branch allocations (e.g., {"smsQuota": 10000})
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // 🔗 Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // 🛡️ Compound index to guarantee no duplicate capabilities are injected per school
+  @@unique([tenantId, featureKey])
+  // ⚡ Performance indexing for active guard routing
+  @@index([tenantId, enabled])
 }

@@ -1,36 +1,36 @@
 model NotificationLog {
-  id                String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  tenantId          String
-  userId            String?
+  tenantId String
+  userId   String?
 
-  eventType         String?
-  priority          Priority?
+  eventType String?
+  priority  Priority?
 
-  channel           NotificationChannel
+  channel NotificationChannel
 
-  recipient         String
+  recipient String
 
   provider          String?
   providerMessageId String?
 
-  status            NotificationStatus @default(PENDING)
+  status NotificationStatus @default(PENDING)
 
-  retryCount        Int @default(0)
+  retryCount Int @default(0)
 
-  traceId           String?
-  workerId          String?
+  traceId  String?
+  workerId String?
 
-  error             String?
+  error String?
 
-  metadata          Json?
+  metadata Json?
 
-  sentAt            DateTime?
-  deliveredAt       DateTime?
-  readAt            DateTime?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId, channel])
   @@index([recipient])
@@ -38,66 +38,65 @@ model NotificationLog {
 }
 
 model CommunicationTemplate {
-  id                    String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  tenantId              String
+  tenantId String
 
-  eventType             String
+  eventType String
 
-  channel               NotificationChannel
+  channel NotificationChannel
 
-  language              Language @default(ENGLISH)
+  language Language @default(ENGLISH)
 
-  subject               String?
-  body                  String
+  subject String?
+  body    String
 
-  variables             Json?
+  variables Json?
 
   // SMS DLT
-  dltTemplateId         String?
-  dltPeId               String?
+  dltTemplateId String?
+  dltPeId       String?
 
   // WhatsApp
-  whatsappTemplateId    String?
+  whatsappTemplateId String?
 
-  active                Boolean @default(true)
+  active Boolean @default(true)
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId, eventType])
 }
 
 model CommunicationPolicy {
-  id                String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  tenantId          String
+  tenantId String
 
-  eventType         String
+  eventType String
 
-  channels          NotificationChannel[]
+  channels NotificationChannel[]
 
-  fallbackEnabled   Boolean @default(false)
+  fallbackEnabled Boolean @default(false)
 
-  priority          Priority @default(MEDIUM)
+  priority Priority @default(MEDIUM)
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([tenantId, eventType])
 }
 
-
 model NotificationPreference {
-  id                String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  userId            String   @unique
+  userId String @unique
 
-  emailEnabled      Boolean @default(true)
-  smsEnabled        Boolean @default(true)
-  whatsappEnabled   Boolean @default(true)
-  pushEnabled       Boolean @default(true)
+  emailEnabled    Boolean @default(true)
+  smsEnabled      Boolean @default(true)
+  whatsappEnabled Boolean @default(true)
+  pushEnabled     Boolean @default(true)
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

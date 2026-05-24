@@ -1,38 +1,28 @@
+// /apps/schoolos/backend/src/modules/students/dto/student.dto.ts
+
 import {
   IsString, IsEmail, IsOptional, IsBoolean,
   IsDateString, IsNotEmpty, IsEnum,
   MaxLength, IsNumberString,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
-export enum Gender {
-  MALE   = 'MALE',
-  FEMALE = 'FEMALE',
-  OTHER  = 'OTHER',
-}
-
-export enum GuardianRelation {
-  FATHER         = 'FATHER',
-  MOTHER         = 'MOTHER',
-  GRANDFATHER    = 'GRANDFATHER',
-  GRANDMOTHER    = 'GRANDMOTHER',
-  UNCLE          = 'UNCLE',
-  AUNT           = 'AUNT',
-  SIBLING        = 'SIBLING',
-  LEGAL_GUARDIAN = 'LEGAL_GUARDIAN',
-  OTHER          = 'OTHER',
-}
+// 🟢 CRITICAL ARCHITECTURAL FIX: Direct contract binding to eliminate dual-source drift forever
+import { Gender, GuardianRelation } from '@prisma/client';
 
 export class CreateStudentDto {
   @ApiProperty({ description: 'Branch ID the student belongs to' })
   @IsString() @IsNotEmpty()
   branchId!: string;
 
+  @ApiProperty({ description: 'Class ID the student maps to' })
+  @IsString() @IsNotEmpty()
+  classId!: string; 
+
   @ApiProperty({ example: 'ADM-2025-001' })
   @IsString() @IsNotEmpty()
   admissionNumber!: string;
 
-  @ApiProperty({ example: 'Arjun' })
+  @ApiProperty({ example: 'Divakar' })
   @IsString() @IsNotEmpty()
   firstName!: string;
 
@@ -40,15 +30,15 @@ export class CreateStudentDto {
   @IsString() @IsNotEmpty()
   lastName!: string;
 
-  @ApiProperty({ description: 'Academic Session ID' })
+  @ApiProperty({ description: 'Academic Session ID or Tracking Reference String' })
   @IsString() @IsNotEmpty()
-  academicYear!: string;
+  academicYear!: string; 
 
   @ApiPropertyOptional({ example: '2010-05-15' })
   @IsDateString() @IsOptional()
   dateOfBirth?: string;
 
-  @ApiPropertyOptional({ enum: Gender })
+  @ApiPropertyOptional({ enum: Gender, description: 'Directly governed by Prisma client definition' })
   @IsEnum(Gender) @IsOptional()
   gender?: Gender;
 
@@ -66,10 +56,11 @@ export class CreateStudentDto {
 
   @ApiPropertyOptional({ example: '123456789012' })
   @IsNumberString() @MaxLength(12) @IsOptional()
-  aadhaarNumber?: string;
+  aadharNumber?: string; 
 }
 
 export class UpdateStudentDto {
+  @ApiPropertyOptional() @IsString()      @IsOptional() classId?:     string; 
   @ApiPropertyOptional() @IsString()      @IsOptional() firstName?:   string;
   @ApiPropertyOptional() @IsString()      @IsOptional() lastName?:    string;
   @ApiPropertyOptional() @IsDateString()  @IsOptional() dateOfBirth?: string;
@@ -81,11 +72,11 @@ export class UpdateStudentDto {
 }
 
 export class CreateGuardianDto {
-  @ApiProperty({ example: 'Rajesh' })
+  @ApiProperty({ example: 'Vibhakar' })
   @IsString() @IsNotEmpty()
   firstName!: string;
 
-  @ApiProperty({ example: 'Sharma' })
+  @ApiProperty({ example: 'Srivastava' })
   @IsString() @IsNotEmpty()
   lastName!: string;
 
@@ -93,7 +84,7 @@ export class CreateGuardianDto {
   @IsString() @IsNotEmpty()
   phone!: string;
 
-  @ApiPropertyOptional({ example: 'rajesh@example.com' })
+  @ApiPropertyOptional({ example: 'vibhakar8@gmail.com' })
   @IsEmail() @IsOptional()
   email?: string;
 
@@ -106,8 +97,8 @@ export class LinkGuardianDto {
   @IsString() @IsNotEmpty()
   guardianId!: string;
 
-  @ApiProperty({ enum: GuardianRelation })
-  @IsEnum(GuardianRelation)
+  @ApiProperty({ enum: GuardianRelation, description: 'Directly governed by Prisma client definition' })
+  @IsEnum(GuardianRelation) // 🟢 Single-Source Validation Active!
   relation!: GuardianRelation;
 
   @ApiPropertyOptional({ default: false })

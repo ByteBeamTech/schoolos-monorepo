@@ -289,7 +289,7 @@ export class AccessControlService {
         'gradebook:create','gradebook:read','gradebook:update','gradebook:delete','gradebook:enter_marks','gradebook:publish',
         'homework:create','homework:read','homework:update','homework:delete','homework:grade',
         'admissions:create','admissions:read','admissions:update','admissions:approve','admissions:reject','admissions:promote','admissions:generate_id','admissions:export',
-        'billing:create','billing:read','billing:update','billing:delete','billing:approve_discount','billing:generate_receipt','billing:export','billing:send_reminder','billing:record_payment',
+        'billing:create','billing:read','billing:update','billing:approve_discount','billing:generate_receipt','billing:export','billing:send_reminder','billing:record_payment',
         'accounting:create','accounting:read','accounting:update','accounting:delete','accounting:approve','accounting:export',
         'payroll:create','payroll:read','payroll:update','payroll:process','payroll:approve',
         'staff:create','staff:read','staff:update','staff:delete',

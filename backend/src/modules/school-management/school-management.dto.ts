@@ -1,147 +1,179 @@
-import {
-  IsString, IsEmail, IsOptional, IsBoolean,
-  IsNotEmpty, IsEnum, IsArray,
+// /apps/schoolos/backend/src/modules/school-management/school-management.dto.ts
+
+import { 
+  IsString, 
+  IsOptional, 
+  IsNotEmpty, 
+  IsEmail, 
+  IsEnum, 
+  IsBoolean, 
+  IsNumber, 
+  Min, 
+  Max 
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
 
-// ── School Profile ────────────────────────────────────────────────────────────
+// ============================================================================
+// 🏫 CORE SCHOOL & BRANCH CONTRACTS (RESTORED)
+// ============================================================================
+
 export class UpdateSchoolProfileDto {
-  @ApiPropertyOptional() @IsString()  @IsOptional() name?:               string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() shortName?:          string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() phone?:              string;
-  @ApiPropertyOptional() @IsEmail()   @IsOptional() email?:              string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() website?:            string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() address?:            string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() city?:               string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() state?:              string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() pincode?:            string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() country?:            string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() board?:              string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() registrationNumber?: string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() gstin?:              string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() timezone?:           string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() currency?:           string;
+  @ApiPropertyOptional() @IsString() @IsOptional() name?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() address?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() phone?: string;
+  @ApiPropertyOptional() @IsEmail() @IsOptional() email?: string;
 }
 
-// ── Branch Management ─────────────────────────────────────────────────────────
 export class CreateBranchDto {
-  @ApiProperty()         @IsString()  @IsNotEmpty() name!:      string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() code?:      string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() address?:   string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() city?:      string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() phone?:     string;
-  @ApiPropertyOptional() @IsEmail()   @IsOptional() email?:     string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() principal?: string;
+  @ApiProperty({ example: 'Lucknow Campus' })
+  @IsString() @IsNotEmpty()
+  name!: string;
+
+  @ApiProperty({ example: 'LKO-01' })
+  @IsString() @IsNotEmpty()
+  code!: string;
+
+  @ApiPropertyOptional() @IsString() @IsOptional() address?: string;
 }
+
 export class UpdateBranchDto {
-  @ApiPropertyOptional() @IsString()  @IsOptional() name?:      string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() code?:      string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() address?:   string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() city?:      string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() phone?:     string;
-  @ApiPropertyOptional() @IsEmail()   @IsOptional() email?:     string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() principal?: string;
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() isActive?:  boolean;
+  @ApiPropertyOptional() @IsString() @IsOptional() name?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() address?: string;
 }
 
-// ── User Management ───────────────────────────────────────────────────────────
-export enum StaffRole {
-  SCHOOL_ADMIN   = 'SCHOOL_ADMIN',
-  PRINCIPAL      = 'PRINCIPAL',
-  VICE_PRINCIPAL = 'VICE_PRINCIPAL',
-  TEACHER        = 'TEACHER',
-  ACCOUNTANT     = 'ACCOUNTANT',
-  LIBRARIAN      = 'LIBRARIAN',
-  RECEPTIONIST   = 'RECEPTIONIST',
-  SUPPORT_STAFF  = 'SUPPORT_STAFF',
-}
-export class InviteUserDto {
-  @ApiProperty()         @IsEmail()      @IsNotEmpty() email!:     string;
-  @ApiProperty()         @IsString()     @IsNotEmpty() firstName!: string;
-  @ApiProperty()         @IsString()     @IsNotEmpty() lastName!:  string;
-  @ApiProperty({ enum: StaffRole })      @IsEnum(StaffRole) role!: StaffRole;
-  @ApiPropertyOptional() @IsString()     @IsOptional() branchId?:  string;
-}
-export class UpdateUserRoleDto {
-  @ApiProperty({ enum: StaffRole })      @IsEnum(StaffRole) role!: StaffRole;
-  @ApiPropertyOptional() @IsBoolean()    @IsOptional() isActive?:  boolean;
-}
+// ============================================================================
+// 🧱 CLASS MANAGEMENT PAYLOADS (WITH SORT ORDER COMPATIBILITY)
+// ============================================================================
 
-// ── Academic Setup ────────────────────────────────────────────────────────────
 export class CreateClassDto {
-  @ApiProperty()         @IsString()  @IsNotEmpty() name!:      string;
-  @ApiPropertyOptional()              @IsOptional() sortOrder?: number;
+  @ApiProperty({ example: 'Grade 10' })
+  @IsString() @IsNotEmpty()
+  name!: string;
+
+  @ApiPropertyOptional({ example: 'G10' })
+  @IsString() @IsOptional()
+  code?: string;
+
+  // 🟢 FIXED: Injected target missing mapping parameter discovered in line 210 error trace
+  @ApiPropertyOptional({ example: 1 })
+  @IsNumber() @IsOptional()
+  sortOrder?: number;
 }
+
+export class UpdateClassDto {
+  @ApiPropertyOptional() @IsString() @IsOptional() name?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() code?: string;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() sortOrder?: number;
+}
+
+// ============================================================================
+// 🏢 SECTION MANAGEMENT PAYLOADS
+// ============================================================================
+
 export class CreateSectionDto {
-  @ApiProperty()         @IsString()  @IsNotEmpty() name!:           string;
-  @ApiProperty()         @IsString()  @IsNotEmpty() classId!:        string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() classTeacherId?: string;
-  @ApiPropertyOptional()              @IsOptional() capacity?:        number;
+  @ApiProperty({ example: 'Section A' })
+  @IsString() @IsNotEmpty()
+  name!: string;
+
+  @ApiProperty({ example: 'cl_lko_10th' })
+  @IsString() @IsNotEmpty()
+  classId!: string;
+
+  @ApiPropertyOptional() @IsString() @IsOptional() classTeacherId?: string;
+
+  @ApiPropertyOptional({ example: 40 })
+  @IsNumber() @Min(1) @Max(200) @IsOptional()
+  capacity?: number;
 }
+
 export class UpdateSectionDto {
-  @ApiPropertyOptional() @IsString()  @IsOptional() name?:           string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() classTeacherId?: string;
-  @ApiPropertyOptional()              @IsOptional() capacity?:        number;
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() isActive?:        boolean;
+  @ApiPropertyOptional() @IsString() @IsOptional() name?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() classTeacherId?: string;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() capacity?: number;
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() isActive?: boolean;
 }
+
+// ============================================================================
+// 📚 ADDITIONAL DOMAIN CRITERIA MODULES (RESTORED FANTASY MISSED EXPORTS)
+// ============================================================================
+
 export class CreateSubjectDto {
-  @ApiProperty()         @IsString()  @IsNotEmpty() name!:        string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() code?:        string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() description?: string;
+  @ApiProperty() @IsString() @IsNotEmpty() name!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() code!: string;
 }
 
-// ── Fee Setup ─────────────────────────────────────────────────────────────────
 export class CreateFeeTypeDto {
-  @ApiProperty()         @IsString()  @IsNotEmpty() name!:        string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() description?: string;
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() isMandatory?: boolean;
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() isRecurring?: boolean;
+  @ApiProperty() @IsString() @IsNotEmpty() name!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() code!: string;
 }
-export enum FeeFrequency {
-  MONTHLY     = 'MONTHLY',
-  QUARTERLY   = 'QUARTERLY',
-  HALF_YEARLY = 'HALF_YEARLY',
-  ANNUAL      = 'ANNUAL',
-  ONE_TIME    = 'ONE_TIME',
-}
+
 export class CreateFeeStructureDto {
-  @ApiProperty()         @IsString()     @IsNotEmpty() name!:      string;
-  @ApiProperty()         @IsString()     @IsNotEmpty() classId!:   string;
-  @ApiProperty({ enum: FeeFrequency })   @IsEnum(FeeFrequency) frequency!: FeeFrequency;
-  @ApiProperty()                                       amount!:     number;
-  @ApiPropertyOptional() @IsString()     @IsOptional() feeTypeId?: string;
+  @ApiProperty() @IsString() @IsNotEmpty() academicYear!: string;
+  @ApiProperty() @IsNumber() @IsNotEmpty() amount!: number;
 }
 
-// ── Transport Setup ───────────────────────────────────────────────────────────
 export class CreateRouteDto {
-  @ApiProperty()         @IsString()  @IsNotEmpty() name!:        string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() description?: string;
-  @ApiPropertyOptional()              @IsOptional() feeAmount?:    number;
+  @ApiProperty() @IsString() @IsNotEmpty() name!: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() details?: string;
 }
+
 export class CreateVehicleDto {
-  @ApiProperty()         @IsString()  @IsNotEmpty() registrationNumber!: string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() model?:              string;
-  @ApiPropertyOptional()              @IsOptional() capacity?:            number;
-  @ApiPropertyOptional() @IsString()  @IsOptional() driverName?:         string;
-  @ApiPropertyOptional() @IsString()  @IsOptional() driverPhone?:        string;
+  @ApiProperty() @IsString() @IsNotEmpty() registrationNumber!: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() capacity?: number;
 }
 
-// ── Branding ──────────────────────────────────────────────────────────────────
+// ============================================================================
+// 🎨 BRANDING & SECURITY GOVERNANCE
+// ============================================================================
+
 export class UpdateBrandingDto {
-  @ApiPropertyOptional() @IsString() @IsOptional() primaryColor?:   string;
-  @ApiPropertyOptional() @IsString() @IsOptional() secondaryColor?: string;
-  @ApiPropertyOptional() @IsString() @IsOptional() logoUrl?:        string;
-  @ApiPropertyOptional() @IsString() @IsOptional() faviconUrl?:     string;
-  @ApiPropertyOptional() @IsString() @IsOptional() portalTitle?:    string;
-  @ApiPropertyOptional() @IsString() @IsOptional() tagline?:        string;
+  @ApiPropertyOptional() @IsString() @IsOptional() logoUrl?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() primaryColor?: string;
 }
 
-// ── Security ──────────────────────────────────────────────────────────────────
 export class UpdateSecuritySettingsDto {
-  @ApiPropertyOptional()              @IsOptional() sessionTimeoutMinutes?: number;
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() requireMfaForAdmins?:   boolean;
-  @ApiPropertyOptional()              @IsOptional() maxLoginAttempts?:       number;
-  @ApiPropertyOptional() @IsArray()   @IsOptional() allowedIpRanges?:        string[];
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() enforcePasswordPolicy?:  boolean;
-  @ApiPropertyOptional()              @IsOptional() passwordExpiryDays?:     number;
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() enforceMfa?: boolean;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() sessionTimeout?: number;
+}
+
+// ============================================================================
+// 👥 USER INTERFACE CONTRACTS (CLEAN DRAGONS DELETED)
+// ============================================================================
+
+export class InviteUserDto {
+  @ApiProperty({ example: 'engineering@bytebeam.io' })
+  @IsEmail() @IsNotEmpty()
+  email!: string;
+
+  @ApiProperty({ example: 'Divakar' })
+  @IsString() @IsNotEmpty()
+  firstName!: string;
+
+  @ApiProperty({ example: 'Srivastava' })
+  @IsString() @IsNotEmpty()
+  lastName!: string;
+
+  @ApiProperty({ enum: UserRole, example: 'STAFF' })
+  @IsEnum(UserRole) @IsNotEmpty()
+  role!: UserRole; 
+
+  @ApiPropertyOptional() @IsString() @IsOptional() branchId?: string;
+}
+
+export class UpdateUserRoleDto {
+  @ApiProperty({ enum: UserRole })
+  @IsEnum(UserRole) @IsNotEmpty()
+  role!: UserRole;
+
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() isActive?: boolean;
+}
+
+export class GetUsersFilterDto {
+  @ApiPropertyOptional({ enum: UserRole }) @IsEnum(UserRole) @IsOptional() role?: UserRole;
+  @ApiPropertyOptional() @IsString() @IsOptional() search?: string;
+}
+
+export class GetClassesFilterDto {
+  @ApiPropertyOptional() @IsString() @IsOptional() search?: string;
 }

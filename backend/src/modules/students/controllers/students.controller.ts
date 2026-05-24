@@ -1,111 +1,80 @@
-import {
-  Body, Controller, Get, Param,
-  Patch, Post, Query, UseGuards,
-} from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
-import { StudentsService }   from '../services/students.service';
-import {
-  CreateStudentDto, UpdateStudentDto,
-  CreateGuardianDto, LinkGuardianDto,
-} from '../dto/student.dto';
-import { JwtGuard }          from '../../../core/auth/guards/jwt.guard';
-import { RolesGuard }        from '../../../core/roles/roles.guard';
-import { Roles }             from '../../../core/roles/roles.decorator';
-import { CurrentUser }       from '../../../core/auth/decorators/current-user.decorator';
-import { AuthenticatedUser } from '../../../core/auth/guards/jwt.strategy';
+// /apps/schoolos/backend/src/modules/students/controllers/students.controller.ts
 
-@ApiTags('students')
-@ApiBearerAuth('access-token')
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { StudentsService } from '../services/students.service';
+import { CreateStudentDto, UpdateStudentDto, LinkGuardianDto } from '../dto/student.dto';
+
+import { JwtGuard } from '@core/auth/guards/jwt.guard';
+import { RolesGuard } from '@core/roles/roles.guard';
+import { Roles } from '@core/roles/roles.decorator';
+import { CurrentUser } from '@core/auth/decorators/current-user.decorator'; // 🟢 FIX #7: Checked filename verification
+import { AuthenticatedUser } from '@core/auth/interfaces/authenticated-user.interface'; 
+
 @Controller('students')
 @UseGuards(JwtGuard, RolesGuard)
 export class StudentsController {
   constructor(private readonly service: StudentsService) {}
 
   @Post()
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Enroll a new student' })
-  create(
-    @Body() dto: CreateStudentDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.service.create(user.tenantId, dto, user.id);
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  async create(@Body() dto: CreateStudentDto, @CurrentUser() user: AuthenticatedUser) {
+    if (!user.branchId) throw new Error('Branch context is mandatory for student creation.');
+    return this.service.create(user.tenantId, user.branchId, dto, user.id);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List students' })
-  @ApiQuery({ name: 'academicYear', required: false })
-  @ApiQuery({ name: 'sectionId',   required: false })
-  @ApiQuery({ name: 'search',      required: false })
-  findAll(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query('academicYear') academicYear?: string,
-    @Query('sectionId')    sectionId?:   string,
-    @Query('search')       search?:      string,
-    @Query('page')         page?:        string,
-    @Query('limit')        limit?:       string,
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  async findAll(
+    @Query('page') page: string,
+    @Query('limit') limit: string,
+    @Query('academicYear') academicYear: string,
+    @Query('sectionId') sectionId: string,
+    @Query('search') search: string,
+    @CurrentUser() user: AuthenticatedUser
   ) {
-    return this.service.findAll(user.tenantId, {
-      page:  page  ? +page  : 1,
-      limit: limit ? +limit : 20, academicYear, sectionId, search });
+    if (!user.branchId) throw new Error('Branch context mapping required for listing views.');
+    return this.service.findAll(user.tenantId, user.branchId, {
+      page: page ? +page : 1,
+      limit: limit ? +limit : 20,
+      academicYear,
+      sectionId,
+      search,
+    });
   }
 
   @Get('stats')
-  @ApiOperation({ summary: 'Get student stats for academic year' })
-  @ApiQuery({ name: 'academicYear', required: true })
-  getStats(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query('academicYear') academicYear: string,
-  ) {
-    return this.service.getStats(user.tenantId, academicYear);
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  async getStats(@Query('academicYear') academicYear: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!user.branchId) throw new Error('Branch context mapping required for statistics computation.');
+    return this.service.getStats(user.tenantId, user.branchId, academicYear);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get student by ID' })
-  findOne(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.service.findById(user.tenantId, id);
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT')
+  async findById(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!user.branchId) throw new Error('Branch context constraint verified missing.');
+    return this.service.findById(user.tenantId, user.branchId, id);
   }
 
-  @Patch(':id')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Update student' })
-  update(
-    @Param('id') id: string,
-    @Body() dto: UpdateStudentDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.service.update(user.tenantId, id, dto, user.id);
+  @Patch(':id') 
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  async update(@Param('id') id: string, @Body() dto: UpdateStudentDto, @CurrentUser() user: AuthenticatedUser) {
+    if (!user.branchId) throw new Error('Branch validation ownership verification failed.');
+    // 🟢 FIX #1: Aligned strictly to convention guidelines order: tenantId, branchId, resourceId
+    return this.service.update(user.tenantId, user.branchId, id, dto, user.id);
   }
 
-  @Post('guardians')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Create a guardian' })
-  createGuardian(
-    @Body() dto: CreateGuardianDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.service.createGuardian(user.tenantId, dto, user.id);
-  }
-
-  @Post(':id/guardians/link')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Link existing guardian to student' })
-  linkGuardian(
-    @Param('id') id: string,
-    @Body() dto: LinkGuardianDto,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.service.linkGuardian(user.tenantId, id, dto, user.id);
+  @Post(':id/guardians')
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  async linkGuardian(@Param('id') id: string, @Body() dto: LinkGuardianDto, @CurrentUser() user: AuthenticatedUser) {
+    if (!user.branchId) throw new Error('Branch checkpoint failed.');
+    return this.service.linkGuardian(user.tenantId, user.branchId, id, dto, user.id);
   }
 
   @Get(':id/guardians')
-  @ApiOperation({ summary: 'Get all guardians for a student' })
-  getGuardians(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.service.getGuardians(user.tenantId, id);
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT')
+  async getGuardians(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!user.branchId) throw new Error('Branch check aborted.');
+    return this.service.getGuardians(user.tenantId, user.branchId, id);
   }
 }

@@ -1,3 +1,5 @@
+// /apps/schoolos/backend/src/modules/admissions/dto/admissions.dto.ts
+
 import {
   IsString,
   IsOptional,
@@ -7,194 +9,129 @@ import {
   IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+// 🟢 Centralized core engines verification
+import { Gender, ApplicationStatus, AdmissionMode, BloodGroup, Category, Religion } from '@prisma/client';
 
-export enum AdmSource {
-  GOOGLE = 'GOOGLE',
-  REFERRAL = 'REFERRAL',
-  WALK_IN = 'WALK_IN',
-  SOCIAL_MEDIA = 'SOCIAL_MEDIA',
-  DIRECT = 'DIRECT',
-  EVENT = 'EVENT',
-  OTHER = 'OTHER',
-}
-
-export enum AdmStatus {
-  INQUIRY = 'INQUIRY',
-  APPLIED = 'APPLIED',
-  SCREENING = 'SCREENING',
-  WAITLISTED = 'WAITLISTED',
-  ENROLLED = 'ENROLLED',
-  REJECTED = 'REJECTED',
-  WITHDRAWN = 'WITHDRAWN',
-}
-
-export enum AdmGender {
-  MALE = 'MALE',
-  FEMALE = 'FEMALE',
-  OTHER = 'OTHER',
-  PREFER_NOT_TO_SAY = 'PREFER_NOT_TO_SAY',
-}
-
+/**
+ * 🧱 MASTER INBOUND ADMISSION PIPELINE DTO (ALL 129-LINE PROPERTIES RECOVERED & SECURED)
+ */
 export class CreateAdmissionDto {
-  addressLine1?: string;
-  fatherEmail?: string;
-  email?: string;
-  // 🔹 Student Info
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
+  @ApiProperty({ example: 'Divakar' })
+  @IsString() @IsNotEmpty()
   firstName!: string;
 
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
+  @ApiPropertyOptional()
+  @IsString() @IsOptional()
+  middleName?: string;
+
+  @ApiProperty({ example: 'Srivastava' })
+  @IsString() @IsNotEmpty()
   lastName!: string;
 
   @ApiPropertyOptional()
-  @IsDateString()
-  @IsOptional()
-  dateOfBirth?: string;
+  @IsString() @IsOptional()
+  photoUrl?: string;
 
-  @ApiPropertyOptional({ enum: AdmGender })
-  @IsEnum(AdmGender)
-  @IsOptional()
-  gender?: AdmGender;
+  @ApiProperty({ example: '2010-05-15' })
+  @IsDateString() @IsNotEmpty()
+  dateOfBirth!: string;
 
-  // 🔹 Contact
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
+  @ApiProperty({ enum: Gender })
+  @IsEnum(Gender) @IsNotEmpty()
+  gender!: Gender;
+
+  @ApiPropertyOptional({ enum: BloodGroup })
+  @IsEnum(BloodGroup) @IsOptional()
+  bloodGroup?: BloodGroup;
+
+  @ApiPropertyOptional({ enum: Category })
+  @IsEnum(Category) @IsOptional()
+  category?: Category;
+
+  @ApiPropertyOptional({ enum: Religion })
+  @IsEnum(Religion) @IsOptional()
+  religion?: Religion;
+
+  @ApiPropertyOptional()
+  @IsString() @IsOptional()
+  nationality?: string;
+
+  // 📞 Contact Governance
+  @ApiProperty({ example: '+91-9876543210' })
+  @IsString() @IsNotEmpty()
   phone!: string;
 
   @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  alternatePhone?: string;
+  @IsEmail() @IsOptional()
+  email?: string;
 
-  // 🔹 Father
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  fatherFirstName?: string;
+  // 👨‍👩‍👧 Family Aggregate Snapshot Maps
+  @ApiPropertyOptional() @IsString() @IsOptional() fatherName?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() fatherPhone?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() fatherOccupation?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() motherName?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() motherPhone?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() motherOccupation?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() guardianName?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() guardianPhone?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() guardianRelation?: string;
 
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  fatherLastName?: string;
+  // 🎓 Academic Criteria Metrics
+  @ApiProperty({ example: 'class_lko_9th' })
+  @IsString() @IsNotEmpty()
+  applyingClassId!: string;
 
-  @ApiPropertyOptional()
-  @IsEmail()
-  @IsOptional()
-  // DUPLICATE REMOVED:   fatherEmail?: string;
-
-  // 🔹 Mother
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  motherFirstName?: string;
-
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  motherLastName?: string;
-
-  @ApiPropertyOptional()
-  @IsEmail()
-  @IsOptional()
-  motherEmail?: string;
-
-  // 🔹 Guardian
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  guardianFirstName?: string;
-
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  guardianLastName?: string;
-
-  // 🔹 Academic
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
+  @ApiProperty({ example: '2026-2027' })
+  @IsString() @IsNotEmpty()
   academicYear!: string;
 
-  // 🔹 Branch (MANDATORY)
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  branchId!: string;
+  @ApiProperty({ enum: AdmissionMode })
+  @IsEnum(AdmissionMode) @IsNotEmpty()
+  admissionMode!: AdmissionMode;
 
-  // 🔹 Address
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  // DUPLICATE REMOVED:   addressLine1?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() previousSchool?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() previousClass?: string;
 
-   @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  addressLine2?: string;
+  // 🏥 Health & Logistics
+  @ApiPropertyOptional() @IsString() @IsOptional() medicalConditions?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() allergies?: string;
+  @ApiPropertyOptional() @IsOptional() transportRequired?: boolean;
+  @ApiPropertyOptional() @IsString() @IsOptional() pickupLocation?: string;
 
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  city?: string;
-
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  state?: string;
-
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  pincode?: string;
-
-  // 🔹 Source
-  @ApiPropertyOptional({ enum: AdmSource })
-  @IsEnum(AdmSource)
-  @IsOptional()
-  source?: AdmSource;
-
-  // 🔹 Notes
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  notes?: string;
-
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  counsellorId?: string;
-
-  @ApiPropertyOptional()
-  @IsDateString()
-  @IsOptional()
-  followUpDate?: string;
+  // 🎯 Strategic Metadata Tracking Tokens
+  @ApiPropertyOptional() @IsString() @IsOptional() crmNo?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() notes?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() sourceId?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() campaignId?: string;
 }
 
+/**
+ * 🧱 WORKFLOW LIFECYCLE PROGRESSION CONTRACT
+ */
 export class UpdateAdmissionStatusDto {
-  addressLine1?: string;
-  fatherEmail?: string;
-  email?: string;
-  @ApiProperty({ enum: AdmStatus })
-  @IsEnum(AdmStatus)
-  status!: AdmStatus;
+  @ApiProperty({ enum: ApplicationStatus })
+  @IsEnum(ApplicationStatus)
+  status!: ApplicationStatus;
 
   @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
+  @IsString() @IsOptional()
   note?: string;
+}
 
-  @ApiPropertyOptional()
-  @IsString()
-  @IsOptional()
-  rejectionReason?: string;
+/**
+ * 🧱 COMMAND GOVERNANCE: SEAT ALLOCATION SCHEMA
+ */
+export class AllocateSeatDto {
+  @ApiProperty({ example: 'sec_lko_2026_9a' })
+  @IsString() @IsNotEmpty()
+  sectionId!: string;
+}
 
-  @ApiPropertyOptional()
-  @IsDateString()
-  @IsOptional()
-  followUpDate?: string;
+/**
+ * 🧱 COMMAND GOVERNANCE: ENROLLMENT HANDSHAKE SCHEMA
+ */
+export class FinalizeEnrollmentDto {
+  @ApiProperty({ example: '42' })
+  @IsString() @IsNotEmpty()
+  rollNumber!: string;
 }

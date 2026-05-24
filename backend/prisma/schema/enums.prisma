@@ -295,7 +295,7 @@ enum AdmissionStep {
 }
 
 enum AdmissionStepStatus {
-UNDER_REVIEW
+  UNDER_REVIEW
   INQUIRY
   DOCUMENT_UPLOAD
   VERIFICATION
@@ -642,6 +642,12 @@ enum ApplicationStatus {
 enum GuardianRelation {
   FATHER
   MOTHER
+  GRANDFATHER
+  GRANDMOTHER
+  UNCLE
+  AUNT
+  SIBLING
+  LEGAL_GUARDIAN
   OTHER
 }
 

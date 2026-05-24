@@ -1,7 +1,8 @@
 model Class {
   id                String              @id @default(cuid())
   tenantId          String
-  sessionId         String
+  branchId          String
+  sessionId          String
   name              String
   displayOrder      Int                 @default(0)
   isActive          Boolean             @default(true)
@@ -10,15 +11,18 @@ model Class {
   feeStructures     FeeStructure[]
   sections          Section[]
   TeacherAssignment TeacherAssignment[]
+  students          Student[]
 
-  @@unique([tenantId, sessionId, name])
+  @@unique([tenantId, branchId, sessionId, name])
   @@index([tenantId])
+  @@index([tenantId, branchId, sessionId])
 }
 
 model Section {
   id                String              @id @default(cuid())
   classId           String
   tenantId          String
+  branchId          String
   name              String
   capacity          Int                 @default(40)
   classTeacherId    String?
@@ -30,6 +34,7 @@ model Section {
   timetableSlots    TimetableSlot[]
   TeacherAssignment TeacherAssignment[]
 
-  @@unique([classId, name])
+  @@unique([tenantId, classId, name])
   @@index([tenantId])
+  @@index([tenantId, branchId, classId])
 }

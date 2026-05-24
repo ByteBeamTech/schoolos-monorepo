@@ -1,346 +1,129 @@
-import {
-  Injectable,
-  Logger,
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
-import { AdmissionStepStatus } from '@prisma/client';
+// /apps/schoolos/backend/src/modules/admissions/services/admissions.service.ts
+
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
-import {
-  CreateAdmissionDto,
-  UpdateAdmissionStatusDto,
-} from '../dto/admissions.dto';
+import { AuditService } from '../../../core/compliance/audit.service';
+import { ApplicationStatus, AdmissionStepStatus, StudentStatus } from '@prisma/client';
 
 @Injectable()
 export class AdmissionsService {
   private readonly logger = new Logger(AdmissionsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
-  // =========================
-  // 📊 STATS
-  // =========================
-  async stats(tenantId: string) {
-    const now = new Date();
-    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-    const [pipeline, total, thisMonth] = await Promise.all([
-      this.prisma.admission.groupBy({
-        by: ['status'],
-        where: { tenantId },
-        _count: { _all: true },
-      }),
-      this.prisma.admission.count({ where: { tenantId } }),
-      this.prisma.admission.count({
-        where: { tenantId, createdAt: { gte: startMonth } },
-      }),
-    ]);
-
-    const map: Record<string, number> = {};
-
-    for (const r of pipeline) {
-      map[r.status] = r._count._all;
-    }
-
-    const enrolled = map['ENROLLED'] ?? 0;
-    const inquiries = map['INQUIRY'] ?? 0;
-    const convRate = total > 0 ? Math.round((enrolled / total) * 100) : 0;
-
-    return {
-      total,
-      thisMonth,
-      enrolled,
-      inquiries,
-      conversionRate: convRate,
-      byStatus: map,
-    };
+  private generateAdmissionNumber(crmNo: string): string {
+    if (!crmNo) throw new BadRequestException('CRM Tracking Identification token corrupted.');
+    return crmNo.trim().toUpperCase().replace('CRM-', 'ADM-'); 
   }
 
-  // =========================
-  // 📋 LIST (Ultimate Query Engine)
-  // =========================
-  async list(
-    tenantId: string,
-    filters: {
-      status?: string;
-      source?: string;
-      search?: string;
-      page?: number;
-      limit?: number;
-    } = {},
-  ) {
-    const startTime = Date.now();
-    const traceId = `adm-list-${tenantId}-${startTime}`;
-
-    const page = Math.max(1, filters.page ?? 1);
-    const limit = Math.max(1, Math.min(100, filters.limit ?? 50));
-
-    const where: any = { tenantId };
-
-    if (filters.status) where.status = filters.status;
-    if (filters.source)
-      where.source = filters.source.trim().toUpperCase();
-
-    // 🔍 Search (Safe + Fast-ready)
-    if (filters.search?.trim()) {
-      const s = filters.search.trim();
-
-      if (s.length > 50) {
-        throw new BadRequestException('Search query too long');
+  async allocateSeat(tenantId: string, branchId: string, applicationId: string, sectionId: string, actorId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const app = await tx.admissionApplication.findFirst({
+        where: { id: applicationId, tenantId, branchId, isDeleted: false }
+      });
+      if (!app) throw new NotFoundException('Admission Application details missing or deactivated.');
+      if (app.status === ApplicationStatus.APPROVED) {
+        throw new BadRequestException(`Seat already reserved for application matching crmNo: ${app.crmNo}`);
+      }
+      if (!app.applyingClassId) {
+        throw new BadRequestException('Relational Block: Application missing critical applyingClassId property.');
       }
 
-      const normalizedPhone = s.replace(/\D/g, '');
-
-      where.OR = [
-        { firstName: { contains: s, mode: 'insensitive' } },
-        { lastName: { contains: s, mode: 'insensitive' } },
-        ...(normalizedPhone
-          ? [{ guardianPhone: { contains: normalizedPhone } }]
-          : []),
-      ];
-    }
-
-    const [data, total] = await Promise.all([
-      this.prisma.admission.findMany({
-        where,
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-
-          // 👨‍👩‍👧 Parent Info
-          fatherFirstName: true,
-          fatherLastName: true,
-          motherFirstName: true,
-          motherLastName: true,
-
-          // 📞 Contact
-          guardianPhone: true,
-          alternatePhone: true,
-          email: true,
-
-          // 📍 Address
-          addressLine1: true,
-          addressLine2: true,
-          city: true,
-          state: true,
-          pincode: true,
-
-          // 🎯 Status
-          status: true,
-          source: true,
-          followUpDate: true,
-
-          createdAt: true,
-        },
-        orderBy: [
-          { followUpDate: { sort: 'asc', nulls: 'last' } },
-          { createdAt: 'desc' },
-          { id: 'desc' },
-        ],
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.admission.count({ where }),
-    ]);
-
-    const lastPage = Math.max(1, Math.ceil(total / limit));
-
-    if (total > 0 && page > lastPage) {
-      throw new BadRequestException(
-        `Page ${page} out of bounds. Max: ${lastPage}`,
-      );
-    }
-
-    this.logger.debug({
-      traceId,
-      event: 'ADMISSION_LIST_FETCH',
-      tenantId,
-      total,
-      page,
-      limit,
-      latencyMs: Date.now() - startTime,
-    });
-
-    return {
-      data,
-      meta: {
-        total,
-        page,
-        limit,
-        lastPage,
-      },
-    };
-  }
-
-  // =========================
-  // 🔍 GET BY ID
-  // =========================
-  async getById(tenantId: string, id: string) {
-    const admission = await this.prisma.admission.findFirst({
-      where: { id, tenantId },
-      include: {
-        activities: { orderBy: { createdAt: 'desc' } },
-      },
-    });
-
-    if (!admission) {
-      throw new NotFoundException('Admission not found');
-    }
-
-    return admission;
-  }
-
-  // =========================
-  // ➕ CREATE
-  // =========================
-  async create(
-    tenantId: string,
-    dto: CreateAdmissionDto,
-    actorId: string,
-  ) {
-    if (!dto.firstName?.trim()) {
-      throw new BadRequestException('First name is required');
-    }
-
-    return this.prisma.$transaction(async (tx) => {
-      const admission = await tx.admission.create({
-        data: {
-
-          tenantId,
-          branchId: dto.branchId,
-          academicYear: dto.academicYear || '2024-2025',
-
-          firstName: dto.firstName.trim(),
-          lastName: dto.lastName?.trim() ?? null,
-
-          fatherFirstName: dto.fatherFirstName ?? null,
-          fatherLastName: dto.fatherLastName ?? null,
-          motherFirstName: dto.motherFirstName ?? null,
-          motherLastName: dto.motherLastName ?? null,
-
-          guardianPhone: dto.phone ?? null,
-          alternatePhone: dto.alternatePhone ?? null,
-          email: dto.email ?? null,
-
-          addressLine1: dto.addressLine1 ?? null,
-          addressLine2: dto.addressLine2 ?? null,
-          city: dto.city ?? null,
-          state: dto.state ?? null,
-          pincode: dto.pincode ?? null,
-
-          source: dto.source?.trim().toUpperCase() ?? 'DIRECT',
-          notes: dto.notes ?? null,
-
-          followUpDate: dto.followUpDate
-            ? new Date(dto.followUpDate)
-            : null,
-
-          status: 'INQUIRY' as AdmissionStepStatus,
-        },
+      const targetSection = await tx.section.findFirst({
+        where: { id: sectionId, tenantId, branchId, classId: app.applyingClassId }
       });
+      if (!targetSection) throw new NotFoundException('Selected target Section structure mismatch within Class blueprint.');
 
-      await tx.admissionActivity.create({
-        data: {
+      await tx.$executeRaw`
+        SELECT id FROM "Section" WHERE id = ${sectionId} AND "tenantId" = ${tenantId} AND "branchId" = ${branchId} FOR UPDATE;
+      `;
 
-          admissionId: admission.id,
-          tenantId,
-          actorId,
-          action: 'INQUIRY_CREATED',
-          note: dto.notes ?? null,
-        },
-      });
-
-      return admission;
-    });
-  }
-
-  // =========================
-  // 🔄 UPDATE STATUS
-  // =========================
-  async updateStatus(
-    tenantId: string,
-    id: string,
-    dto: UpdateAdmissionStatusDto,
-    actorId: string,
-  ) {
-    const existing = await this.getById(tenantId, id);
-
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.admission.update({
+      const activeEnrolledCount = await tx.student.count({ where: { tenantId, branchId, sectionId, isActive: true } });
+      const temporaryReservedCount = await tx.admissionApplication.count({
         where: {
-          id,
-          updatedAt: existing.updatedAt, // 🔒 optimistic locking
-        },
-        data: {
-
-          status: dto.status as any as any,
-          rejectionReason: dto.rejectionReason ?? null,
-          followUpDate: dto.followUpDate
-            ? new Date(dto.followUpDate)
-            : null,
-        },
+          tenantId, branchId, status: ApplicationStatus.APPROVED,
+          formDetails: { path: ['reservedSectionId'], equals: sectionId }
+        }
       });
 
-      await tx.admissionActivity.create({
-        data: {
+      if (activeEnrolledCount + temporaryReservedCount + 1 > targetSection.capacity) {
+        throw new BadRequestException('Seat allocation aborted: Dynamic occupancy boundary breach on Section capacity.');
+      }
 
-          admissionId: id,
-          tenantId,
-          actorId,
-          action: `STATUS_${dto.status}`,
-          note: dto.note ?? null,
+      const currentFormDetails = typeof app.formDetails === 'object' && app.formDetails !== null ? (app.formDetails as Record<string, any>) : {};
+      const updatedFormDetails = { ...currentFormDetails, reservedSectionId: sectionId };
+
+      return tx.admissionApplication.update({
+        where: { id: applicationId },
+        data: { 
+          status:      ApplicationStatus.APPROVED,
+          stepStatus:  AdmissionStepStatus.FEE_DEPOSIT, 
+          sectionId:   sectionId,
+          formDetails: updatedFormDetails,
+          updatedById: actorId
         },
       });
-
-      return updated;
     });
   }
 
-  // =========================
-  // 📝 ADD NOTE
-  // =========================
-  async addNote(
-    tenantId: string,
-    id: string,
-    note: string,
-    actorId: string,
-  ) {
-    await this.getById(tenantId, id);
-
+  async finalizeEnrollment(tenantId: string, branchId: string, applicationId: string, rollNumber: string, actorId: string) {
     return this.prisma.$transaction(async (tx) => {
-      await tx.admission.update({
-        where: { id },
-        data: {
- notes: note },
+      const app = await tx.admissionApplication.findFirst({
+        where: { id: applicationId, tenantId, branchId, isDeleted: false },
+        include: { primaryStudent: true } 
       });
+      if (!app) throw new NotFoundException('Application context record missing inside database registries.');
 
-      return tx.admissionActivity.create({
+      if (app.convertedAt || app.stepStatus === AdmissionStepStatus.CONVERTED || app.primaryStudent) {
+        throw new ConflictException(`Idempotency Collision: Application candidate [${app.crmNo}] already linked to an active student profile.`);
+      }
+      if (app.status !== ApplicationStatus.APPROVED || !app.sectionId) {
+        throw new BadRequestException('Enrollment Blocked: Candidate must pass an APPROVED seat allocation window first.');
+      }
+
+      await tx.$executeRaw`
+        SELECT id FROM "Section" WHERE id = ${app.sectionId} AND "tenantId" = ${tenantId} AND "branchId" = ${branchId} FOR UPDATE;
+      `;
+
+      const rollConflict = await tx.student.findFirst({
+        where: { tenantId, branchId, sectionId: app.sectionId, academicYear: app.academicYear, rollNumber: rollNumber.trim(), isActive: true }
+      });
+      if (rollConflict) {
+        throw new ConflictException(`Roll Number [${rollNumber}] target section environment mein pehle se assigned hai lala!`);
+      }
+
+      const deterministicAdmissionNumber = this.generateAdmissionNumber(app.crmNo); 
+      const newStudent = await tx.student.create({
         data: {
-
-          admissionId: id,
           tenantId,
-          actorId,
-          action: 'NOTE_ADDED',
-          note,
-        },
+          branchId,
+          classId:                app.applyingClassId!, 
+          sectionId:              app.sectionId,
+          academicYear:           app.academicYear, 
+          admissionNumber:        deterministicAdmissionNumber, 
+          firstName:              app.firstName.trim(),
+          lastName:               app.lastName ? app.lastName.trim() : '',
+          dateOfBirth:            app.dob, 
+          gender:                 app.gender,
+          phone:                  app.phone || null,
+          email:                  app.email || null,
+          rollNumber:             rollNumber.trim(),
+          status:                 StudentStatus.ENROLLED, 
+          isActive:               true,
+        }
       });
-    });
-  }
 
-  // =========================
-  // 📊 SOURCE REPORT
-  // =========================
-  async sourceReport(tenantId: string) {
-    const rows = await this.prisma.admission.groupBy({
-      by: ['source'],
-      where: { tenantId },
-      _count: { _all: true },
-    });
+      await tx.admissionApplication.update({
+        where: { id: applicationId },
+        data: { 
+          convertedAt: new Date(),
+          studentId:   newStudent.id,
+          stepStatus:  AdmissionStepStatus.CONVERTED, 
+          updatedById: actorId
+        }
+      });
 
-    return rows.map((r) => ({
-      source: r.source ?? 'UNKNOWN',
-      count: r._count._all,
-    }));
+      return newStudent;
+    }, { timeout: 20000 });
   }
 }

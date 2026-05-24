@@ -1,54 +1,44 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards }  from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { AdmissionsService }   from '../services/admissions.service';
-import { CreateAdmissionDto, UpdateAdmissionStatusDto } from '../dto/admissions.dto';
-import { JwtGuard }            from '../../../core/auth/guards/jwt.guard';
-import { RolesGuard }          from '../../../core/roles/roles.guard';
-import { Roles }               from '../../../core/roles/roles.decorator';
-import { CurrentUser }         from '../../../core/auth/decorators/current-user.decorator';
-import { AuthenticatedUser }   from '../../../core/auth/guards/jwt.strategy';
+// /apps/schoolos/backend/src/modules/admissions/controllers/admissions.controller.ts
 
-@ApiTags('admissions')
-@ApiBearerAuth('access-token')
-@UseGuards(JwtGuard, RolesGuard)
+import { Controller, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { AdmissionsService } from '../services/admissions.service';
+
+// 🔐 AUTH & ROLES CANONICAL SHORTCUTS
+import { JwtGuard } from '@core/auth/guards/jwt.guard'; 
+import { RolesGuard } from '@core/roles/roles.guard';    
+import { Roles } from '@core/roles/roles.decorator';  
+import { CurrentUser } from '@core/auth/decorators/current-user.decorator'; // 🟢 FIXED: Swapped to exact physical filename
+import { AuthenticatedUser } from '@core/auth/interfaces/authenticated-user.interface'; 
+
+import { AllocateSeatDto, FinalizeEnrollmentDto } from '../dto/admissions.dto';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+
+@ApiTags('Institutional Admissions Gateway')
+@ApiBearerAuth()
 @Controller('admissions')
+@UseGuards(JwtGuard, RolesGuard)
 export class AdmissionsController {
-  constructor(private readonly svc: AdmissionsService) {}
+  constructor(private readonly service: AdmissionsService) {}
 
-  @Get('stats')            stats(@CurrentUser() u: AuthenticatedUser) { return this.svc.stats(u.tenantId); }
-  @Get('source-report')    sourceReport(@CurrentUser() u: AuthenticatedUser) { return this.svc.sourceReport(u.tenantId); }
-
-  @Get()
-  @ApiQuery({ name: 'status', required: false })
-  @ApiQuery({ name: 'source', required: false })
-  @ApiQuery({ name: 'search', required: false })
-  list(
-    @CurrentUser() u: AuthenticatedUser,
-    @Query('status') status?: string,
-    @Query('source') source?: string,
-    @Query('search') search?: string,
-  ) { return this.svc.list(u.tenantId, { status, source, search }); }
-
-  @Get(':id')
-  getById(@Param('id') id: string, @CurrentUser() u: AuthenticatedUser) {
-    return this.svc.getById(u.tenantId, id);
+  @Post(':id/allocate-seat')
+  @Roles('ADMIN', 'REGISTRAR')
+  @ApiOperation({ summary: 'Acquire Pessimistic Section Seat Allocation Lock' })
+  async allocateSeat(
+    @Param('id') id: string, 
+    @Body() dto: AllocateSeatDto, 
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.allocateSeat(user.tenantId, user.branchId!, id, dto.sectionId, user.id);
   }
 
-  @Post()
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'STAFF')
-  create(@Body() dto: CreateAdmissionDto, @CurrentUser() u: AuthenticatedUser) {
-    return this.svc.create(u.tenantId, dto, u.id);
-  }
-
-  @Patch(':id/status')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'STAFF')
-  updateStatus(@Param('id') id: string, @Body() dto: UpdateAdmissionStatusDto, @CurrentUser() u: AuthenticatedUser) {
-    return this.svc.updateStatus(u.tenantId, id, dto, u.id);
-  }
-
-  @Post(':id/note')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'STAFF')
-  addNote(@Param('id') id: string, @Body('note') note: string, @CurrentUser() u: AuthenticatedUser) {
-    return this.svc.addNote(u.tenantId, id, note, u.id);
+  @Post(':id/finalize-enrollment')
+  @Roles('ADMIN', 'REGISTRAR')
+  @ApiOperation({ summary: 'Commit Atomic Relational Student Enrollment Handshake' })
+  async finalize(
+    @Param('id') id: string,
+    @Body() dto: FinalizeEnrollmentDto, 
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.finalizeEnrollment(user.tenantId, user.branchId!, id, dto.rollNumber, user.id);
   }
 }

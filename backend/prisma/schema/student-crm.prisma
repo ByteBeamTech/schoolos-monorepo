@@ -3,12 +3,12 @@
 // ==========================================================
 
 model StudentRelationship {
-  id       String  @id @default(cuid())
-  tenantId String
-  branchId String?
+  id           String       @id @default(cuid())
+  tenantId     String
+  branchId     String?
 
-  studentId   String
-  relatedToId String
+  studentId    String
+  relatedToId  String
 
   type         RelationType
   isVerified   Boolean      @default(false)
@@ -50,7 +50,7 @@ model AdmissionStepLog {
   updatedAt     DateTime             @updatedAt
 }
 
-// ================== ADMISSION APPLICATION (MASTER) ==================
+// ================== ADMISSION APPLICATION (MASTER - HARDENED) ==================
 
 model AdmissionApplication {
   id String @id @default(cuid())
@@ -67,7 +67,7 @@ model AdmissionApplication {
   isDeleted Boolean   @default(false)
   deletedAt DateTime?
 
-  // 👶 Student Info
+  // 👶 Candidate Core Details
   firstName  String
   middleName String?
   lastName   String
@@ -78,18 +78,21 @@ model AdmissionApplication {
   bloodGroup  BloodGroup?
   category    Category?
   religion    Religion?
-  nationality String?     @default("Indian")
+  nationality String?      @default("Indian")
 
-  // 🔐 Identity (Note: Apply Partial Unique Index via Raw SQL Migration)
+  // 🔐 Security Identity Tracking Metrics
   aadharHash  String?
   aadharLast4 String?
   apaarId     String?
+
+  // 🟢 Reserved section tracking for Option C dynamic seat capacity allocation constraints
+  sectionId   String?
 
   // Opposite of 1:N (History)
   studentId String?
   student   Student? @relation("StudentApplications", fields: [studentId], references: [id])
 
-  // Opposite of 1:1 (Primary)
+  // Opposite of 1:1 (Primary Handshake Lineage Connection)
   primaryStudent Student? @relation("PrimaryApplication")
 
   // 📞 Contact
@@ -97,16 +100,16 @@ model AdmissionApplication {
   email String?
 
   // 👨‍👩‍👧 Family & Parent Info
-  fatherName       String?
-  fatherPhone      String?
+  fatherName        String?
+  fatherPhone       String?
   fatherOccupation String?
-  fatherIncome     Float?
-  motherName       String?
-  motherPhone      String?
+  fatherIncome      Float?
+  motherName        String?
+  motherPhone       String?
   motherOccupation String?
-  motherIncome     Float?
-  guardianName     String?
-  guardianPhone    String?
+  motherIncome      Float?
+  guardianName      String?
+  guardianPhone     String?
   guardianRelation String?
 
   // 🎓 Academic Detail
@@ -119,7 +122,7 @@ model AdmissionApplication {
 
   // 🏥 Health & Transport
   medicalConditions String?
-  allergies         String?
+  allergies           String?
   transportRequired Boolean? @default(false)
   pickupLocation    String?
 
@@ -154,7 +157,8 @@ model AdmissionApplication {
   // 💰 Payment & Workflow
   admissionFeePaid Boolean?              @default(false)
   paymentReference String?
-  status           ApplicationStatus     @default(PENDING)
+  status           ApplicationStatus     @default(PENDING) // Behaviourally handles SEAT_RESERVED once APPROVED
+  stepStatus       AdmissionStepStatus   @default(UNDER_REVIEW)
   activities       AdmissionActivity[]
   stepLogs         AdmissionStepLog[]
   approvals        ApplicationApproval[]
@@ -172,9 +176,8 @@ model AdmissionApplication {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 🔥 HIGH-PERFORMANCE CONSTRAINTS & INDEXES
-  @@unique([tenantId, crmNo])
-  // Combined Index for Phone & Year (Bloat removed)
+  // 🔥 HIGH-PERFORMANCE MULTI-TENANT ISOLATED CONSTRAINTS
+  @@unique([tenantId, crmNo]) // 🟢 Isolated uniquely at corporate tenant perimeter
   @@index([tenantId, phone, academicYear])
   @@index([tenantId, email])
   @@index([tenantId, branchId, status])

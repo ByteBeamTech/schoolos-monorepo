@@ -1,7 +1,9 @@
+// /apps/schoolos/backend/prisma/schema/students/student.prisma
+
 model Student {
   id String @id @default(cuid())
 
-  // 🔐 Multi-tenant core
+  // 🔐 Multi-tenant Core Infrastructure
   tenantId String
   branchId String
 
@@ -23,7 +25,8 @@ model Student {
   category    Category?
   photoUrl    String?
 
-  // 🎓 Academic
+  // 🎓 Academic Hierarchy (🛡️ Added ClassId for Performance Optimization)
+  classId        String
   sectionId      String?
   rollNumber     String?
   rollAssignedAt DateTime?
@@ -39,6 +42,9 @@ model Student {
   rteRegNumber     String?
   rteApplicationId String?
 
+  // 🛡️ Board Registration Tracker (UP Board/CBSE/ICSE Compliance for Senior Classes)
+  boardRegistrationNumber String?
+
   // ⏱ Temporal
   enrolledAt DateTime  @default(now())
   leftAt     DateTime?
@@ -51,7 +57,7 @@ model Student {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // 🔐 Aadhaar (Encrypted/Hashed)
+  // 🔐 Identity (Encrypted/Hashed)
   aadharHash      String?
   aadharLast4     String?
   aadharUpdatedAt DateTime?
@@ -92,14 +98,9 @@ model Student {
   family   Family? @relation(fields: [familyId], references: [id])
 
   // 🔥 ADMISSION ENGINE (The Clean Handshake)
-  // 1:1 - Current/Primary link
   admissionApplicationId String?               @unique
   admissionApplication   AdmissionApplication? @relation("PrimaryApplication", fields: [admissionApplicationId], references: [id])
-
-  // 1:N - Application History
-  admissionApplications AdmissionApplication[] @relation("StudentApplications")
-
-  // Relative Tracking in other applications
+  admissionApplications  AdmissionApplication[] @relation("StudentApplications")
   relativeInApplications AdmissionApplication[] @relation("CrmRelativeLink")
 
   // 🔗 MODULE RELATIONS
@@ -117,6 +118,8 @@ model Student {
   documents      Document[]
   lateFees       LateFee[]
 
+  // Core Relational Handshakes
+  class   Class    @relation(fields: [classId], references: [id]) // 🛡️ Explicit Core Class Link
   section Section? @relation(fields: [sectionId], references: [id])
   tenant  Tenant   @relation(fields: [tenantId], references: [id])
   branch  Branch   @relation(fields: [branchId], references: [id])
@@ -126,17 +129,20 @@ model Student {
 
   transportAssignment TransportAssignment?
 
-  // 🔥 MULTI-TENANT & INTEGRITY RULES
+  // =========================================================================
+  // 🛡️ MULTI-TENANT & INTEGRITY RULES (De-risked for Data Imports)
+  // =========================================================================
   @@unique([tenantId, admissionNumber])
-  @@unique([tenantId, aadharHash])
-  @@unique([tenantId, apaarId])
   @@unique([tenantId, admissionApplicationId])
   @@unique([tenantId, sectionId, academicYear, rollNumber])
-  // 🚀 PERFORMANCE INDEXES
-  @@index([tenantId])
-  @@index([tenantId, branchId])
+
+  // =========================================================================
+  // 🚀 PERFORMANCE INDEXES (Optimized for Hierarchical Branch Isolation)
+  // =========================================================================
+  @@index([tenantId, branchId, classId, sectionId]) // ⚡ Fastest Route for Class/Section Sorting
+  @@index([tenantId, aadharHash])                  // Moved unique lock to index for fluid migrations
+  @@index([tenantId, apaarId])                     // Moved unique lock to index for fluid migrations
   @@index([tenantId, status])
-  @@index([tenantId, sectionId])
   @@index([sectionId, rollNumber])
   @@index([tenantId, firstName, lastName])
   @@index([academicYear])

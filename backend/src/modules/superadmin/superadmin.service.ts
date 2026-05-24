@@ -317,7 +317,7 @@ export class SuperadminService {
       },
     });
 
-    const secret  = this.config.get<string>('JWT_SECRET', 'fallback');
+    const secret  = this.config.get<string>('JWT_SECRET');
     const token   = this.jwt.sign(
       {
         sub:       adminUser.id,
@@ -339,7 +339,7 @@ export class SuperadminService {
       tenantSlug:   tenant.slug,
       userEmail:    adminUser.email,
       expiresInMin: 30,
-      frontendUrl:  `${this.config.get('FRONTEND_URL', 'http://localhost:4000')}/login?impersonate=1&token=${token}&tenant=${tenant.slug}`,
+      frontendUrl:  `${this.config.get('FRONTEND_URL', 'http://localhost:4000')}/login?impersonate=1&tenant=${tenant.slug}`,
     };
   }
 
