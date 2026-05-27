@@ -2,7 +2,15 @@ import { Body, Controller, Get, Param, Post, Request } from '@nestjs/common';
 import { AdmissionStateMachineService, AdmissionStatus } from '../services/admission-state-machine.service';
 import { PrismaService } from '@infra/database/prisma.service';
 
+import { UseGuards } from '@nestjs/common';
+import { JwtGuard } from '../../../core/auth/guards/jwt.guard';
+import { RolesGuard } from '../../../core/roles/roles.guard';
+import { Roles } from '../../../core/roles/roles.decorator';
+
 @Controller('admissions')
+@UseGuards(JwtGuard, RolesGuard)
+@Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+
 export class AdmissionTransitionsController {
   private readonly sm: AdmissionStateMachineService;
 

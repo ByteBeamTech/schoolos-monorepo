@@ -108,3 +108,79 @@ describe('AuthService', () => {
     expect(tokenService.revokeRefreshToken).toHaveBeenCalledWith('mock-refresh');
   });
 });
+
+
+// ============================================================================
+// Phase 1 v3 — extended coverage (appended — do not delete this marker)
+// ============================================================================
+
+describe("AuthService — redirectPath by role", () => {
+  const mockTokenPair = {
+    accessToken: "t", refreshToken: "r",
+    accessTokenExpiresIn: 900, refreshTokenExpiresIn: 604800,
+  };
+
+  async function buildWithRole(role: string) {
+    const user = {
+      id: "u1", tenantId: "t1", email: "x@y.com",
+      firstName: "X", lastName: "Y", role,
+      isActive: true, avatarUrl: null,
+      passwordHash: "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4tbAn.hAO2",
+    };
+    const m = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: UsersService, useValue: { findByEmailWithPassword: jest.fn().mockResolvedValue(user), validatePassword: jest.fn().mockResolvedValue(true), updateLastLogin: jest.fn() } },
+        { provide: TokenService,  useValue: { issueTokens: jest.fn().mockResolvedValue(mockTokenPair) } },
+        { provide: AuditService,  useValue: { log: jest.fn() } },
+      ],
+    }).compile();
+    return m.get<AuthService>(AuthService);
+  }
+
+  it.each([
+    ["SCHOOL_ADMIN",  "/dashboard"],
+    ["ACCOUNTANT",    "/dashboard/billing"],
+    ["TEACHER",       "/dashboard/academics"],
+    ["CLASS_TEACHER", "/dashboard/attendance"],
+    ["PARENT",        "/parent"],
+    ["STUDENT",       "/student"],
+    ["UNKNOWN_ROLE",  "/dashboard"],
+  ])("role %s → redirectPath %s", async (role, expected) => {
+    const svc = await buildWithRole(role);
+    const res = await svc.login({ email: "x@y.com", password: "p" }, "t1", "", "");
+    expect(res.redirectPath).toBe(expected);
+  });
+});
+
+describe("AuthService — security edge cases", () => {
+  it("returns identical error message for ghost email vs wrong password (prevents email enumeration)", async () => {
+    const m = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: UsersService, useValue: { findByEmailWithPassword: jest.fn().mockResolvedValue(null), validatePassword: jest.fn(), updateLastLogin: jest.fn() } },
+        { provide: TokenService,  useValue: { issueTokens: jest.fn() } },
+        { provide: AuditService,  useValue: { log: jest.fn() } },
+      ],
+    }).compile();
+    const svc = m.get<AuthService>(AuthService);
+    let msg = "";
+    await svc.login({ email: "ghost@y.com", password: "p" }, "t1", "", "").catch(e => { msg = e.message; });
+    expect(msg).toBe("Invalid email or password.");
+  });
+
+  it("throws with SSO-specific message when passwordHash is null", async () => {
+    const ssoUser = { id: "u1", tenantId: "t1", email: "x@y.com", firstName: "X", lastName: "Y", role: "TEACHER", isActive: true, avatarUrl: null, passwordHash: null };
+    const m = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: UsersService, useValue: { findByEmailWithPassword: jest.fn().mockResolvedValue(ssoUser), validatePassword: jest.fn(), updateLastLogin: jest.fn() } },
+        { provide: TokenService,  useValue: { issueTokens: jest.fn() } },
+        { provide: AuditService,  useValue: { log: jest.fn() } },
+      ],
+    }).compile();
+    const svc = m.get<AuthService>(AuthService);
+    await expect(svc.login({ email: "x@y.com", password: "p" }, "t1", "", ""))
+      .rejects.toThrow("Password login is not enabled");
+  });
+});

@@ -17,8 +17,6 @@ import { NotificationEventService } from './events/notification-event.service';
 import { NotificationDispatcherService }from './dispatcher/notification-dispatcher.service';
 
 
-import { NotificationTestingController }
-from './testing/notification-testing.controller';
 
 @Module({
   imports: [
@@ -38,7 +36,7 @@ from './testing/notification-testing.controller';
     NotificationEventService,
     NotificationService,
   ],
-  controllers: [ NotificationController, NotificationTestingController, ],
+  controllers: [ NotificationController ],
   exports:     [NotificationService, 
 NotificationEventService, NotificationDispatcherService, TemplateService,
 ],

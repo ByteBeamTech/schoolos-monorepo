@@ -1,0 +1,120 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options: [staging, production]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: "Deploy"
+    runs-on: ubuntu-latest
+    # Requires GitHub environment protection for production.
+    # Settings → Environments → production → Required reviewers
+    environment: ${{ inputs.environment || 'staging' }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Build artifacts on the CI runner — never on the production server
+      - name: Build backend
+        run: pnpm --filter backend build
+
+      - name: Build frontend
+        run: pnpm --filter frontend build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+
+      - name: Build superadmin
+        run: pnpm --filter superadmin build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
+
+      # prisma migrate deploy is idempotent. Run before touching processes.
+      - name: Run migrations
+        run: pnpm --filter backend exec prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Snapshot current PM2 state so rollback can restore it
+      - name: Save pre-deploy PM2 snapshot
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            pm2 save --force
+            echo "[$(date -u)] pre-deploy snapshot saved" >> /opt/schoolos/deploy.log
+
+      # Sync pre-built artifacts and reload
+      - name: Sync and reload
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/schoolos
+            git fetch origin main
+            git reset --hard origin/main
+            pnpm install --frozen-lockfile --prod
+            pm2 reload ecosystem.config.js --update-env
+            echo "[$(date -u)] reload complete" >> /opt/schoolos/deploy.log
+
+      # /health/live  → 200 if process is up
+      # /health/ready → 200 if DB + Redis connected (add this endpoint — see MANUAL_STEPS.md)
+      - name: Liveness check (30s window)
+        run: |
+          sleep 10
+          for i in $(seq 1 6); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              "${{ secrets.HEALTH_CHECK_URL }}/api/health/live" --max-time 5 || echo "000")
+            echo "liveness attempt $i/6 — HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then echo "✅ liveness OK"; break; fi
+            [ "$i" -eq 6 ] && { echo "❌ liveness failed"; exit 1; }
+            sleep 5
+          done
+
+      - name: Readiness check (DB + Redis)
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.HEALTH_CHECK_URL }}/api/health/ready" --max-time 10 || echo "000")
+          echo "readiness HTTP $STATUS"
+          [ "$STATUS" = "200" ] || { echo "❌ readiness failed — DB or Redis may be down"; exit 1; }
+
+      # Fires automatically if any step above fails
+      - name: Rollback on failure
+        if: failure()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            echo "[$(date -u)] ⚠️  rolling back" >> /opt/schoolos/deploy.log
+            pm2 resurrect
+            echo "[$(date -u)] rollback complete" >> /opt/schoolos/deploy.log

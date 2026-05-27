@@ -98,8 +98,8 @@ model Student {
   family   Family? @relation(fields: [familyId], references: [id])
 
   // 🔥 ADMISSION ENGINE (The Clean Handshake)
-  admissionApplicationId String?               @unique
-  admissionApplication   AdmissionApplication? @relation("PrimaryApplication", fields: [admissionApplicationId], references: [id])
+  admissionApplicationId String?                @unique
+  admissionApplication   AdmissionApplication?  @relation("PrimaryApplication", fields: [admissionApplicationId], references: [id])
   admissionApplications  AdmissionApplication[] @relation("StudentApplications")
   relativeInApplications AdmissionApplication[] @relation("CrmRelativeLink")
 
@@ -135,13 +135,12 @@ model Student {
   @@unique([tenantId, admissionNumber])
   @@unique([tenantId, admissionApplicationId])
   @@unique([tenantId, sectionId, academicYear, rollNumber])
-
   // =========================================================================
   // 🚀 PERFORMANCE INDEXES (Optimized for Hierarchical Branch Isolation)
   // =========================================================================
   @@index([tenantId, branchId, classId, sectionId]) // ⚡ Fastest Route for Class/Section Sorting
-  @@index([tenantId, aadharHash])                  // Moved unique lock to index for fluid migrations
-  @@index([tenantId, apaarId])                     // Moved unique lock to index for fluid migrations
+  @@index([tenantId, aadharHash]) // Moved unique lock to index for fluid migrations
+  @@index([tenantId, apaarId]) // Moved unique lock to index for fluid migrations
   @@index([tenantId, status])
   @@index([sectionId, rollNumber])
   @@index([tenantId, firstName, lastName])

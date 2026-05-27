@@ -2,7 +2,7 @@ model Class {
   id                String              @id @default(cuid())
   tenantId          String
   branchId          String
-  sessionId          String
+  sessionId         String
   name              String
   displayOrder      Int                 @default(0)
   isActive          Boolean             @default(true)

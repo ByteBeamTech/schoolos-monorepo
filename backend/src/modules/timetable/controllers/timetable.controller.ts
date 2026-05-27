@@ -61,4 +61,14 @@ export class TimetableController {
   clearSection(@Param('sectionId') sectionId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.clearSection(user.tenantId, sectionId);
   }
+
+  @Get("section/:sectionId/full")
+  @Roles("SCHOOL_ADMIN", "PRINCIPAL", "TEACHER", "CLASS_TEACHER", "PARENT")
+  @ApiOperation({ summary: "Weekly timetable with subject and teacher names" })
+  getFullTimetable(
+    @Param("sectionId") sectionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.getWeeklyTimetableWithSubjects(user.tenantId, sectionId);
+  } 
 }

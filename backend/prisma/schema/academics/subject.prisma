@@ -19,6 +19,7 @@ model Subject {
   tenant            Tenant              @relation(fields: [tenantId], references: [id])
   branch            Branch?             @relation(fields: [branchId], references: [id])
   TeacherAssignment TeacherAssignment[]
+  TimetableSlot     TimetableSlot[]
 
   // 🔒 Constraints & Performance
   @@unique([tenantId, code])

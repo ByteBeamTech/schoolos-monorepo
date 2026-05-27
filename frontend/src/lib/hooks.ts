@@ -482,3 +482,37 @@ export function useStaffById(id?: string) {
 export function useStaffSubjectPreferences(staffId?: string) {
   return useApi<any[]>(staffId ? `/staff/${staffId}/subject-preferences` : '', [staffId]);
 }
+
+
+// ── Phase 2 hooks (appended by deploy script — do not delete this marker) ─────
+
+export function useCollectionDashboard(academicYear?: string, classId?: string) {
+  const params = new URLSearchParams();
+  if (academicYear) params.set("academicYear", academicYear);
+  if (classId)      params.set("classId",      classId);
+  const qs = params.toString();
+  return useApi<{
+    summary: {
+      totalAmount: number; collectedAmount: number; pendingAmount: number;
+      overdueCount: number; totalInvoices: number; paidCount: number; collectionRate: number;
+    };
+    byClass: Array<{
+      classId: string; className: string; totalAmount: number; collectedAmount: number;
+      pendingAmount: number; invoiceCount: number; paidCount: number; collectionRate: number;
+    }>;
+  }>(`/billing/invoices/collection-dashboard${qs ? "?" + qs : ""}`, [qs]);
+}
+
+export function useTimetableFull(sectionId?: string) {
+  return useApi<{
+    sectionId: string; className: string | null; totalSlots: number;
+    days: Array<{
+      day: number; dayName: string;
+      slots: Array<{
+        id: string; periodNumber: number; startTime: string; endTime: string;
+        subject: { id: string; name: string; code: string } | null;
+        teacher: { id: string; name: string } | null;
+      }>;
+    }>;
+  }>(sectionId ? `/timetable/section/${sectionId}/full` : "", [sectionId]);
+}

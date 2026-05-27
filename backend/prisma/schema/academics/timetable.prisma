@@ -11,7 +11,10 @@ model TimetableSlot {
   roomId       String?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
-  section      Section  @relation(fields: [sectionId], references: [id])
+
+  section Section @relation(fields: [sectionId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+  teacher Staff   @relation(fields: [teacherId], references: [id])
 
   @@unique([tenantId, sectionId, dayOfWeek, periodNumber])
   @@index([tenantId])

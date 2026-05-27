@@ -3,12 +3,12 @@
 // ==========================================================
 
 model StudentRelationship {
-  id           String       @id @default(cuid())
-  tenantId     String
-  branchId     String?
+  id       String  @id @default(cuid())
+  tenantId String
+  branchId String?
 
-  studentId    String
-  relatedToId  String
+  studentId   String
+  relatedToId String
 
   type         RelationType
   isVerified   Boolean      @default(false)
@@ -78,7 +78,7 @@ model AdmissionApplication {
   bloodGroup  BloodGroup?
   category    Category?
   religion    Religion?
-  nationality String?      @default("Indian")
+  nationality String?     @default("Indian")
 
   // 🔐 Security Identity Tracking Metrics
   aadharHash  String?
@@ -86,7 +86,7 @@ model AdmissionApplication {
   apaarId     String?
 
   // 🟢 Reserved section tracking for Option C dynamic seat capacity allocation constraints
-  sectionId   String?
+  sectionId String?
 
   // Opposite of 1:N (History)
   studentId String?
@@ -100,16 +100,16 @@ model AdmissionApplication {
   email String?
 
   // 👨‍👩‍👧 Family & Parent Info
-  fatherName        String?
-  fatherPhone       String?
+  fatherName       String?
+  fatherPhone      String?
   fatherOccupation String?
-  fatherIncome      Float?
-  motherName        String?
-  motherPhone       String?
+  fatherIncome     Float?
+  motherName       String?
+  motherPhone      String?
   motherOccupation String?
-  motherIncome      Float?
-  guardianName      String?
-  guardianPhone     String?
+  motherIncome     Float?
+  guardianName     String?
+  guardianPhone    String?
   guardianRelation String?
 
   // 🎓 Academic Detail
@@ -122,7 +122,7 @@ model AdmissionApplication {
 
   // 🏥 Health & Transport
   medicalConditions String?
-  allergies           String?
+  allergies         String?
   transportRequired Boolean? @default(false)
   pickupLocation    String?
 

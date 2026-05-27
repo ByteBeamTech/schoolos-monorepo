@@ -1,20 +1,46 @@
-import { Controller, Post, Get, Body, Req, Headers }  from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  UseGuards,
+} from '@nestjs/common';
+
 import { LeadService } from '../services/lead.service';
 
+import { JwtGuard } from '../../../core/auth/guards/jwt.guard';
+import { RolesGuard } from '../../../core/roles/roles.guard';
+import { Roles } from '../../../core/roles/roles.decorator';
+
+import { CurrentUser } from '../../../core/auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../../core/auth/interfaces/authenticated-user.interface';
+
 @Controller('crm')
+@UseGuards(JwtGuard, RolesGuard)
+@Roles('SCHOOL_ADMIN', 'PRINCIPAL')
 export class LeadController {
-  constructor(private readonly leadService: LeadService) {}
+  constructor(
+    private readonly leadService: LeadService,
+  ) {}
 
   @Get('leads')
-  async findAll(@Headers('x-tenant-id') tenantId: string) {
-    return this.leadService.findAllLeads(tenantId || 'primary');
+  async findAll(
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.leadService.findAllLeads(
+      user.tenantId,
+    );
   }
 
   @Post('leads')
-  async create(@Body() body: any, @Req() req: any, @Headers('x-tenant-id') tenantId: string) {
-    // Priority: Header > User Session > Default
-    const tId = tenantId || req.user?.tenantId || 'primary';
-    const bId = req.user?.branchId || 'primary';
-    return this.leadService.createLead(body, tId, bId);
+  async create(
+    @Body() body: any,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.leadService.createLead(
+      body,
+      user.tenantId,
+      user.branchId,
+    );
   }
 }

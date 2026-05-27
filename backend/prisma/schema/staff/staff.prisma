@@ -51,8 +51,9 @@ model Staff {
   verifiedDocuments Document[] @relation("DocumentVerifiedBy")
 
   // 🔗 Core
-  tenant Tenant  @relation("TenantMembers", fields: [tenantId], references: [id])
-  branch Branch? @relation(fields: [branchId], references: [id])
+  tenant        Tenant          @relation("TenantMembers", fields: [tenantId], references: [id])
+  branch        Branch?         @relation(fields: [branchId], references: [id])
+  TimetableSlot TimetableSlot[]
 
   // ================== CONSTRAINTS ==================
   @@unique([tenantId, employeeId])
