@@ -1,13 +1,18 @@
 import { RawBodyMiddleware } from './common/middleware/raw-body.middleware';
 import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { BullModule } from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ClsModule } from 'nestjs-cls';
 import { validate } from './core/config/env.validation';
 import { TenantMiddleware } from './core/tenants/tenant.middleware';
+import { JwtGuard } from './core/auth/guards/jwt.guard';
+import { RolesGuard } from './core/roles/roles.guard';
+
 
 import { PrismaModule } from './infra/database/prisma.module';
 import { RedisModule } from './infra/cache/redis.module';
@@ -131,6 +136,22 @@ import { BehaviorModule } from './modules/behavior/behavior.module';
     SupportModule,
     BehaviorModule,
   ],
+
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+  ],
+
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
