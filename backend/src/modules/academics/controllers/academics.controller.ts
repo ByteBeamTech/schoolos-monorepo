@@ -205,4 +205,10 @@ export class AcademicsController {
   ) {
     return this.service.getClassTeacherAppointments(user.tenantId, sessionId);
   }
+
+  @Get('sessions')
+findSessions(@CurrentUser() user: AuthenticatedUser) {
+  return this.service.findSessions(user.tenantId);
+}
+
 }

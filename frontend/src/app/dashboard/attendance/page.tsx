@@ -33,10 +33,16 @@ export default function AttendancePage() {
   const [pageTab, setPageTab] = useState<"mark"|"history">("mark");
   const searchParams = useSearchParams();
   const qs           = searchParams.toString();
+
+  
   const { data: historyData, loading: hLoad } = useApi<{data:any[];meta:any}>(
-    pageTab === "history" ? `/attendance${qs ? "?" + qs : ""}` : "",
-    [pageTab, qs]
-  );
+  pageTab === "history"
+    ? `/attendance/daily${qs ? "?" + qs : ""}`
+    : "",
+  [pageTab, qs]
+);
+  
+
   const historyList = historyData?.data ?? [];
 
   const [date,      setDate]      = useState(today);

@@ -3,8 +3,8 @@ module.exports = {
     {
       name: 'schoolos-backend',
       cwd: './backend',
-      script: 'pnpm',
-      args: 'start',
+	script: 'dist/main.js',
+	    interpreter: 'node',
       env: {
         NODE_ENV: 'production',
         PORT: 8000

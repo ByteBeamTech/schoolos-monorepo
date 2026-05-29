@@ -26,6 +26,17 @@ export class AcademicsService {
   ) {}
 
   // ── Classes ───────────────────────────────────────────────────────────────
+async findSessions(tenantId: string) {
+  return this.prisma.academicSession.findMany({
+    where: {
+      tenantId,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+}
+
 
   async createClass(
     tenantId: string,
@@ -78,6 +89,13 @@ export class AcademicsService {
         tenantId,
         sessionId,
       },
+      include: {
+    sections: {
+      orderBy: {
+        name: 'asc',
+      },
+    },
+  },
       orderBy: {
         displayOrder: 'asc',
       },

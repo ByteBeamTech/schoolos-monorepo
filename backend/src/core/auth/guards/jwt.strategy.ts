@@ -8,6 +8,7 @@ export interface AuthenticatedUser {
   id:       string;
   tenantId: string;
   role:     string;
+  branchId?: string;
   email:    string;
   jti:      string;
 }
@@ -28,13 +29,35 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   async validate(payload: any): Promise<AuthenticatedUser> {
     const user = await this.prisma.user.findFirst({
       where:  { id: payload.sub, tenantId: payload.tenantId, isActive: true, deletedAt: null },
-      select: { id: true, tenantId: true, role: true, email: true },
+    
+    select: {
+  id: true,
+  tenantId: true,
+  role: true,
+  email: true,
+  staff: {
+    select: {
+      profile: {
+        select: {
+          branchId: true,
+        },
+      },
+    },
+  },
+},  
     });
 
     if (!user) {
       throw new UnauthorizedException('User not found or account deactivated.');
     }
 
-    return { id: user.id, tenantId: user.tenantId, role: user.role, email: user.email, jti: payload.jti };
+   return {
+  id: user.id,
+  tenantId: user.tenantId,
+  branchId: user.staff?.profile?.branchId || 'primary',
+  role: user.role,
+  email: user.email,
+  jti: payload.jti,
+}; 
   }
 }
