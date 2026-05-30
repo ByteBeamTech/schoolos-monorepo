@@ -46,6 +46,7 @@ model Tenant {
   deletedAt DateTime?
 
   // --- 🔗 ALL EXISTING RELATIONS (Nothing Missed) ---
+  userBranches UserBranch[]
   academicSessions     AcademicSession[]
   alumni               Alumni[]
   workflowConfigs      ApprovalWorkflowConfig[]

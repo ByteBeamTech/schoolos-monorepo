@@ -30,6 +30,7 @@ model User {
   tenant          Tenant    @relation(fields: [tenantId], references: [id])
 
   staff Staff?
+  branchMappings UserBranch[]
 
   // 🤝 CRM & Admission Master Handshake
   createdApplications  AdmissionApplication[] @relation("CreatedApplications")
@@ -54,7 +55,7 @@ model User {
   updatedStepLogs      AdmissionStepLog[]    @relation("UpdatedStepLogs")
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
-
+  
   discountsCreated Discount[] @relation("DiscountCreator")
   discountsRevoked Discount[] @relation("DiscountRevoker")
 
@@ -76,6 +77,29 @@ model User {
   // Fast lookup for active Teachers/Admins in a branch/tenant
   @@index([tenantId, role, isActive])
   @@index([role])
+}
+
+
+model UserBranch {
+  id         String   @id @default(cuid())
+
+  tenantId   String
+  userId     String
+  branchId   String
+
+  isDefault  Boolean  @default(false)
+  isActive   Boolean  @default(true)
+
+  createdAt  DateTime @default(now())
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+  branch     Branch   @relation(fields: [branchId], references: [id])
+
+  @@unique([userId, branchId])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([branchId])
 }
 
 // ================== AUTH SUPPORT MODELS ==================

@@ -30,34 +30,47 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     const user = await this.prisma.user.findFirst({
       where:  { id: payload.sub, tenantId: payload.tenantId, isActive: true, deletedAt: null },
     
-    select: {
+
+  select: {
   id: true,
   tenantId: true,
   role: true,
   email: true,
-  staff: {
-    select: {
-      profile: {
-        select: {
-          branchId: true,
-        },
-      },
+
+  branchMappings: {
+    where: {
+      isDefault: true,
+      isActive: true,
     },
+    select: {
+      branchId: true,
+    },
+    take: 1,
   },
-},  
+},
+
     });
 
     if (!user) {
       throw new UnauthorizedException('User not found or account deactivated.');
     }
 
-   return {
+    const branchId = user.branchMappings?.[0]?.branchId;
+
+if (!branchId) {
+  throw new UnauthorizedException(
+    'No default branch assigned to user.',
+  );
+}
+console.log('JWT BRANCH =>', branchId);
+return {
   id: user.id,
   tenantId: user.tenantId,
-  branchId: user.staff?.profile?.branchId || 'primary',
+  branchId,
   role: user.role,
   email: user.email,
   jti: payload.jti,
-}; 
+};
+  
   }
 }

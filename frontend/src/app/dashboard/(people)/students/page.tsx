@@ -36,13 +36,16 @@ export default function StudentsPage() {
   const { data: branches }  = useApi<any[]>("/school-management/branches");
   const currentSession      = sessions?.find(s => s.isCurrent) ?? sessions?.[0];
   const { data: classes }   = useClasses(currentSession?.id ?? "");
+
+
+  
   const allSections = classes?.flatMap((c: any) =>
     (c.sections ?? []).map((s: any) => ({ ...s, className: c.name }))
   ) ?? [];
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", admissionNumber: "",
-    dateOfBirth: "", gender: "MALE", sectionId: "",
+    dateOfBirth: "", gender: "MALE", classId: "", sectionId: "",
     academicYear: currentSession?.id ?? "",
     branchId: "",
     // Guardian
@@ -55,12 +58,25 @@ export default function StudentsPage() {
     e.preventDefault();
     setSaving(true);
     try {
+	   if (!form.classId) {
+      toast.error("Please select a class");
+      setSaving(false);
+      return;
+    }
+
+    if (!form.sectionId) {
+      toast.error("Please select a section");
+      setSaving(false);
+      return;
+    }
+
       const res = await apiClient.post("/students", {
         firstName:       form.firstName,
         lastName:        form.lastName,
         admissionNumber: form.admissionNumber,
         dateOfBirth:     form.dateOfBirth || undefined,
         gender:          form.gender,
+	classId:         form.classId,
         sectionId:       form.sectionId   || undefined,
         academicYear:    form.academicYear || currentSession?.id,
         branchId:        form.branchId || (branches && branches[0]?.id) || '',
@@ -87,7 +103,7 @@ export default function StudentsPage() {
 setForm({ 
   firstName:"", lastName:"", admissionNumber:"", dateOfBirth:"", gender:"MALE",
   sectionId:"", academicYear: currentSession?.id ?? "",
-  branchId: "", // ← ये जादू की झप्पी यहाँ डाल दो
+  branchId: "", classId:"",
   guardianFirstName:"", guardianLastName:"", guardianPhone:"", guardianEmail:"", 
   guardianRelation:"FATHER", guardianAadhaar:"", studentAadhaar:"" 
 });	
@@ -142,17 +158,49 @@ setForm({
                   {["MALE","FEMALE","OTHER"].map(g => <option key={g}>{g}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Section</label>
-                <select value={form.sectionId} onChange={f("sectionId")}
-                  className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Select section</option>
-                  {allSections.map((s: any) => (
-                    <option key={s.id} value={s.id}>{s.className} — {s.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
+
+	      <div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    Class
+  </label>
+
+  <select
+    value={form.classId}
+    onChange={f("classId")}
+    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+  >
+    <option value="">Select Class</option>
+
+    {classes?.map((c: any) => (
+      <option key={c.id} value={c.id}>
+        {c.name}
+      </option>
+    ))}
+  </select>
+</div>
+
+<div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    Section
+  </label>
+
+  <select
+    value={form.sectionId}
+    onChange={f("sectionId")}
+    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+  >
+    <option value="">Select Section</option>
+
+    {classes
+      ?.find((c: any) => c.id === form.classId)
+      ?.sections?.map((s: any) => (
+        <option key={s.id} value={s.id}>
+          {s.name}
+        </option>
+      ))}
+  </select>
+</div>
+</div>
 
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Guardian (Optional)</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">

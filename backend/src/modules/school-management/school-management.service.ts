@@ -186,7 +186,7 @@ export class SchoolManagementService {
 
   // ── 4. Academics ────────────────────────────────────────────────────────────
 
-  async getAcademicStructure(tenantId: string) {
+  async getAcademicStructure(tenantId: string, branchId: string) {
     const [classes, subjects] = await Promise.all([
       this.prisma.class.findMany({ where: { tenantId }, include: { sections: { orderBy: { name: 'asc' } } }, orderBy: { displayOrder: 'asc' } }),
       this.prisma.subject.findMany({ where: { tenantId }, orderBy: { name: 'asc' } }),
@@ -254,7 +254,7 @@ export class SchoolManagementService {
     return section;
   }
 
-  async updateSection(tenantId: string, id: string, dto: UpdateSectionDto, actorId: string) {
+  async updateSection(tenantId: string, branchId: string, id: string, dto: UpdateSectionDto, actorId: string) {
     const section = await this.prisma.section.findFirst({ where: { id, class: { tenantId } } });
     if (!section) throw new NotFoundException(`Section not found: ${id}`);
     
@@ -301,7 +301,7 @@ export class SchoolManagementService {
     return feeType;
   }
 
-  async createFeeStructure(tenantId: string, dto: CreateFeeStructureDto, actorId: string) {
+  async createFeeStructure(tenantId: string, branchId: string, dto: CreateFeeStructureDto, actorId: string) {
     const cls = await this.prisma.class.findFirst({ where: { id: dto.classId, tenantId } });
     if (!cls) throw new NotFoundException(`Class not found: ${dto.classId}`);
     
@@ -400,7 +400,7 @@ export class SchoolManagementService {
 
   // ── Overview ────────────────────────────────────────────────────────────────
 
-  async getOverview(tenantId: string) {
+  async getOverview(tenantId: string, branchId: string) {
     const [profile, branches, users, classes, routes] = await Promise.all([
       this.prisma.tenant.findUnique({ where: { id: tenantId } }),
       this.prisma.branch.count({ where: { tenantId, isActive: true } }),

@@ -75,7 +75,8 @@ export class SchoolManagementController {
   @Get('overview')
   @Roles(...ADMIN_ROLES)
   getOverview(@CurrentUser() u: AuthenticatedUser) {
-    return this.service.getOverview(u.tenantId);
+	 const branchId = requireBranch(u);
+    return this.service.getOverview(u.tenantId, branchId);
   }
 
   @Get('profile')
@@ -175,11 +176,16 @@ export class SchoolManagementController {
 
   // ── 4. Academics ────────────────────────────────────────────────────────────
 
+
   @Get('academics')
-  @Roles(...ADMIN_ROLES)
-  getAcademicStructure(@CurrentUser() u: AuthenticatedUser) {
-    return this.service.getAcademicStructure(u.tenantId);
-  }
+@Roles(...ADMIN_ROLES)
+getAcademicStructure(@CurrentUser() u: AuthenticatedUser) {
+  const branchId = requireBranch(u);
+  return this.service.getAcademicStructure(
+    u.tenantId,
+    branchId,
+  );
+}
 
   @Post('classes')
   @Roles(...ADMIN_ROLES)
@@ -201,14 +207,17 @@ export class SchoolManagementController {
     return this.service.createSection(u.tenantId, branchId, dto, u.id);
   }
 
+
+
   @Put('sections/:id')
   @Roles(...ADMIN_ROLES)
   updateSection(
     @Param('id') id: string,
     @Body() dto: UpdateSectionDto,
     @CurrentUser() u: AuthenticatedUser,
-  ) {
-    return this.service.updateSection(u.tenantId, id, dto, u.id);
+  ){
+    const branchId = requireBranch(u);
+    return this.service.updateSection(u.tenantId, branchId, id, dto, u.id);
   }
 
   @Post('subjects')
@@ -248,7 +257,8 @@ export class SchoolManagementController {
     @Body() dto: CreateFeeStructureDto,
     @CurrentUser() u: AuthenticatedUser,
   ) {
-    return this.service.createFeeStructure(u.tenantId, dto, u.id);
+	 const branchId = requireBranch(u);
+    return this.service.createFeeStructure(u.tenantId, branchId, dto, u.id);
   }
 
   @Delete('fee-structures/:id')

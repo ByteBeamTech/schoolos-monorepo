@@ -1,5 +1,6 @@
 model Branch {
   id                  String                     @id @default(cuid())
+  isPrimary Boolean @default(false)
   tenantId            String
   name                String
   address             String?
@@ -28,6 +29,7 @@ model Branch {
   admissions          AdmissionApplication[]
   staffMembers        Staff[]
   staffProfiles       StaffProfile[]
+  userMappings UserBranch[]
   teacherPreferences  TeacherSubjectPreference[]
   cronLogs            CronExecutionLog[]
   // Billing links (Jo humne billing.prisma mein banaye hain)
