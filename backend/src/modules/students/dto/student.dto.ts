@@ -18,9 +18,9 @@ export class CreateStudentDto {
   @IsString() @IsNotEmpty()
   classId!: string; 
 
-  @ApiProperty({ example: 'ADM-2025-001' })
-  @IsString() @IsNotEmpty()
-  admissionNumber!: string;
+  @ApiPropertyOptional({ example: 'ADM-2025-001' })
+  @IsString() @IsOptional()
+  admissionNumber?: string;
 
   @ApiProperty({ example: 'Divakar' })
   @IsString() @IsNotEmpty()

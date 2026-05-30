@@ -95,7 +95,14 @@ export class StudentsService {
           throw new BadRequestException(`Section capacity overflow! Max allowed slots: ${targetSection.capacity}`);
         }
       }
+const year = new Date().getFullYear();
 
+const studentCount = await tx.student.count({
+  where: { tenantId },
+});
+
+const generatedAdmissionNumber =
+  `ADM-${year}-${String(studentCount + 1).padStart(5, '0')}`;
       try {
         // 3. Database Execution - 🟢 classId is explicitly bound to secure validation
         const student = await tx.student.create({
@@ -105,7 +112,7 @@ export class StudentsService {
             classId:         dto.classId,
             sectionId:       dto.sectionId ?? null,
             academicYear:    dto.academicYear,
-            admissionNumber: dto.admissionNumber.trim().toUpperCase(),
+            admissionNumber: dto.admissionNumber?.trim().toUpperCase() ?? generatedAdmissionNumber,
             firstName:       dto.firstName.trim(),
             lastName:        dto.lastName ? dto.lastName.trim() : '',
             dateOfBirth:     dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
@@ -205,7 +212,7 @@ export class StudentsService {
   /**
    * 🛡️ SECURE LOOKUP BOUNDARIES (AGGREGATE HYDRATION POINT)
    */
-  async findById(tenantId: string, id: string, branchId: string) {
+  async findById(tenantId: string, branchId: string, id: string) {
     if (!branchId) throw new BadRequestException('Branch isolation context parameter is mandatory.');
 
     const student = await this.prisma.student.findFirst({

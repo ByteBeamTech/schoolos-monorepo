@@ -44,7 +44,7 @@ export default function StudentsPage() {
   ) ?? [];
 
   const [form, setForm] = useState({
-    firstName: "", lastName: "", admissionNumber: "",
+    firstName: "", lastName: "",
     dateOfBirth: "", gender: "MALE", classId: "", sectionId: "",
     academicYear: currentSession?.id ?? "",
     branchId: "",
@@ -73,7 +73,6 @@ export default function StudentsPage() {
       const res = await apiClient.post("/students", {
         firstName:       form.firstName,
         lastName:        form.lastName,
-        admissionNumber: form.admissionNumber,
         dateOfBirth:     form.dateOfBirth || undefined,
         gender:          form.gender,
 	classId:         form.classId,
@@ -101,7 +100,7 @@ export default function StudentsPage() {
       setShowForm(false);
       
 setForm({ 
-  firstName:"", lastName:"", admissionNumber:"", dateOfBirth:"", gender:"MALE",
+  firstName:"", lastName:"",  dateOfBirth:"", gender:"MALE",
   sectionId:"", academicYear: currentSession?.id ?? "",
   branchId: "", classId:"",
   guardianFirstName:"", guardianLastName:"", guardianPhone:"", guardianEmail:"", 
@@ -142,7 +141,6 @@ setForm({
               {[
                 { label: "First Name *",       key: "firstName",       required: true },
                 { label: "Last Name *",        key: "lastName",        required: true },
-                { label: "Admission Number *", key: "admissionNumber", required: true },
                 { label: "Date of Birth",      key: "dateOfBirth",     type: "date" },
               ].map(({ label, key, required, type }) => (
                 <div key={key}>
