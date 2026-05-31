@@ -50,7 +50,7 @@ export default function StudentDetailPage() {
   const [saving, setSaving] = useState(false);
   const [showBehaviorForm, setShowBehaviorForm] = useState(false);
   const [savingBehavior, setSavingBehavior] = useState(false);
-  const [editForm, setEditForm] = useState({ rollNumber: "", status: "" });
+  const [editForm, setEditForm] = useState({ rollNumber: "" });
   const [behaviorForm, setBehaviorForm] = useState<CreateBehaviorRecordRequest>({
     type:             "NEGATIVE",                            // Required in contract
   title:            "",
@@ -62,11 +62,10 @@ export default function StudentDetailPage() {
     points: 0,
     parentNotified: false,
     followUpRequired: false,
-    reportedBy:       "",
   });
 
   const startEdit = () => {
-    setEditForm({ rollNumber: student?.rollNumber ?? "", status: student?.status ?? "ACTIVE" });
+    setEditForm({ rollNumber: student?.rollNumber ?? "" });
     setEditing(true);
   };
 
@@ -102,7 +101,6 @@ setBehaviorForm({
   points:           0,
   parentNotified:   false,
   followUpRequired: false,
-  reportedBy:       "", // इनिशियल स्टेट से मैच करने के लिए यहाँ भी जोड़ दिया
 });
 
       refetchBehavior();

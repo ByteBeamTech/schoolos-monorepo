@@ -77,4 +77,23 @@ export class StudentsController {
     if (!user.branchId) throw new Error('Branch check aborted.');
     return this.service.getGuardians(user.tenantId, user.branchId, id);
   }
+
+@Post('sections/:sectionId/generate-roll-numbers')
+@Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+async generateRollNumbers(
+  @Param('sectionId') sectionId: string,
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  if (!user.branchId) {
+    throw new Error('Branch context mandatory.');
+  }
+
+  return this.service.generateRollNumbers(
+    user.tenantId,
+    user.branchId,
+    sectionId,
+    user.id,
+  );
+}
+
 }

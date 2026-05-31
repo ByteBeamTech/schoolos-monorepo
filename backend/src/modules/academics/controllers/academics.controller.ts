@@ -32,7 +32,7 @@ export class AcademicsController {
     @Body() dto: CreateClassDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.createClass(user.tenantId, dto, user.id);
+    return this.service.createClass(user.tenantId, user.branchId!, dto, user.id);
   }
 
   @Get('classes')
@@ -74,7 +74,7 @@ export class AcademicsController {
     @Body() dto: CreateSectionDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.createSection(user.tenantId, dto, user.id);
+    return this.service.createSection(user.tenantId, user.branchId!, dto, user.id);
   }
 
   @Get('sections/:id')

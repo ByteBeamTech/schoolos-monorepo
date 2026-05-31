@@ -118,7 +118,8 @@ const generatedAdmissionNumber =
             dateOfBirth:     dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
             gender:          dto.gender ?? null,
             bloodGroup:      dto.bloodGroup ? this.mapBloodGroup(dto.bloodGroup) : null,
-            rollNumber:      dto.rollNumber ?? null,
+            rollNumber:       null,
+	    rollAssignedAt: null,
             isActive:        true,
           },
           include: { section: { include: { class: true } } },
@@ -397,4 +398,65 @@ const generatedAdmissionNumber =
       orderBy: { isPrimary: 'desc' },
     });
   }
+
+async generateRollNumbers(
+  tenantId: string,
+  branchId: string,
+  sectionId: string,
+  actorId: string,
+) {
+  const students = await this.prisma.student.findMany({
+    where: {
+      tenantId,
+      branchId,
+      sectionId,
+      isActive: true,
+    },
+    orderBy: {
+      admissionNumber: 'asc',
+    },
+    select: {
+      id: true,
+      admissionNumber: true,
+    },
+  });
+
+  if (!students.length) {
+    throw new BadRequestException(
+      'No active students found in selected section.',
+    );
+  }
+
+  const now = new Date();
+
+  await this.prisma.$transaction(
+    students.map((student, index) =>
+      this.prisma.student.update({
+        where: { id: student.id },
+        data: {
+          rollNumber: String(index + 1),
+          rollAssignedAt: now,
+        },
+      }),
+    ),
+  );
+
+  await this.audit.logCreate({
+    tenantId,
+    actorId,
+    entityType: 'RollNumberGeneration',
+    entityId: sectionId,
+    after: {
+      sectionId,
+      assignedStudents: students.length,
+    },
+  });
+
+  return {
+    success: true,
+    sectionId,
+    assignedStudents: students.length,
+  };
+}
+
 }

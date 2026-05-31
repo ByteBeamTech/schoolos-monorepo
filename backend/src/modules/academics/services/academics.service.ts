@@ -40,6 +40,7 @@ async findSessions(tenantId: string) {
 
   async createClass(
     tenantId: string,
+    branchId: string,
     dto: CreateClassDto,
     actorId: string,
   ) {
@@ -59,6 +60,7 @@ async findSessions(tenantId: string) {
     const cls = await this.prisma.class.create({
       data: {
         tenantId,
+	branchId,
         sessionId: dto.sessionId,
         name: dto.name,
         displayOrder: dto.displayOrder ?? 0,
@@ -156,6 +158,7 @@ async findSessions(tenantId: string) {
 
   async createSection(
     tenantId: string,
+    branchId: string,
     dto: CreateSectionDto,
     actorId: string,
   ) {
@@ -175,6 +178,7 @@ async findSessions(tenantId: string) {
     const section = await this.prisma.section.create({
       data: {
         tenantId,
+	branchId,
         classId: dto.classId,
         name: dto.name,
         capacity: dto.capacity ?? 40,

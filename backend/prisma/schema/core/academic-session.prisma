@@ -13,7 +13,8 @@ model AcademicSession {
   classes     Class[]
   exams       Exam[]
   feePlans    FeePlan[]
-
+  admissionsOpen       Boolean @default(true)
+  rollNumbersGenerated Boolean @default(false)
   @@unique([tenantId, name])
   @@index([tenantId, isCurrent])
 }
