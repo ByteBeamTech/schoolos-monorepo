@@ -1,12 +1,13 @@
 "use client";
 import { use, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams  } from "next/navigation";
 import { X, User, CreditCard } from "lucide-react";
 import { useApi } from "@/lib/hooks";
 
-export default function StudentDrawerPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const router = useRouter();
+export default function StudentDrawerPage() {
+  const params = useParams();
+  const id = params.id as string;  
+const router = useRouter();
   const { data: student, loading } = useApi<any>(`/students/${id}`);
   
   useEffect(() => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams  } from "next/navigation";
 import {
   ArrowLeft,
   User,
@@ -30,8 +30,9 @@ function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-export default function StudentDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function StudentDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
   const router = useRouter();
 
   const { data: student, loading, refetch } = useApi<any>(`/students/${id}`);
@@ -41,6 +42,7 @@ export default function StudentDetailPage({ params }: { params: Promise<{ id: st
     [id],
   );
   const { data: behaviorRecords, refetch: refetchBehavior } = useApi<BehaviorRecord[]>(`/behavior/student/${id}`, [id]);
+
 
   const { toast } = useToast();
 
@@ -525,6 +527,89 @@ setBehaviorForm({
                 <div key={label} className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">{label}</p>
                   <p className="text-sm font-semibold text-slate-900 mt-0.5">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+	  {/* Contact Information */}
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
+            <h2 className="font-semibold text-slate-900 text-sm mb-4">
+              Contact Information
+            </h2>
+
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Phone", value: student.phone ?? "-" },
+                { label: "Email", value: student.email ?? "-" },
+                { label: "Address", value: student.address ?? "-" },
+              ].map(({ label, value }) => (
+                <div key={label} className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">
+                    {label}
+                  </p>
+                  <p className="text-sm font-semibold text-slate-900 mt-0.5">
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Health Information */}
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
+            <h2 className="font-semibold text-slate-900 text-sm mb-4">
+              Health Information
+            </h2>
+
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "Blood Group", value: student.bloodGroup ?? "-" },
+                { label: "Height (cm)", value: student.heightCm ?? "-" },
+                { label: "Weight (kg)", value: student.weightKg ?? "-" },
+                {
+                  label: "Last Health Check",
+                  value: student.lastHealthCheck
+                    ? fmtDate(student.lastHealthCheck)
+                    : "-",
+                },
+              ].map(({ label, value }) => (
+                <div key={label} className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">
+                    {label}
+                  </p>
+                  <p className="text-sm font-semibold text-slate-900 mt-0.5">
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Government Records */}
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
+            <h2 className="font-semibold text-slate-900 text-sm mb-4">
+              Government Records
+            </h2>
+
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: "APAAR ID", value: student.apaarId ?? "-" },
+                {
+                  label: "Board Registration",
+                  value: student.boardRegistrationNumber ?? "-",
+                },
+                {
+                  label: "Aadhaar Last 4",
+                  value: student.aadharLast4 ?? "-",
+                },
+              ].map(({ label, value }) => (
+                <div key={label} className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">
+                    {label}
+                  </p>
+                  <p className="text-sm font-semibold text-slate-900 mt-0.5">
+                    {value}
+                  </p>
                 </div>
               ))}
             </div>
