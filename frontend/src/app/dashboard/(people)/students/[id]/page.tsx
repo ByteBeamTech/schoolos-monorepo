@@ -50,7 +50,7 @@ export default function StudentDetailPage() {
   const [saving, setSaving] = useState(false);
   const [showBehaviorForm, setShowBehaviorForm] = useState(false);
   const [savingBehavior, setSavingBehavior] = useState(false);
-  const [editForm, setEditForm] = useState({ rollNumber: "" });
+  const [editForm, setEditForm] = useState({ rollNumber: "",  status: "ENROLLED", });
   const [behaviorForm, setBehaviorForm] = useState<CreateBehaviorRecordRequest>({
     type:             "NEGATIVE",                            // Required in contract
   title:            "",
@@ -65,7 +65,7 @@ export default function StudentDetailPage() {
   });
 
   const startEdit = () => {
-    setEditForm({ rollNumber: student?.rollNumber ?? "" });
+    setEditForm({ rollNumber: student?.rollNumber ?? "", status: student.status ?? "ENROLLED", });
     setEditing(true);
   };
 

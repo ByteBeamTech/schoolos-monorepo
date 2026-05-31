@@ -221,6 +221,12 @@ const generatedAdmissionNumber =
       include: {
         section: { include: { class: true } },
         guardianLinks: { include: { guardian: true }, orderBy: { isPrimary: 'desc' } },
+      transportAssignment: {
+        include: {
+          route: true,
+        },
+      },
+      
       },
     });
 
