@@ -8,7 +8,7 @@ import {
   CreateClassDto, UpdateClassDto,
   CreateSectionDto, UpdateSectionDto,
   CreateSubjectDto, UpdateSubjectDto,
-  AssignTeacherDto, CreateSubjectMappingDto,
+  AssignTeacherDto, CreateSubjectMappingDto, GenerateRollNumbersDto,
 } from '../dto/academics.dto';
 import { JwtGuard }          from '../../../core/auth/guards/jwt.guard';
 import { RolesGuard }        from '../../../core/roles/roles.guard';
@@ -205,7 +205,20 @@ export class AcademicsController {
   ) {
     return this.service.getClassTeacherAppointments(user.tenantId, sessionId);
   }
-
+@Post('roll-numbers/generate')
+@Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+@ApiOperation({ summary: 'Generate roll numbers for a section' })
+generateRollNumbers(
+  @Body() dto: GenerateRollNumbersDto,
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  return this.service.generateRollNumbers(
+    user.tenantId,
+    user.branchId!,
+    dto,
+    user.id,
+  );
+}
   @Get('sessions')
 findSessions(@CurrentUser() user: AuthenticatedUser) {
   return this.service.findSessions(user.tenantId);

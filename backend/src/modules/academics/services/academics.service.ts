@@ -14,6 +14,7 @@ import {
   CreateSubjectDto,
   UpdateSubjectDto,
   AssignTeacherDto,
+  GenerateRollNumbersDto,
 } from '../dto/academics.dto';
 
 @Injectable()
@@ -643,4 +644,80 @@ async findSessions(tenantId: string) {
       })),
     }));
   }
+
+async generateRollNumbers(
+  tenantId: string,
+  branchId: string,
+  dto: GenerateRollNumbersDto,
+  actorId: string,
+) {
+  const section = await this.prisma.section.findFirst({
+    where: {
+      id: dto.sectionId,
+      classId: dto.classId,
+    },
+    include: {
+      class: true,
+    },
+  });
+
+  if (!section) {
+    throw new NotFoundException('Section not found');
+  }
+
+  const students = await this.prisma.student.findMany({
+    where: {
+      tenantId,
+      branchId,
+      classId: dto.classId,
+      sectionId: dto.sectionId,
+      isActive: true,
+    },
+    orderBy: [
+      { firstName: 'asc' },
+      { lastName: 'asc' },
+    ],
+  });
+
+  if (!students.length) {
+    return {
+      generated: 0,
+      message: 'No active students found',
+    };
+  }
+
+  await this.prisma.$transaction(
+    students.map((student, index) =>
+      this.prisma.student.update({
+        where: {
+          id: student.id,
+        },
+        data: {
+          rollNumber: String(index + 1),
+          rollAssignedAt: new Date(),
+        },
+      }),
+    ),
+  );
+
+  await this.audit.logCreate({
+    tenantId,
+    actorId,
+    entityType: 'RollNumberGeneration',
+    entityId: dto.sectionId,
+    after: {
+      classId: dto.classId,
+      sectionId: dto.sectionId,
+      generated: students.length,
+    },
+  });
+
+  return {
+    generated: students.length,
+    class: section.class.name,
+    section: section.name,
+    message: 'Roll numbers generated successfully',
+  };
+}
+
 }

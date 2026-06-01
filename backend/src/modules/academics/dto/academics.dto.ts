@@ -115,3 +115,15 @@ export class CreateSubjectMappingDto {
   @IsInt() @Min(1) @Max(10) @IsOptional()
   weeklyPeriods?: number;
 }
+
+export class GenerateRollNumbersDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  classId!: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  sectionId!: string;
+}

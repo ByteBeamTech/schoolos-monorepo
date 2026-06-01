@@ -307,8 +307,8 @@ if (!targetSection) {
   }
 
   // --- CONTROLLER COMPATIBILITY STUBS ---
-  async getPromotionHistory(tenantId: string, studentId: string) {
-  return this.prisma.studentPromotion.findMany({
+async getPromotionHistory(tenantId: string, studentId?: string) {
+  const promotions = await this.prisma.studentPromotion.findMany({
     where: {
       tenantId,
       ...(studentId ? { studentId } : {}),
@@ -317,7 +317,37 @@ if (!targetSection) {
       createdAt: 'desc',
     },
   });
+
+  const studentIds = [
+    ...new Set(promotions.map((p) => p.studentId)),
+  ];
+
+  const students = await this.prisma.student.findMany({
+    where: {
+      id: {
+        in: studentIds,
+      },
+    },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      admissionNumber: true,
+    },
+  });
+
+  const studentMap = new Map(
+    students.map((s) => [s.id, s]),
+  );
+
+  return promotions.map((p) => ({
+    ...p,
+    student: studentMap.get(p.studentId) ?? null,
+  }));
 }
+
+
+
   async createMigrationRequest(tenantId: string, dto: any, userId: string) { return { id: 'mig_' + Date.now() }; }
   async getMigrationRequests(tenantId: string, status: string) { return []; }
   async getIDCard(tenantId: string, id: string) { return null; }
