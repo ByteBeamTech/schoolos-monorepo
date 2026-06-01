@@ -399,7 +399,7 @@ function AcademicsTab() {
             <Field label="Sort Order"   value={cf.sortOrder} onChange={(v: string) => setCf(p => ({ ...p, sortOrder: v }))} type="number" />
             <div className="flex items-end gap-2">
               <SaveBtn saving={saving} onClick={() => post(
-                "/school-management/academics/classes",
+                "/school-management/classes",
                 { name: cf.name, sortOrder: Number(cf.sortOrder) || 0 },
                 () => { setSc(false); setCf({ name: "", sortOrder: "" }); }
               )} />
@@ -435,7 +435,7 @@ function AcademicsTab() {
             <Field label="Capacity" value={sf.capacity} onChange={(v: string) => setSf(p => ({ ...p, capacity: v }))} type="number" />
             <div className="flex items-end gap-2">
               <SaveBtn saving={saving} onClick={() => post(
-                "/school-management/academics/sections",
+                "/school-management/sections",
                 { name: sf.name, classId: sf.classId, capacity: Number(sf.capacity) || undefined },
                 () => { setSs(false); setSf({ name: "", classId: "", capacity: "" }); }
               )} />
@@ -453,7 +453,7 @@ function AcademicsTab() {
             <Field label="Code"           value={subf.code} onChange={(v: string) => setSubf(p => ({ ...p, code: v }))} />
             <div className="flex items-end gap-2">
               <SaveBtn saving={saving} onClick={() => post(
-                "/school-management/academics/subjects",
+                "/school-management/subjects",
                 subf,
                 () => { setSsub(false); setSubf({ name: "", code: "" }); }
               )} />

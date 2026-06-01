@@ -103,7 +103,6 @@ export class PromotionService {
     // FIX: Using deep casting to avoid "include: never" error
     const promotion = await (this.prisma.studentPromotion as any).findUnique({
       where: { id: promotionId },
-      include: { student: { select: { id: true, sectionId: true } } },
     });
 
     if (!promotion || promotion.tenantId !== tenantId) throw new NotFoundException('Movement record missing');
@@ -121,11 +120,22 @@ export class PromotionService {
         },
       });
 
+      const targetSection = await tx.section.findUnique({
+  where: { id: targetSectionId },
+});
+
+if (!targetSection) {
+  throw new BadRequestException('Target section not found');
+}
+
       const updatedStudent = await tx.student.update({
         where: { id: promotion.studentId },
         data: {
+		classId: targetSection.classId,
           sectionId: targetSectionId,
           academicYear: promotion.toSessionId,
+	   rollNumber: null,
+    rollAssignedAt: null,
         },
       });
 
@@ -297,7 +307,17 @@ export class PromotionService {
   }
 
   // --- CONTROLLER COMPATIBILITY STUBS ---
-  async getPromotionHistory(tenantId: string, studentId: string) { return []; }
+  async getPromotionHistory(tenantId: string, studentId: string) {
+  return this.prisma.studentPromotion.findMany({
+    where: {
+      tenantId,
+      ...(studentId ? { studentId } : {}),
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+}
   async createMigrationRequest(tenantId: string, dto: any, userId: string) { return { id: 'mig_' + Date.now() }; }
   async getMigrationRequests(tenantId: string, status: string) { return []; }
   async getIDCard(tenantId: string, id: string) { return null; }
