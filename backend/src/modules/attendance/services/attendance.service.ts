@@ -13,6 +13,7 @@ import {
   MarkPeriodAttendanceDto,
   UpdateAttendanceDto,
 } from '../dto/attendance.dto';
+import { CalendarEngineService } from '../../academic-calendar/services/calendar-engine.service';
 
 @Injectable()
 export class AttendanceService {
@@ -22,12 +23,106 @@ export class AttendanceService {
     private readonly prisma:   PrismaService,
     private readonly audit:    AuditService,
     private readonly emitter:  EventEmitter2,
+    private readonly calendarEngine: CalendarEngineService,
   ) {}
+ 
+  private async validateAttendanceDate(
+  tenantId: string,
+  sessionId: string,
+  attendanceDate: Date,
+) {
+  attendanceDate.setUTCHours(0, 0, 0, 0);
 
-  async bulkMarkDaily(tenantId: string, dto: BulkMarkAttendanceDto, actorId: string) {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
+  // Future date protection
+  if (attendanceDate > today) {
+    throw new BadRequestException(
+      'Future attendance cannot be marked',
+    );
+  }
+
+  const session =
+    await this.prisma.academicSession.findFirst({
+      where: {
+        id: sessionId,
+        tenantId,
+      },
+    });
+
+  if (!session) {
+    throw new NotFoundException(
+      'Academic session not found',
+    );
+  }
+
+  // Academic year boundary
+  if (
+    attendanceDate < session.startDate ||
+    attendanceDate > session.endDate
+  ) {
+    throw new BadRequestException(
+      'Date is outside academic session',
+    );
+  }
+
+  // Locked session protection
+  if (session.isLocked) {
+    throw new BadRequestException(
+      'Academic session is locked',
+    );
+  }
+}
+  async bulkMarkDaily(tenantId: string, dto: BulkMarkAttendanceDto, actorId: string, role: string) {
     const date = new Date(dto.date);
     date.setUTCHours(0, 0, 0, 0);
+    await this.validateAttendanceDate(
+  tenantId,
+  dto.sessionId,
+  date,
+);
 
+const today = new Date();
+today.setUTCHours(0, 0, 0, 0);
+
+    if (date > today) {
+  throw new BadRequestException(
+    'Future attendance cannot be marked',
+  );
+}
+
+const diffDays = Math.floor(
+  (today.getTime() - date.getTime()) /
+  (1000 * 60 * 60 * 24)
+);
+
+const backdateLimits: Record<string, number> = {
+  TEACHER: 3,
+  PRINCIPAL: 9999,
+  SCHOOL_ADMIN: 9999,
+};
+
+const allowedDays =
+  backdateLimits[role] ?? 3;
+
+if (diffDays > allowedDays) {
+  throw new BadRequestException(
+    `Attendance cannot be marked more than ${allowedDays} days in the past.`,
+  );
+}
+    
+    const workingDayCheck =
+  await this.calendarEngine.isWorkingDay(
+    tenantId,
+    date,
+  );
+
+if (!workingDayCheck.workingDay) {
+  throw new BadRequestException(
+    `Attendance cannot be marked: ${workingDayCheck.reason}`,
+  );
+}
     const section = await this.prisma.section.findFirst({ where: { id: dto.sectionId, tenantId } });
     if (!section) throw new NotFoundException(`Section not found: ${dto.sectionId}`);
 
@@ -36,34 +131,43 @@ export class AttendanceService {
     // data which also stores null. period: 0 caused a mismatch — Prisma treated
     // it as a different key, so upsert always inserted → unique constraint error.
     const results = await Promise.all(
-      dto.attendance.map(entry =>
-        this.prisma.attendance.upsert({
-          where: {
-            tenantId_studentId_date_period: {
-              tenantId,
-              studentId: entry.studentId,
-              date,
-              period:    null,   // ✅ was: 0 — must match create.period below
-            },
-          },
-          create: {
-            tenantId,
-            studentId: entry.studentId,
-            sessionId: dto.sessionId,
-            date,
-            status:    entry.status as any,
-            period:    null,
-            remarks:   entry.remarks ?? null,
-            markedBy:  actorId,
-          },
-          update: {
-            status:   entry.status as any,
-            remarks:  entry.remarks ?? null,
-            markedBy: actorId,
-          },
-        }),
-      ),
-    );
+  dto.attendance.map(async (entry) => {
+    const existing = await this.prisma.attendance.findFirst({
+      where: {
+        tenantId,
+        studentId: entry.studentId,
+        date,
+        period: null,
+      },
+    });
+
+    if (existing) {
+      return this.prisma.attendance.update({
+        where: {
+          id: existing.id,
+        },
+        data: {
+          status: entry.status as any,
+          remarks: entry.remarks ?? null,
+          markedBy: actorId,
+        },
+      });
+    }
+
+    return this.prisma.attendance.create({
+      data: {
+        tenantId,
+        studentId: entry.studentId,
+        sessionId: dto.sessionId,
+        date,
+        status: entry.status as any,
+        period: null,
+        remarks: entry.remarks ?? null,
+        markedBy: actorId,
+      },
+    });
+  }),
+);
 
     await this.audit.log({
       tenantId, actorId,
@@ -113,9 +217,51 @@ export class AttendanceService {
     };
   }
 
-  async markPeriodWise(tenantId: string, dto: MarkPeriodAttendanceDto, actorId: string) {
+  async markPeriodWise(tenantId: string, dto: MarkPeriodAttendanceDto, actorId: string, role: string) {
     const date = new Date(dto.date);
     date.setUTCHours(0, 0, 0, 0);
+
+    await this.validateAttendanceDate(
+  tenantId,
+  dto.sessionId,
+  date,
+);
+
+
+
+const today = new Date();
+today.setUTCHours(0, 0, 0, 0);
+
+const diffDays = Math.floor(
+  (today.getTime() - date.getTime()) /
+  (1000 * 60 * 60 * 24)
+);
+
+const backdateLimits: Record<string, number> = {
+  TEACHER: 3,
+  PRINCIPAL: 9999,
+  SCHOOL_ADMIN: 9999,
+};
+
+const allowedDays =
+  backdateLimits[role] ?? 3;
+
+if (diffDays > allowedDays) {
+  throw new BadRequestException(
+    `Attendance cannot be marked more than ${allowedDays} days in the past.`,
+  );
+}
+    const workingDayCheck =
+  await this.calendarEngine.isWorkingDay(
+    tenantId,
+    date,
+  );
+
+if (!workingDayCheck.workingDay) {
+  throw new BadRequestException(
+    `Attendance cannot be marked: ${workingDayCheck.reason}`,
+  );
+}
 
     if (dto.period < 1 || dto.period > 8) {
       throw new BadRequestException('Period must be between 1 and 8.');
@@ -156,7 +302,17 @@ export class AttendanceService {
   }
 
   async getSectionAttendance(tenantId: string, sectionId: string, date: string, period?: number) {
-    const d = new Date(date);
+     if (!sectionId) {
+    throw new BadRequestException("sectionId is required");
+  }
+
+  if (!date) {
+    throw new BadRequestException("date is required");
+  }
+	  const d = new Date(date);
+    if (isNaN(d.getTime())) {
+    throw new BadRequestException(`Invalid date: ${date}`);
+  }
     d.setUTCHours(0, 0, 0, 0);
 
     const records = await this.prisma.attendance.findMany({
@@ -256,6 +412,83 @@ export class AttendanceService {
     const workingDays = [...new Set(records.map((r: any) => r.date.toISOString().split('T')[0]))].length;
     return { sectionId, year, month, workingDays, totalStudents: students.length, lowAttendanceCount: report.filter((r: any) => r.lowAttendance).length, report };
   }
+
+
+
+  async getMonthlyRegister(
+  tenantId: string,
+  sectionId: string,
+  year: number,
+  month: number,
+) {
+  const from = new Date(year, month - 1, 1);
+  const to = new Date(year, month, 0, 23, 59, 59);
+
+  const students = await this.prisma.student.findMany({
+    where: {
+      tenantId,
+      sectionId,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      rollNumber: true,
+      admissionNumber: true,
+    },
+    orderBy: {
+      rollNumber: 'asc',
+    },
+  });
+
+  const attendance = await this.prisma.attendance.findMany({
+    where: {
+      tenantId,
+      date: {
+        gte: from,
+        lte: to,
+      },
+      period: null,
+      student: {
+        sectionId,
+      },
+    },
+  });
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  const register = students.map((student) => {
+    const row: Record<number, string> = {};
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      row[day] = '';
+    }
+
+    attendance
+      .filter((a) => a.studentId === student.id)
+      .forEach((a) => {
+        const day = new Date(a.date).getDate();
+        row[day] = a.status;
+      });
+
+    return {
+      studentId: student.id,
+      name: `${student.firstName} ${student.lastName}`,
+      rollNumber: student.rollNumber,
+      attendance: row,
+    };
+  });
+
+  return {
+	sectionId,
+    year,
+    month,
+    daysInMonth,
+    totalStudents: students.length,
+    register,
+  };
+}
 
   async getAbsentees(tenantId: string, date: string, sectionId?: string) {
     const d = new Date(date);

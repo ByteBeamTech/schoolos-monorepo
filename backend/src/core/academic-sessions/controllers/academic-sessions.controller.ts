@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Param, Query, Version } from '@nestjs/common';
+import { ReadinessCheckDto } from '../dto/readiness-check.dto';
 import {
   Body, UseGuards, HttpCode, HttpStatus,
 }  from '@nestjs/common';
@@ -93,4 +94,32 @@ export class AcademicSessionsController {
   ) {
     return this.service.lock(user.tenantId, id, user.id);
   }
+
+@Post('readiness-check')
+@Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+readinessCheck(
+  @CurrentUser() user: AuthenticatedUser,
+  @Body() dto: ReadinessCheckDto,
+) {
+  return this.service.readinessCheck(
+    user.tenantId,
+    dto.targetSessionId,
+  );
+}
+
+@Patch(':id/unlock')
+@Roles('SUPER_ADMIN', 'SCHOOL_ADMIN')
+@HttpCode(HttpStatus.OK)
+@ApiOperation({ summary: 'Unlock academic session' })
+unlock(
+  @Param('id') id: string,
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  return this.service.unlock(
+    user.tenantId,
+    id,
+    user.id,
+  );
+}
+
 }

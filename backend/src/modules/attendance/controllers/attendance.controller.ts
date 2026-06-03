@@ -32,7 +32,7 @@ export class AttendanceController {
   @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
   @ApiOperation({ summary: 'Mark daily attendance for a section' })
   markDaily(@Body() dto: BulkMarkAttendanceDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.attendance.bulkMarkDaily(user.tenantId, dto, user.id);
+    return this.attendance.bulkMarkDaily(user.tenantId, dto, user.id, user.role);
   }
 
   @Get('daily')
@@ -51,7 +51,7 @@ export class AttendanceController {
   @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
   @ApiOperation({ summary: 'Mark period-wise attendance' })
   markPeriod(@Body() dto: MarkPeriodAttendanceDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.attendance.markPeriodWise(user.tenantId, dto, user.id);
+    return this.attendance.markPeriodWise(user.tenantId, dto, user.id, user.role);
   }
 
   @Get('period')
@@ -119,6 +119,26 @@ export class AttendanceController {
   ) {
     return this.attendance.getMonthlyReport(user.tenantId, sectionId, parseInt(year), parseInt(month));
   }
+
+  @Get('register/monthly')
+@Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+@ApiOperation({ summary: 'Monthly attendance register' })
+@ApiQuery({ name: 'sectionId', required: true })
+@ApiQuery({ name: 'year', required: true })
+@ApiQuery({ name: 'month', required: true })
+getMonthlyRegister(
+  @CurrentUser() user: AuthenticatedUser,
+  @Query('sectionId') sectionId: string,
+  @Query('year') year: string,
+  @Query('month') month: string,
+) {
+  return this.attendance.getMonthlyRegister(
+    user.tenantId,
+    sectionId,
+    parseInt(year),
+    parseInt(month),
+  );
+}
 
   @Get('stats')
   @Roles('SCHOOL_ADMIN', 'PRINCIPAL')

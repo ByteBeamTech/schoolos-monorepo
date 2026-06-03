@@ -43,7 +43,7 @@ describe('AttendanceService', () => {
 
   // TEST 12
   it('marks attendance for all students in section using upsert', async () => {
-    const result = await service.bulkMarkDaily('t-1', mockAttendancePayload as any, 'actor-1');
+    const result = await service.bulkMarkDaily('t-1', mockAttendancePayload as any, 'actor-1', 'SCHOOL_ADMIN');
     expect(prisma.attendance.upsert).toHaveBeenCalledTimes(3);
     expect(result.marked).toBe(3);
     expect(result.present).toBe(1);
@@ -54,7 +54,7 @@ describe('AttendanceService', () => {
   it('throws NotFoundException for unknown section', async () => {
     (prisma.section.findFirst as jest.Mock).mockResolvedValue(null);
     await expect(
-      service.bulkMarkDaily('t-1', mockAttendancePayload as any, 'actor-1'),
+      service.bulkMarkDaily('t-1', mockAttendancePayload as any, 'actor-1', 'SCHOOL_ADMIN'),
     ).rejects.toThrow(NotFoundException);
   });
 
@@ -65,13 +65,13 @@ describe('AttendanceService', () => {
 
     // Should NOT throw ConflictException after our fix
     await expect(
-      service.bulkMarkDaily('t-1', mockAttendancePayload as any, 'actor-1'),
+      service.bulkMarkDaily('t-1', mockAttendancePayload as any, 'actor-1', 'SCHOOL_ADMIN'),
     ).resolves.toBeDefined();
   });
 
   // TEST 15
   it('returns correct summary counts: present, absent, late', async () => {
-    const result = await service.bulkMarkDaily('t-1', mockAttendancePayload as any, 'actor-1');
+    const result = await service.bulkMarkDaily('t-1', mockAttendancePayload as any, 'actor-1', 'SCHOOL_ADMIN');
     expect(result).toMatchObject({
       date:      '2025-04-01',
       sectionId: 'sec-1',
@@ -84,7 +84,7 @@ describe('AttendanceService', () => {
 
   // TEST 16
   it('upsert is called with correct student status and actorId', async () => {
-    await service.bulkMarkDaily('t-1', mockAttendancePayload as any, 'actor-99');
+    await service.bulkMarkDaily('t-1', mockAttendancePayload as any, 'actor-99', 'SCHOOL_ADMIN');
     const firstCall = (prisma.attendance.upsert as jest.Mock).mock.calls[0][0];
     expect(firstCall.create.markedBy).toBe('actor-99');
     expect(firstCall.create.status).toBe('PRESENT');

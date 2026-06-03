@@ -36,7 +36,7 @@ model Branch {
   discountCategories  DiscountCategory[]
   discounts           Discount[]
   lateFees            LateFee[]
-
+  calendarEvents AcademicCalendarEvent[]
   @@unique([tenantId, name])
   @@unique([tenantId, branchCode])
   @@index([tenantId])

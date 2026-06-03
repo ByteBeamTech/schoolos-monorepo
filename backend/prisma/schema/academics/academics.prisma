@@ -12,7 +12,7 @@ model Class {
   sections          Section[]
   TeacherAssignment TeacherAssignment[]
   students          Student[]
-
+  calendarEventTargets AcademicCalendarEventTarget[]
   @@unique([tenantId, branchId, sessionId, name])
   @@index([tenantId])
   @@index([tenantId, branchId, sessionId])
@@ -33,7 +33,7 @@ model Section {
   students          Student[]
   timetableSlots    TimetableSlot[]
   TeacherAssignment TeacherAssignment[]
-
+  calendarEventTargets AcademicCalendarEventTarget[]
   @@unique([tenantId, classId, name])
   @@index([tenantId])
   @@index([tenantId, branchId, classId])

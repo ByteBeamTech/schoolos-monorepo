@@ -203,6 +203,26 @@ async findSessions(tenantId: string) {
     return section;
   }
 
+  async findSectionsByClass(
+  tenantId: string,
+  classId: string,
+) {
+  return this.prisma.section.findMany({
+    where: {
+      tenantId,
+      classId,
+    },
+    orderBy: {
+      name: 'asc',
+    },
+    select: {
+      id: true,
+      name: true,
+      capacity: true,
+    },
+  });
+}
+
   async findSectionById(
     tenantId: string,
     id: string,

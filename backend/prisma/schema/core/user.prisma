@@ -55,7 +55,9 @@ model User {
   updatedStepLogs      AdmissionStepLog[]    @relation("UpdatedStepLogs")
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
-  
+  //calendar module relaion
+  calendarEventsCreated AcademicCalendarEvent[] @relation("EventCreator") 
+ 
   discountsCreated Discount[] @relation("DiscountCreator")
   discountsRevoked Discount[] @relation("DiscountRevoker")
 

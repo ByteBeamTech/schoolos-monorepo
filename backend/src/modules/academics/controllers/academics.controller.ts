@@ -77,6 +77,19 @@ export class AcademicsController {
     return this.service.createSection(user.tenantId, user.branchId!, dto, user.id);
   }
 
+  @Get('sections')
+@ApiOperation({ summary: 'List sections by class' })
+@ApiQuery({ name: 'classId', required: true })
+findSections(
+  @Query('classId') classId: string,
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  return this.service.findSectionsByClass(
+    user.tenantId,
+    classId,
+  );
+}
+
   @Get('sections/:id')
   @ApiOperation({ summary: 'Get section by ID' })
   findSection(

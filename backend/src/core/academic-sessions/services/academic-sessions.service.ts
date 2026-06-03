@@ -59,6 +59,18 @@ export class AcademicSessionsService {
       },
     });
 
+    if (
+  dto.copyClasses ||
+  dto.copySections ||
+  dto.copySubjects
+) {
+  await this.copyStructure(
+    tenantId,
+    session.id,
+    dto,
+  );
+}
+
     await this.audit.logCreate({
       tenantId, actorId,
       entityType: 'AcademicSession',
@@ -206,4 +218,208 @@ export class AcademicSessionsService {
 
     return { classCount, studentCount };
   }
+
+  private async copyStructure(
+  tenantId: string,
+  targetSessionId: string,
+  dto: {
+    copyClasses?: boolean;
+    copySections?: boolean;
+    copySubjects?: boolean;
+  },
+) {
+  const currentSession =
+    await this.prisma.academicSession.findFirst({
+      where: {
+        tenantId,
+        isCurrent: true,
+      },
+    });
+
+  if (!currentSession) {
+    return;
+  }
+
+  if (dto.copyClasses || dto.copySections) {
+    const classes = await this.prisma.class.findMany({
+      where: {
+        tenantId,
+        sessionId: currentSession.id,
+      },
+      include: {
+        sections: true,
+      },
+      orderBy: {
+        displayOrder: 'asc',
+      },
+    });
+
+    for (const cls of classes) {
+      const newClass = await this.prisma.class.create({
+        data: {
+          tenantId,
+          branchId: cls.branchId,
+          sessionId: targetSessionId,
+          name: cls.name,
+          displayOrder: cls.displayOrder,
+          isActive: cls.isActive,
+        },
+      });
+
+      if (dto.copySections) {
+        for (const sec of cls.sections) {
+          await this.prisma.section.create({
+            data: {
+              tenantId,
+              branchId: sec.branchId,
+              classId: newClass.id,
+              name: sec.name,
+              capacity: sec.capacity,
+              isActive: sec.isActive,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  this.logger.log(
+    `Academic structure copied to session ${targetSessionId}`,
+  );
+}
+
+async unlock(
+  tenantId: string,
+  id: string,
+  actorId: string,
+) {
+  const session =
+    await this.prisma.academicSession.findFirst({
+      where: {
+        id,
+        tenantId,
+      },
+    });
+
+  if (!session) {
+    throw new NotFoundException(
+      'Academic session not found',
+    );
+  }
+
+  const updated =
+    await this.prisma.academicSession.update({
+      where: { id },
+      data: {
+        isLocked: false,
+      },
+    });
+
+  await this.audit.logUpdate({
+    tenantId,
+    actorId,
+    entityType: 'AcademicSession',
+    entityId: id,
+    before: session,
+    after: updated,
+  });
+
+  return updated;
+}
+
+async readinessCheck(
+  tenantId: string,
+  targetSessionId: string,
+) {
+  const currentSession =
+    await this.prisma.academicSession.findFirst({
+      where: {
+        tenantId,
+        isCurrent: true,
+      },
+    });
+
+  if (!currentSession) {
+    throw new BadRequestException(
+      'No current academic session found',
+    );
+  }
+
+  const targetSession =
+    await this.prisma.academicSession.findFirst({
+      where: {
+        id: targetSessionId,
+        tenantId,
+      },
+    });
+
+  if (!targetSession) {
+    throw new NotFoundException(
+      'Target session not found',
+    );
+  }
+
+  const classes =
+    await this.prisma.class.count({
+      where: {
+        tenantId,
+        sessionId: targetSessionId,
+      },
+    });
+
+  const sections =
+    await this.prisma.section.count({
+      where: {
+        tenantId,
+        class: {
+          sessionId: targetSessionId,
+        },
+      },
+    });
+
+  const students =
+    await this.prisma.student.count({
+      where: {
+        tenantId,
+        isActive: true,
+      },
+    });
+
+    const promotionRules =
+  await this.prisma.promotionRule.count({
+    where: {
+      tenantId,
+      sessionId: currentSession.id,
+    },
+  });
+
+  return {
+  ready:
+    classes > 0 &&
+    sections > 0 &&
+    promotionRules > 0,
+
+
+    currentSession: {
+      id: currentSession.id,
+      name: currentSession.name,
+    },
+
+    targetSession: {
+      id: targetSession.id,
+      name: targetSession.name,
+    },
+
+    classes,
+    sections,
+    students,
+
+    checks: {
+      targetSessionExists: true,
+      classesCopied: classes > 0,
+      sectionsCopied: sections > 0,
+    },
+  };
+}
+
 }

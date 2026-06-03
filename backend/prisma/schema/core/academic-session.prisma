@@ -14,6 +14,7 @@ model AcademicSession {
   exams       Exam[]
   feePlans    FeePlan[]
   admissionsOpen       Boolean @default(true)
+  calendarEvents AcademicCalendarEvent[]
   rollNumbersGenerated Boolean @default(false)
   @@unique([tenantId, name])
   @@index([tenantId, isCurrent])

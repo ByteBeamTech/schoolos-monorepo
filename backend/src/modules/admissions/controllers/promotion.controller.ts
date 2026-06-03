@@ -27,6 +27,8 @@ import {
   ApproveAdmissionDto,
   RejectAdmissionDto,
 } from '../dto/promotion.dto';
+import { PromotionPreviewDto } from '../dto/promotion-preview.dto';
+
 
 @ApiTags('admissions-extended')
 @ApiBearerAuth('access-token')
@@ -50,6 +52,33 @@ export class PromotionController {
   async getPromotionRules(@Req() req: any, @Param('sessionId') sessionId: string) {
     return this.promotionService.getPromotionRules(req.tenantId, sessionId);
   }
+
+  @Post('promotion-rules/generate/:sessionId')
+@ApiOperation({ summary: 'Auto generate promotion rules' })
+@Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL')
+async generatePromotionRules(
+  @Req() req: any,
+  @Param('sessionId') sessionId: string,
+) {
+  return this.promotionService.generatePromotionRules(
+    req.tenantId,
+    sessionId,
+    req.user.id,
+  );
+}
+
+@Post('promotion-preview')
+@ApiOperation({ summary: 'Preview academic promotion' })
+@Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL')
+async promotionPreview(
+  @Req() req: any,
+  @Body() dto: PromotionPreviewDto,
+) {
+  return this.promotionService.promotionPreview(
+    req.tenantId,
+    dto,
+  );
+}
 
   // ========== STUDENT PROMOTION ==========
 
@@ -205,4 +234,10 @@ export class PromotionController {
   ) {
     return this.promotionService.rejectAdmission(req.tenantId, id, dto, req.user.id);
   }
+
+
+
+
+
+
 }

@@ -23,7 +23,34 @@ export class CreateAcademicSessionDto {
   @IsBoolean()
   @IsOptional()
   isCurrent?: boolean;
+
+  // ===== NEW =====
+
+  @ApiPropertyOptional({
+    default: true,
+    description: 'Copy classes from current session',
+  })
+  @IsBoolean()
+  @IsOptional()
+  copyClasses?: boolean;
+
+  @ApiPropertyOptional({
+    default: true,
+    description: 'Copy sections from current session',
+  })
+  @IsBoolean()
+  @IsOptional()
+  copySections?: boolean;
+
+  @ApiPropertyOptional({
+    default: true,
+    description: 'Copy subjects from current session',
+  })
+  @IsBoolean()
+  @IsOptional()
+  copySubjects?: boolean;
 }
+
 
 export class UpdateAcademicSessionDto {
   @ApiPropertyOptional()

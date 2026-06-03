@@ -83,7 +83,7 @@ model Tenant {
   branches             Branch[]
   cronLogs             CronExecutionLog[]
   jobSchedules         TenantJobSchedule[]
-
+  calendarEvents AcademicCalendarEvent[]
   // --- ⚡ Speed Indices ---
   @@index([slug])
   @@index([subdomain])

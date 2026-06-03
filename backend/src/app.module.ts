@@ -12,7 +12,7 @@ import { validate } from './core/config/env.validation';
 import { TenantMiddleware } from './core/tenants/tenant.middleware';
 import { JwtGuard } from './core/auth/guards/jwt.guard';
 import { RolesGuard } from './core/roles/roles.guard';
-
+import { AcademicCalendarModule } from './modules/academic-calendar/academic-calendar.module';
 
 import { PrismaModule } from './infra/database/prisma.module';
 import { RedisModule } from './infra/cache/redis.module';
@@ -135,6 +135,7 @@ import { BehaviorModule } from './modules/behavior/behavior.module';
     ReceptionModule,
     SupportModule,
     BehaviorModule,
+    AcademicCalendarModule,
   ],
 
   providers: [

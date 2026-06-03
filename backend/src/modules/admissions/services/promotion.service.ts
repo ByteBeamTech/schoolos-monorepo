@@ -10,7 +10,7 @@ import {
   BulkGenerateIDCardsDto, IDCardTemplateDto, CreateAlumniDto,
   AlumniQueryDto, ApproveAdmissionDto, RejectAdmissionDto
 } from '../dto/promotion.dto';
-
+import { PromotionPreviewDto } from '../dto/promotion-preview.dto';
 @Injectable()
 export class PromotionService {
   private readonly logger = new Logger(PromotionService.name);
@@ -52,11 +52,175 @@ export class PromotionService {
     });
   }
 
-  async getPromotionRules(tenantId: string, sessionId: string) {
-    return this.prisma.promotionRule.findMany({
-      where: { tenantId, sessionId },
+
+  async getPromotionRules(
+  tenantId: string,
+  sessionId: string,
+) {
+  const rules = await this.prisma.promotionRule.findMany({
+    where: {
+      tenantId,
+      sessionId,
+    },
+    orderBy: {
+      createdAt: 'asc',
+    },
+  });
+
+  const classIds = [
+    ...new Set(
+      rules.flatMap(r => [
+        r.fromClassId,
+        r.toClassId,
+      ]),
+    ),
+  ];
+
+  const classes =
+    await this.prisma.class.findMany({
+      where: {
+        id: {
+          in: classIds,
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+      },
     });
+
+  const classMap = new Map(
+    classes.map(c => [c.id, c.name]),
+  );
+
+  return rules.map(r => ({
+    ...r,
+
+    fromClassName:
+      classMap.get(r.fromClassId),
+
+    toClassName:
+      classMap.get(r.toClassId),
+  }));
+}
+
+async generatePromotionRules(
+  tenantId: string,
+  sessionId: string,
+  userId: string,
+) {
+  const classes = await this.prisma.class.findMany({
+    where: {
+      tenantId,
+      sessionId,
+      isActive: true,
+    },
+    orderBy: {
+      displayOrder: 'asc',
+    },
+  });
+
+  if (classes.length < 2) {
+    throw new BadRequestException(
+      'At least 2 classes are required to generate promotion rules',
+    );
   }
+
+  const created = [];
+
+  for (let i = 0; i < classes.length - 1; i++) {
+    const rule = await this.prisma.promotionRule.upsert({
+      where: {
+        tenantId_sessionId_fromClassId: {
+          tenantId,
+          sessionId,
+          fromClassId: classes[i].id,
+        },
+      },
+
+      create: {
+        tenantId,
+        sessionId,
+
+        fromClassId: classes[i].id,
+        toClassId: classes[i + 1].id,
+
+        passingMarks: 33,
+        requireAllPass: false,
+        autoPromote: true,
+
+        createdBy: userId,
+      },
+
+      update: {
+        toClassId: classes[i + 1].id,
+      },
+    });
+
+    created.push(rule);
+  }
+
+  return {
+    generated: created.length,
+    sessionId,
+  };
+}
+
+async promotionPreview(
+  tenantId: string,
+  dto: PromotionPreviewDto,
+) {
+  const rules = await this.prisma.promotionRule.findMany({
+    where: {
+      tenantId,
+      sessionId: dto.targetSessionId,
+    },
+  });
+
+  const preview: any[] = [];
+
+  let totalStudents = 0;
+
+  for (const rule of rules) {
+    const students = await this.prisma.student.findMany({
+      where: {
+        tenantId,
+        classId: rule.fromClassId,
+        isActive: true,
+      },
+      include: {
+        class: true,
+      },
+    });
+
+    const targetClass = await this.prisma.class.findUnique({
+      where: {
+        id: rule.toClassId,
+      },
+    });
+
+    for (const student of students) {
+      totalStudents++;
+
+      preview.push({
+        studentId: student.id,
+        studentName: `${student.firstName} ${student.lastName}`,
+        currentClass: student.class?.name,
+        targetClass: targetClass?.name,
+        action: 'PROMOTE',
+      });
+    }
+  }
+
+  return {
+    ready: true,
+    totalStudents,
+    eligible: totalStudents,
+    detained: 0,
+    graduated: 0,
+    preview,
+  };
+}
 
   // ==========================================
   // 2. ATOMIC STUDENT PROMOTION
