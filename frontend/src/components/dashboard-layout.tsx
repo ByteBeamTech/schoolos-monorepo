@@ -63,6 +63,7 @@ const NAV: NavGroup[] = [
     { href: "/dashboard/gradebook",    label: "Gradebook",    icon: BarChart3,      roles: ACADEMIC },
     { href: "/dashboard/report-cards", label: "Report Cards", icon: FileText,       roles: [...ACADEMIC, "PARENT"] },
     { href: "/dashboard/homework",     label: "Homework",     icon: BookMarked,     roles: ACADEMIC },
+    { href: "/dashboard/academic-calendar", label: "Academic Calendar", icon: CalendarDays,   roles: ACADEMIC },
   ]},
   { label: "Operations", items: [
     { href: "/dashboard/library",       label: "Library",       icon: Library,       roles: [...ADMIN, "LIBRARIAN"] },

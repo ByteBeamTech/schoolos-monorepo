@@ -13,7 +13,11 @@ export class AcademicCalendarService {
 async seedDefaultIndianHolidays(
   tenantId: string,
   sessionId: string,
-) {
+  actorId: string,
+) 
+
+
+{
   const session =
     await this.prisma.academicSession.findUnique({
       where: { id: sessionId },
@@ -27,27 +31,73 @@ async seedDefaultIndianHolidays(
   const endYear =
     session.endDate.getFullYear();
 
-  const holidays = [
-    {
-      title: 'Independence Day',
-      date: new Date(startYear, 7, 15),
-    },
-    {
-      title: 'Gandhi Jayanti',
-      date: new Date(startYear, 9, 2),
-    },
-    {
-      title: 'Christmas',
-      date: new Date(startYear, 11, 25),
-    },
-    {
-      title: 'Republic Day',
-      date: new Date(endYear, 0, 26),
-    },
-  ];
-
+const holidays = [
+  {
+    title: 'Independence Day',
+    date: new Date(Date.UTC(startYear, 7, 15)),
+  },
+  {
+    title: 'Gandhi Jayanti',
+    date: new Date(Date.UTC(startYear, 9, 2)),
+  },
+  {
+    title: 'Christmas',
+    date: new Date(Date.UTC(startYear, 11, 25)),
+  },
+  {
+    title: 'Republic Day',
+    date: new Date(Date.UTC(endYear, 0, 26)),
+  },
+];
   // create AcademicCalendarEvent rows
+const created = [];
+
+for (const holiday of holidays) {
+  const existing =
+    await this.prisma.academicCalendarEvent.findFirst({
+      where: {
+        tenantId,
+        sessionId,
+        title: holiday.title,
+      },
+    });
+
+  if (existing) continue;
+
+  const event =
+    await this.prisma.academicCalendarEvent.create({
+      data: {
+        tenantId,
+        sessionId,
+
+        title: holiday.title,
+        type: 'NATIONAL_HOLIDAY',
+
+        startDate: holiday.date,
+        endDate: holiday.date,
+
+        isWorkingDay: false,
+        blocksAttendance: true,
+        isPublished: true,
+
+        scope: 'ALL_SCHOOL',
+        audience: 'BOTH',
+
+        createdBy: actorId,
+      },
+    });
+
+  created.push(event);
 }
+
+return {
+  seeded: created.length,
+  events: created,
+};
+
+
+}
+
 
 async createEvent(
   tenantId: string,
@@ -56,34 +106,52 @@ async createEvent(
   sessionId: string,
   dto: CreateCalendarEventDto,
 ) {
-  return this.prisma.academicCalendarEvent.create({
-    data: {
-      tenantId,
-      branchId,
-      sessionId,
+  const event =
+    await this.prisma.academicCalendarEvent.create({
+      data: {
+        tenantId,
+        branchId,
+        sessionId,
 
-      title: dto.title,
-      description: dto.description,
+        title: dto.title,
+        description: dto.description,
 
-      type: dto.type,
-      scope: dto.scope ?? 'ALL_SCHOOL',
-      audience: dto.audience ?? 'BOTH',
+        type: dto.type,
+        scope: dto.scope ?? 'ALL_SCHOOL',
+        audience: dto.audience ?? 'BOTH',
 
-      startDate: new Date(dto.startDate),
-      endDate: new Date(dto.endDate),
+        startDate: new Date(dto.startDate),
+        endDate: new Date(dto.endDate),
 
-      isWorkingDay: dto.isWorkingDay ?? true,
-      blocksAttendance: dto.blocksAttendance ?? false,
-      isPublished: dto.isPublished ?? false,
+        isWorkingDay: dto.isWorkingDay ?? true,
+        blocksAttendance: dto.blocksAttendance ?? false,
+        isPublished: dto.isPublished ?? false,
 
-      color: dto.color,
-      isRecurring: dto.isRecurring ?? false,
-      recurrenceRule: dto.recurrenceRule,
+        color: dto.color,
+        isRecurring: dto.isRecurring ?? false,
+        recurrenceRule: dto.recurrenceRule,
 
-      createdBy: actorId,
-    },
-  });
+        createdBy: actorId,
+      },
+    });
+
+  // Save target rows
+  if (
+    dto.targets?.length &&
+    dto.scope !== 'ALL_SCHOOL'
+  ) {
+    await this.prisma.academicCalendarEventTarget.createMany({
+      data: dto.targets.map(target => ({
+        eventId: event.id,
+        classId: target.classId ?? null,
+        sectionId: target.sectionId ?? null,
+      })),
+    });
+  }
+
+  return event;
 }
+
 
 async listEvents(
   tenantId: string,
@@ -147,6 +215,10 @@ async getMonthView(
       isPublished: true,
     },
 
+    include: {
+    targets: true,
+  },
+
     orderBy: {
       startDate: 'asc',
     },
@@ -158,6 +230,14 @@ async updateEvent(
   id: string,
   dto: UpdateCalendarEventDto,
 ) {
+  const {
+    targets,
+    sessionId,
+    startDate,
+    endDate,
+    ...updateData
+  } = dto;
+
   return this.prisma.academicCalendarEvent.update({
     where: {
       id,
@@ -165,18 +245,20 @@ async updateEvent(
     },
 
     data: {
-      ...dto,
+      ...updateData,
 
-      ...(dto.startDate && {
-        startDate: new Date(dto.startDate),
+      ...(startDate && {
+        startDate: new Date(startDate),
       }),
 
-      ...(dto.endDate && {
-        endDate: new Date(dto.endDate),
+      ...(endDate && {
+        endDate: new Date(endDate),
       }),
     },
   });
 }
+
+
 
 async deleteEvent(
   tenantId: string,
@@ -206,6 +288,19 @@ async publishEvent(
   });
 }
 
-
+async unpublishEvent(
+  tenantId: string,
+  id: string,
+) {
+  return this.prisma.academicCalendarEvent.update({
+    where: {
+      id,
+      tenantId,
+    },
+    data: {
+      isPublished: false,
+    },
+  });
+}
 
 }

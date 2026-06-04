@@ -4,13 +4,26 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  ValidateNested,
+  IsArray,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 import {
   CalendarEventType,
   EventScope,
   AudienceType,
 } from '@prisma/client';
+
+export class CalendarTargetDto {
+  @IsOptional()
+  @IsString()
+  classId?: string;
+
+  @IsOptional()
+  @IsString()
+  sectionId?: string;
+}
 
 export class CreateCalendarEventDto {
   @IsString()
@@ -64,11 +77,12 @@ export class CreateCalendarEventDto {
   @IsString()
   recurrenceRule?: string;
 
-  @IsOptional()
-  @IsString()
-  classId?: string;
 
   @IsOptional()
-  @IsString()
-  sectionId?: string;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CalendarTargetDto)
+  targets?: CalendarTargetDto[];
+
+
 }

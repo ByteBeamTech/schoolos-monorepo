@@ -38,7 +38,18 @@ export default function AttendancePage() {
   const qs           = searchParams.toString();
 
   // History Query Hook
-  const historyUrl =
+
+
+  // Core Operational States
+  const [date, setDate]           = useState(today);
+  const [sessionId, setSessionId] = useState("");
+  const [classId,   setClassId]   = useState("");
+  const [sectionId, setSectionId] = useState("");
+  const [attendance, setAttendance] = useState<Record<string, Status>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted,  setSubmitted]  = useState(false);
+
+const historyUrl =
   pageTab === "history" &&
   sectionId &&
   date
@@ -53,17 +64,8 @@ const {
   historyUrl,
   [pageTab, sectionId, date]
 );
+
 const historyList = historyData?.data ?? [];
-
-
-  // Core Operational States
-  const [date, setDate]           = useState(today);
-  const [sessionId, setSessionId] = useState("");
-  const [classId,   setClassId]   = useState("");
-  const [sectionId, setSectionId] = useState("");
-  const [attendance, setAttendance] = useState<Record<string, Status>>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted,  setSubmitted]  = useState(false);
 
   // Register Grid States
   const [registerMonth, setRegisterMonth] = useState<number>(currentMn);
@@ -536,6 +538,7 @@ console.log("SECTION DATA", sectionData);
                   <div className="flex items-center gap-1"><span className="text-rose-600 font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200">A</span> Absent</div>
                   <div className="flex items-center gap-1"><span className="text-purple-600 font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200">L</span> Leave</div>
                   <div className="flex items-center gap-1"><span className="text-amber-600 font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200">LT</span> Late</div>
+		   <div className="flex items-center gap-1"><span className="text-amber-600 font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200">H</span> Holiday</div>
                   <div className="flex items-center gap-1"><span className="text-slate-400 font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200">-</span> Not Marked</div>
                 </div>
               </div>
@@ -560,7 +563,8 @@ console.log("SECTION DATA", sectionData);
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {(registerData.register ?? []).map((row: any) => {
-                        const markedDays = Object.values(row.attendance || {}).filter(v => !!v).length;
+                        
+			const markedDays = Object.values(row.attendance || {}).filter((v) => v && v !== "HOLIDAY").length;
                         const presentCount = Object.values(row.attendance || {}).filter(v => v === "PRESENT").length;
                         const absentCount  = Object.values(row.attendance || {}).filter(v => v === "ABSENT").length;
                         
@@ -573,6 +577,25 @@ console.log("SECTION DATA", sectionData);
                             
                             {Array.from({ length: registerData.daysInMonth ?? 30 }, (_, i) => i + 1).map((day) => {
                               const val = row.attendance?.[day] ?? "";
+			      if (val === "HOLIDAY") {
+  return (
+    <td
+      key={day}
+      className="p-0 border-l border-slate-50/60 text-center w-8 h-16 bg-rose-50"
+      title={registerData.holidays?.[day] ?? "Holiday"}
+    >
+      <div className="flex flex-col items-center justify-center h-full text-[8px] font-extrabold text-rose-600 leading-none">
+        <span>H</span>
+        <span>O</span>
+        <span>L</span>
+        <span>I</span>
+        <span>D</span>
+        <span>A</span>
+        <span>Y</span>
+      </div>
+    </td>
+  );
+}
                               return (
                                 <td key={day} className="p-1 border-l border-slate-50/60 text-center w-8 h-8">
                                   <span className={

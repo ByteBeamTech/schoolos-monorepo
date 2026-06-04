@@ -456,14 +456,63 @@ if (!workingDayCheck.workingDay) {
     },
   });
 
+  const holidays =
+  await this.prisma.academicCalendarEvent.findMany({
+    where: {
+      tenantId,
+      isPublished: true,
+      blocksAttendance: true,
+
+      startDate: {
+        lte: to,
+      },
+
+      endDate: {
+        gte: from,
+      },
+    },
+
+    select: {
+      title: true,
+      startDate: true,
+      endDate: true,
+    },
+  });
+  
+
   const daysInMonth = new Date(year, month, 0).getDate();
+
+
+  const holidayMap: Record<number, string> = {};
+
+for (const holiday of holidays) {
+  const start = new Date(holiday.startDate);
+  const end = new Date(holiday.endDate);
+
+  for (
+    let d = new Date(start);
+    d <= end;
+    d.setDate(d.getDate() + 1)
+  ) {
+    if (
+      d.getMonth() === month - 1 &&
+      d.getFullYear() === year
+    ) {
+      holidayMap[d.getDate()] = holiday.title;
+    }
+  }
+}
 
   const register = students.map((student) => {
     const row: Record<number, string> = {};
 
+
     for (let day = 1; day <= daysInMonth; day++) {
-      row[day] = '';
-    }
+  row[day] =
+    holidayMap[day]
+      ? 'HOLIDAY'
+      : '';
+}
 
     attendance
       .filter((a) => a.studentId === student.id)
@@ -485,6 +534,7 @@ if (!workingDayCheck.workingDay) {
     year,
     month,
     daysInMonth,
+    holidays: holidayMap,
     totalStudents: students.length,
     register,
   };

@@ -40,6 +40,19 @@ export class AcademicCalendarController {
     );
   }
 
+  @Post('seed')
+seed(
+  @CurrentUser() user: AuthenticatedUser,
+  @Query('sessionId') sessionId: string,
+) {
+  return this.service.seedDefaultIndianHolidays(
+    user.tenantId,
+    sessionId,
+    user.id,
+  );
+}
+
+
   @Get()
   list(
     @CurrentUser() user: AuthenticatedUser,
@@ -100,6 +113,17 @@ export class AcademicCalendarController {
       id,
     );
   }
+
+  @Patch(':id/unpublish')
+unpublish(
+  @CurrentUser() user: AuthenticatedUser,
+  @Param('id') id: string,
+) {
+  return this.service.unpublishEvent(
+    user.tenantId,
+    id,
+  );
+}
 
   @Get('health')
   health() {
