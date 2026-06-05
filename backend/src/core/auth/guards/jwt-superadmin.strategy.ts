@@ -29,6 +29,15 @@ export class JwtSuperadminStrategy extends PassportStrategy(Strategy, 'jwt-super
     config:                  ConfigService,
     private readonly prisma: PrismaService,
   ) {
+	  console.log(
+  'VERIFY_SECRET=',
+  config.get('SUPERADMIN_JWT_SECRET'),
+);
+
+console.log(
+  'VERIFY_AUDIENCE=',
+  config.get('SUPERADMIN_JWT_AUDIENCE'),
+);
     super({
       jwtFromRequest:   ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -39,6 +48,8 @@ export class JwtSuperadminStrategy extends PassportStrategy(Strategy, 'jwt-super
   }
 
   async validate(payload: any): Promise<SuperadminUser> {
+	   console.log('SUPERADMIN JWT VALIDATE');
+  console.log('SUPERADMIN PAYLOAD=', payload);
     // Double-check audience in case passport-jwt audience option is misconfigured
     const expectedAud = 'schoolos-superadmin';
     if (payload.aud !== expectedAud) {

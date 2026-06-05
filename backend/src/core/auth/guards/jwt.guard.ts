@@ -19,7 +19,9 @@ export class JwtGuard extends AuthGuard('jwt') {
   }
 
   handleRequest(err: any, user: any, info: any) {
-    if (err || !user) {
+    console.log('GLOBAL JWT GUARD');
+    console.log(info);
+      	  if (err || !user) {
       const message =
         info?.message === 'No auth token'     ? 'Authorization header missing. Include Bearer token.'     :
         info?.message === 'jwt expired'        ? 'Access token expired. Use /auth/refresh to get a new one.' :

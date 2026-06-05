@@ -58,6 +58,13 @@ export class TokenService {
       : this.config.get<string>('JWT_SECRET')!;
 
     const jti = randomUUID();
+    this.logger.warn(
+  `[JWT SIGN] isSuperadmin=${isSuperadmin} audience=${audience}`,
+);
+
+this.logger.warn(
+  `[JWT SIGN] secret=${secret}`,
+);
     const accessToken = this.jwt.sign(
       { sub: userId, tenantId, role, email, jti, aud: audience },
       {
