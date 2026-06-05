@@ -1,120 +1,153 @@
 "use client";
-import { useState } from "react";
-import { Tag, Plus } from "lucide-react";
+// superadmin/src/app/(platform)/dashboard/nps/page.tsx
+// FULL REPLACEMENT
+// FIXES:
+//  1. /tenants → /onboarding/tenants (was 404)
+//  2. sendSurvey calls /superadmin/notifications/broadcast instead of
+//     serial for-loop on tenant-scoped /notifications/send (was 403)
+//  3. Removed misleading "score tracking pending model" — honest UI
+//     showing that scores aren't yet captured, with clear next step
+//  4. Added last-sent timestamp stored in localStorage as a stopgap
+//     so SA doesn't accidentally spam schools
 
-// Coupons stored client-side for now (pending CouponModel migration)
-const MOCK_COUPONS = [
-  { code: "SCHOOL50",  discount: 50,  type: "PERCENT", uses: 12, maxUses: 100, expiresAt: "2026-12-31", status: "ACTIVE"   },
-  { code: "FLAT2000",  discount: 2000,type: "FLAT",    uses: 3,  maxUses: 50,  expiresAt: "2026-06-30", status: "ACTIVE"   },
-  { code: "LAUNCH2025",discount: 30,  type: "PERCENT", uses: 48, maxUses: 50,  expiresAt: "2025-12-31", status: "EXPIRED"  },
-];
+import { useState }        from "react";
+import { useApi }          from "@/lib/hooks";
+import { api }             from "@/lib/api";
+import { Star, Send, Clock, AlertTriangle } from "lucide-react";
 
-export default function CouponsPage() {
-  const [coupons, setCoupons]   = useState(MOCK_COUPONS);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm]         = useState({ code: "", discount: "", type: "PERCENT", maxUses: "", expiresAt: "" });
-  const f = (k: string) => (e: any) => setForm(p => ({ ...p, [k]: e.target.value }));
+const LAST_SENT_KEY = "nps_last_sent_at";
 
-  const create = (e: React.FormEvent) => {
-    e.preventDefault();
-    setCoupons(p => [...p, {
-      code: form.code.toUpperCase(), discount: parseFloat(form.discount),
-      type: form.type, uses: 0, maxUses: parseInt(form.maxUses),
-      expiresAt: form.expiresAt, status: "ACTIVE",
-    }]);
-    setShowForm(false);
-    setForm({ code: "", discount: "", type: "PERCENT", maxUses: "", expiresAt: "" });
+export default function NpsPage() {
+  // FIX: was /tenants?limit=200&status=ACTIVE → 404
+  const { data: tenants } = useApi<any>("/onboarding/tenants?limit=500&status=ACTIVE");
+  const list: any[] = tenants?.data ?? [];
+
+  const [sending,  setSending]  = useState(false);
+  const [sent,     setSent]     = useState(false);
+  const [lastSent, setLastSent] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(LAST_SENT_KEY);
+  });
+
+  const daysSinceLast = lastSent
+    ? Math.floor((Date.now() - new Date(lastSent).getTime()) / 86400000)
+    : null;
+
+  const sendSurvey = async () => {
+    if (daysSinceLast !== null && daysSinceLast < 60) {
+      if (!confirm(
+        `You sent an NPS survey ${daysSinceLast} days ago. Sending again so soon may annoy schools. Continue?`
+      )) return;
+    }
+    if (!confirm(`Send NPS survey to all ${list.length} active schools?`)) return;
+
+    setSending(true);
+    try {
+      // FIX: single broadcast call instead of serial loop
+      await api.post("/superadmin/notifications/broadcast", {
+        tenantIds: list.map((t: any) => t.id),
+        channel:   "EMAIL",
+        subject:   "How likely are you to recommend SchoolOS? (30 sec)",
+        body: [
+          "Hi team,",
+          "",
+          "On a scale of 0–10, how likely are you to recommend SchoolOS to another school?",
+          "",
+          "0 = Not at all likely   10 = Extremely likely",
+          "",
+          "Please reply to this email with:",
+          "1. Your score (0–10)",
+          "2. One thing we could do better",
+          "",
+          "Thank you — your feedback shapes our roadmap.",
+          "",
+          "— SchoolOS Team",
+        ].join("\n"),
+      });
+
+      const now = new Date().toISOString();
+      localStorage.setItem(LAST_SENT_KEY, now);
+      setLastSent(now);
+      setSent(true);
+      setTimeout(() => setSent(false), 6000);
+    } catch (e: any) {
+      alert(e?.response?.data?.message ?? e.message ?? "Failed to send");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
     <div>
-      <div className="mb-8 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Coupons</h1>
-          <p className="text-slate-400 text-sm mt-1">Promo codes for discounts on SaaS subscriptions</p>
-        </div>
-        <button onClick={() => setShowForm(p => !p)}
-          className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg font-medium transition-colors">
-          <Plus className="w-4 h-4" /> New coupon
-        </button>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-white tracking-tight">NPS Tracking</h1>
+        <p className="text-slate-400 text-sm mt-1">
+          Net Promoter Score — measure how likely schools are to recommend SchoolOS
+        </p>
       </div>
 
-      {showForm && (
-        <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 mb-5">
-          <form onSubmit={create} className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Code *</label>
-              <input required type="text" placeholder="SCHOOL50" value={form.code} onChange={f("code")}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-orange-500 uppercase" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Discount *</label>
-              <input required type="number" placeholder="50" value={form.discount} onChange={f("discount")}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-orange-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Type</label>
-              <select value={form.type} onChange={f("type")}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-orange-500">
-                <option value="PERCENT">Percent (%)</option>
-                <option value="FLAT">Flat (₹)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Max uses</label>
-              <input type="number" placeholder="100" value={form.maxUses} onChange={f("maxUses")}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-orange-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Expires</label>
-              <input type="date" value={form.expiresAt} onChange={f("expiresAt")}
-                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-orange-500" />
-            </div>
-            <div className="md:col-span-5 flex gap-3">
-              <button type="submit" className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg font-medium transition-colors">Create coupon</button>
-              <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 bg-slate-800 text-slate-400 text-sm rounded-lg">Cancel</button>
-            </div>
-          </form>
+      {sent && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm px-4 py-3 rounded-lg mb-5 flex items-center gap-2">
+          <Send className="w-4 h-4 flex-shrink-0" />
+          ✓ NPS survey sent to {list.length} schools. Track replies in your email.
         </div>
       )}
 
-      <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-800">
-            {["Code","Discount","Type","Used","Max uses","Usage %","Expires","Status"].map(h => (
-              <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-            ))}
-          </tr></thead>
-          <tbody className="divide-y divide-slate-800/50">
-            {coupons.map((c) => (
-              <tr key={c.code} className="hover:bg-slate-800/30">
-                <td className="px-5 py-3.5 font-mono font-bold text-orange-400">{c.code}</td>
-                <td className="px-5 py-3.5 text-slate-200 font-semibold">
-                  {c.type === "PERCENT" ? `${c.discount}%` : `₹${c.discount.toLocaleString("en-IN")}`}
-                </td>
-                <td className="px-5 py-3.5 text-slate-500 text-xs">{c.type}</td>
-                <td className="px-5 py-3.5 text-slate-300">{c.uses}</td>
-                <td className="px-5 py-3.5 text-slate-400">{c.maxUses || "∞"}</td>
-                <td className="px-5 py-3.5">
-                  {c.maxUses ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-orange-500 rounded-full" style={{ width: `${Math.round(c.uses / c.maxUses * 100)}%` }} />
-                      </div>
-                      <span className="text-xs text-slate-400">{Math.round(c.uses / c.maxUses * 100)}%</span>
-                    </div>
-                  ) : "—"}
-                </td>
-                <td className="px-5 py-3.5 text-xs text-slate-400">{c.expiresAt}</td>
-                <td className="px-5 py-3.5">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                    c.status === "ACTIVE" ? "bg-emerald-500/10 text-emerald-400" : "bg-slate-700 text-slate-400"
-                  }`}>{c.status}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Scores — placeholder until NPS model is built */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        {[
+          { label: "NPS Score",  value: "—", sub: "No responses captured yet" },
+          { label: "Promoters",  value: "—", sub: "Score 9–10" },
+          { label: "Detractors", value: "—", sub: "Score 0–6"  },
+        ].map(({ label, value, sub }) => (
+          <div key={label} className="bg-slate-900 rounded-xl border border-slate-800 p-5">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">{label}</p>
+            <p className="text-3xl font-bold text-white mt-1">{value}</p>
+            <p className="text-xs text-slate-600 mt-1">{sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Score capture notice */}
+      <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 mb-6 flex items-start gap-3">
+        <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+        <div>
+          <p className="text-sm font-medium text-amber-300">Score capture not yet built</p>
+          <p className="text-xs text-amber-600 mt-1">
+            Replies come to your email inbox. To display scores here, add an <code className="text-amber-500">NpsResponse</code> Prisma model
+            and a webhook or reply-parser that stores scores. Until then, tally responses manually.
+          </p>
+        </div>
+      </div>
+
+      {/* Send panel */}
+      <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 max-w-xl">
+        <h2 className="text-sm font-semibold text-slate-300 mb-1">Send NPS survey</h2>
+        <p className="text-xs text-slate-500 mb-4">
+          Sends an email to all {list.length} active school admins asking for a 0–10 score.
+          Recommended frequency: once per quarter.
+        </p>
+
+        {lastSent && (
+          <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
+            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+            Last sent: {new Date(lastSent).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+            {daysSinceLast !== null && daysSinceLast < 60 && (
+              <span className="text-amber-500 font-medium">({daysSinceLast}d ago — consider waiting)</span>
+            )}
+          </div>
+        )}
+
+        <button
+          onClick={sendSurvey}
+          disabled={sending || list.length === 0}
+          className="flex items-center gap-2 px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors"
+        >
+          {sending
+            ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            : <Star className="w-4 h-4" />}
+          {sending ? "Sending…" : `Send survey to ${list.length} schools`}
+        </button>
       </div>
     </div>
   );

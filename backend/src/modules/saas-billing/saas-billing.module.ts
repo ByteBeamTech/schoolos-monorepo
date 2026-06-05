@@ -13,7 +13,7 @@ import { QUEUE_NAMES }            from '../../infra/queue/queue.module';
 @Module({
   imports: [
     PrismaModule,                                               // ← NEW
-    BullModule.registerQueue({ name: QUEUE_NAMES.BILLING }),
+    BullModule.registerQueue({ name: QUEUE_NAMES.BILLING_CYCLE }),
     BullModule.registerQueue({ name: QUEUE_NAMES.NOTIFICATIONS }),
   ],
   controllers: [SaasBillingController],                         // ← NEW

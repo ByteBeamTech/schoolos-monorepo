@@ -417,4 +417,33 @@ export class SupportService {
       total: open + inProgress + resolved,
     };
   }
+
+  async reopen(id: string, tenantId: string) {
+    const ticket = await this.prisma.supportTicket.findFirst({
+      where:   { id, tenantId },
+      include: { tenant: { select: { name: true } } },
+    });
+    if (!ticket) throw new NotFoundException('Ticket not found');
+
+    // Idempotent — if already open, return as-is
+    if (!['RESOLVED', 'CLOSED'].includes(ticket.status)) return ticket;
+
+    const sla = this.computeSLADates(ticket.priority, new Date());
+
+    return this.prisma.supportTicket.update({
+      where: { id },
+      data: {
+        status:               'IN_PROGRESS',
+        resolvedAt:           null,
+        slaResponseDueAt:     sla.slaResponseDueAt,
+        slaResolutionDueAt:   sla.slaResolutionDueAt,
+        slaResponseBreached:  false,
+        slaResolutionBreached: false,
+      },
+    });
+  }
+
 }
+
+
+

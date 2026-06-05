@@ -5,7 +5,8 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: false },
 
-  transpilePackages: ['@schoolos/api-contracts'],
+  // ✅ Ismein @schoolos/trpc add kar diya
+  transpilePackages: ['@schoolos/api-contracts', '@schoolos/trpc'],
 };
 
 module.exports = nextConfig;

@@ -1,0 +1,27 @@
+model Coupon {
+  id        String       @id @default(cuid())
+  code      String       @unique
+  discount  Decimal      @db.Decimal(10, 2)
+  type      CouponType
+  maxUses   Int
+  uses      Int          @default(0)
+  status    CouponStatus @default(ACTIVE)
+  expiresAt DateTime
+  createdBy String?      // superadmin user id
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+ 
+  @@index([code, status])
+  @@index([expiresAt])
+}
+ 
+enum CouponType {
+  PERCENT
+  FLAT
+}
+ 
+enum CouponStatus {
+  ACTIVE
+  EXPIRED
+  DISABLED
+}
