@@ -1,16 +1,15 @@
 "use client";
-import { use }              from "react";
-import { useRouter }        from "next/navigation";
-import { useState }         from "react";
-import { ArrowLeft, ExternalLink, Shield, CreditCard, Users, KeyRound, Receipt, ChevronDown, ChevronUp } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { ArrowLeft, ExternalLink, Shield, CreditCard, Users, KeyRound, ScrollText, Terminal, X, CheckCircle, Search, Filter } from "lucide-react";
 import { Badge }            from "@/components/ui/badge";
 import { useApi, Tenant }   from "@/lib/hooks";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { api }              from "@/lib/api";
+import { useToast }         from "@/components/ui/use-toast";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 interface BillingInvoice {
-  id:            string;
+  id:             string;
   invoiceNumber: string;
   status:        string;
   currency:      string;
@@ -21,21 +20,19 @@ interface BillingInvoice {
   periodEnd:     string;
   studentCount:  number | null;
   dueDate:       string;
-  paidAt:        string | null;
   pdfUrl:        string | null;
-  payments:      { id: string; gateway: string; amount: number; status: string; paidAt: string | null }[];
+  payments:      any[];
   createdAt:     string;
 }
 
 interface BillingData {
-  subscription:     any;
-  invoices:         BillingInvoice[];
-  totalPaid:        number;
+  subscription:      any;
+  invoices:          BillingInvoice[];
+  totalPaid:         number;
   totalOutstanding: number;
-  totalInvoices:    number;
+  totalInvoices:     number;
 }
 
-// ── Feature flags list ────────────────────────────────────────────────────────
 const FEATURE_FLAGS = [
   "FEATURE_AI_SMART_REMINDERS",
   "FEATURE_AI_DROPOUT_PREDICTION",
@@ -46,7 +43,6 @@ const FEATURE_FLAGS = [
   "FEATURE_INTEGRATIONS_WHATSAPP",
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function statusVariant(s: string) {
   if (s === "ACTIVE")    return "success" as const;
   if (s === "TRIAL")     return "info" as const;
@@ -62,420 +58,366 @@ function invoiceStatusVariant(s: string) {
   return "neutral" as const;
 }
 
-// ── Billing Tab ───────────────────────────────────────────────────────────────
+// ── Tab Components ───────────────────────────────────────────────────────────
 function BillingTab({ tenantId }: { tenantId: string }) {
   const { data, loading, error } = useApi<BillingData>(`/superadmin/tenants/${tenantId}/billing`);
-  const [expanded, setExpanded]  = useState<string | null>(null);
 
-  if (loading) return (
-    <div className="space-y-3">
-      {[...Array(4)].map((_, i) => (
-        <div key={i} className="h-16 bg-slate-800 rounded-xl animate-pulse" />
-      ))}
-    </div>
-  );
-
-  if (error) return (
-    <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-5 text-red-400 text-sm">
-      Failed to load billing history: {error}
-    </div>
-  );
-
-  if (!data?.subscription) return (
-    <div className="bg-slate-800/50 rounded-xl p-8 text-center">
-      <CreditCard className="w-8 h-8 text-slate-600 mx-auto mb-3" />
-      <p className="text-slate-400 text-sm font-medium">No subscription found</p>
-      <p className="text-slate-600 text-xs mt-1">This tenant has not been assigned a pricing plan yet.</p>
-    </div>
-  );
+  if (loading) return <div className="space-y-2"><div className="h-20 bg-slate-800 rounded-xl animate-pulse w-full" /></div>;
+  if (error) return <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs">Failed to load billing history ledger.</div>;
+  if (!data?.subscription) return <div className="text-slate-500 text-xs py-4">No subscription found.</div>;
 
   const sub = data.subscription;
   const cur = sub.currency ?? "INR";
 
   return (
-    <div className="space-y-5">
-      {/* Subscription summary */}
-      <div className="bg-slate-800/50 rounded-xl p-5">
-        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">Current Subscription</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: "Plan",    value: sub.plan?.name ?? "—" },
-            { label: "Model",   value: sub.model },
-            { label: "Status",  value: sub.status },
-            { label: "Currency",value: cur },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">{label}</p>
-              <p className="text-sm font-semibold text-slate-200 mt-1">{value}</p>
-            </div>
-          ))}
+    <div className="space-y-4 font-mono text-xs">
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-slate-800/40 p-4 rounded-xl">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Paid Invoices</p>
+          <p className="text-lg font-bold text-emerald-400 mt-1">{formatCurrency(data.totalPaid, cur)}</p>
         </div>
-        {/* Rate info */}
-        <div className="mt-4 pt-4 border-t border-slate-700 flex flex-wrap gap-6 text-xs text-slate-400">
-          {sub.customPerStudentRate != null && (
-            <span>Custom per-student rate: <strong className="text-slate-200">{formatCurrency(sub.customPerStudentRate, cur)}</strong></span>
-          )}
-          {sub.customBaseFee != null && (
-            <span>Custom base fee: <strong className="text-slate-200">{formatCurrency(sub.customBaseFee, cur)}</strong></span>
-          )}
-          {sub.studentCountAtBilling != null && (
-            <span>Students at last billing: <strong className="text-slate-200">{sub.studentCountAtBilling}</strong></span>
-          )}
+        <div className="bg-slate-800/40 p-4 rounded-xl">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Outstanding Due</p>
+          <p className="text-lg font-bold text-red-400 mt-1">{formatCurrency(data.totalOutstanding, cur)}</p>
+        </div>
+        <div className="bg-slate-800/40 p-4 rounded-xl">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500">Total Count</p>
+          <p className="text-lg font-bold text-white mt-1">{data.totalInvoices}</p>
         </div>
       </div>
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: "Total invoices",   value: String(data.totalInvoices),                        color: "text-white"       },
-          { label: "Total paid",       value: formatCurrency(data.totalPaid, cur),                color: "text-emerald-400" },
-          { label: "Outstanding",      value: formatCurrency(data.totalOutstanding, cur),         color: data.totalOutstanding > 0 ? "text-red-400" : "text-emerald-400" },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="bg-slate-800/50 rounded-xl p-4">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1">{label}</p>
-            <p className={`text-xl font-bold ${color}`}>{value}</p>
+      <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-900/20">
+        {data.invoices.map(inv => (
+          <div key={inv.id} className="border-b border-slate-800 last:border-0 p-4 flex justify-between items-center hover:bg-slate-800/20 transition-colors">
+            <div>
+              <span className="text-slate-300 font-bold">{inv.invoiceNumber}</span>
+              <span className="ml-2"><Badge label={inv.status} variant={invoiceStatusVariant(inv.status)} /></span>
+            </div>
+            <span className="text-slate-200 font-black">{formatCurrency(inv.totalAmount, inv.currency)}</span>
           </div>
         ))}
       </div>
-
-      {/* Invoice list */}
-      {data.invoices.length === 0 ? (
-        <div className="bg-slate-800/30 rounded-xl p-8 text-center">
-          <Receipt className="w-8 h-8 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400 text-sm">No invoices yet</p>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-slate-800 overflow-hidden">
-          {data.invoices.map((inv) => (
-            <div key={inv.id} className="border-b border-slate-800 last:border-0">
-              {/* Invoice row */}
-              <div
-                className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-800/30 cursor-pointer transition-colors"
-                onClick={() => setExpanded(expanded === inv.id ? null : inv.id)}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono text-xs text-slate-400">{inv.invoiceNumber}</p>
-                    <Badge label={inv.status} variant={invoiceStatusVariant(inv.status)} />
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {formatDate(inv.periodStart)} – {formatDate(inv.periodEnd)}
-                    {inv.studentCount != null && ` · ${inv.studentCount} students`}
-                  </p>
-                </div>
-
-                <div className="text-right flex-shrink-0">
-                  <p className="text-sm font-semibold text-slate-200">
-                    {formatCurrency(inv.totalAmount, inv.currency)}
-                  </p>
-                  {inv.dueAmount > 0 && (
-                    <p className="text-xs text-red-400">
-                      {formatCurrency(inv.dueAmount, inv.currency)} due
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  {inv.pdfUrl && (
-                    <a
-                      href={inv.pdfUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
-                    >
-                      PDF
-                    </a>
-                  )}
-                  {expanded === inv.id
-                    ? <ChevronUp className="w-4 h-4 text-slate-500" />
-                    : <ChevronDown className="w-4 h-4 text-slate-500" />
-                  }
-                </div>
-              </div>
-
-              {/* Expanded payment breakdown */}
-              {expanded === inv.id && (
-                <div className="px-5 pb-4 bg-slate-900/50">
-                  <div className="border-t border-slate-800 pt-4 space-y-3">
-                    <div className="flex justify-between text-xs text-slate-500">
-                      <span>Due date</span>
-                      <span className={new Date(inv.dueDate) < new Date() && inv.status !== "PAID" ? "text-red-400" : "text-slate-400"}>
-                        {formatDate(inv.dueDate)}
-                      </span>
-                    </div>
-                    {inv.paidAt && (
-                      <div className="flex justify-between text-xs text-slate-500">
-                        <span>Paid at</span>
-                        <span className="text-emerald-400">{formatDate(inv.paidAt)}</span>
-                      </div>
-                    )}
-                    {inv.payments.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Payments</p>
-                        <div className="space-y-1.5">
-                          {inv.payments.map((p) => (
-                            <div key={p.id} className="flex justify-between text-xs">
-                              <span className="text-slate-400">{p.gateway} · {p.status}</span>
-                              <span className={p.status === "SUCCESS" ? "text-emerald-400 font-medium" : "text-slate-500"}>
-                                {formatCurrency(p.amount, inv.currency)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-export default function TenantDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id }    = use(params);
-  const router    = useRouter();
+function AuditLogTab({ tenantId }: { tenantId: string }) {
+  const [actionFilter, setActionFilter] = useState("");
+  const [actorQuery, setActorQuery] = useState("");
+  
+  const { data, loading } = useApi<any>(
+    `/superadmin/audit-logs?tenantId=${tenantId}${actionFilter ? `&action=${actionFilter}` : ""}`
+  );
+
+  const localFilteredLogs = useMemo(() => {
+    if (!data?.logs) return [];
+    return data.logs.filter((log: any) => 
+      (log.actorEmail ?? "").toLowerCase().includes(actorQuery.toLowerCase())
+    );
+  }, [data, actorQuery]);
+
+  if (loading) return <div className="h-20 bg-slate-800 animate-pulse rounded-xl" />;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono text-xs">
+        <div className="relative flex items-center">
+          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 pointer-events-none" />
+          <input 
+            type="text"
+            placeholder="Filter logs by actor email..."
+            value={actorQuery}
+            onChange={(e) => setActorQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-200 focus:outline-none"
+          />
+        </div>
+        <div className="relative flex items-center">
+          <Filter className="w-3.5 h-3.5 text-slate-500 absolute left-3 pointer-events-none" />
+          <select
+            value={actionFilter}
+            onChange={(e) => setActionFilter(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 focus:outline-none"
+          >
+            <option value="">All Operational Actions</option>
+            <option value="LOGIN">LOGIN</option>
+            <option value="CREATE">CREATE</option>
+            <option value="UPDATE">UPDATE</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="space-y-2 font-mono text-[11px] bg-slate-950 p-4 rounded-xl border border-slate-800 max-h-[350px] overflow-y-auto scrollbar-none">
+        {localFilteredLogs.length > 0 ? (
+          localFilteredLogs.map((log: any) => (
+            <div key={log.id} className="py-1.5 border-b border-slate-900 last:border-0 flex justify-between gap-4 text-slate-400">
+              <div>
+                <span className="text-orange-400 font-bold">[{log.action}]</span>{" "}
+                <span className="text-slate-300">{log.actorEmail ?? "system"}</span>{" -> "}<span className="text-blue-400">{log.entityType}</span>
+              </div>
+              <span className="text-slate-600 shrink-0">{formatDate(log.createdAt)}</span>
+            </div>
+          ))
+        ) : <p className="text-slate-600 text-xs italic">No matching stream records found.</p>}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Shell Page ───────────────────────────────────────────────────────────
+export default function TenantDetailPage() {
+  const router = useRouter();
+  const { toast } = useToast();
+  const params = useParams();
+  const id = params.id as string;
+
   const { data: tenant, loading, refetch } = useApi<Tenant>(`/onboarding/tenants/${id}`);
-  const [actionLoading, setActionLoading]  = useState("");
-  const [activeTab, setActiveTab]          = useState<"overview" | "billing" | "flags">("overview");
+  
+  const [actionLoading, setActionLoading] = useState("");
+  const [activeTab, setActiveTab] = useState<"overview" | "billing" | "flags" | "audit">("overview");
+  const [localFlags, setLocalFlags] = useState<Record<string, boolean>>({});
+  
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [tempPasswordInput, setTempPasswordInput] = useState("");
+  const [reasonImpersonateInput, setReasonImpersonateInput] = useState("");
+  const [isImpersonatingMode, setIsImpersonatingMode] = useState(false);
+
+  useEffect(() => {
+    const tenantObj = tenant as any;
+    if (tenantObj?.featureFlags) {
+      const flagsMap: Record<string, boolean> = {};
+      FEATURE_FLAGS.forEach(flag => {
+        flagsMap[flag] = Array.isArray(tenantObj.featureFlags) 
+          ? tenantObj.featureFlags.includes(flag) 
+          : !!tenantObj.featureFlags[flag];
+      });
+      setLocalFlags(flagsMap);
+    }
+  }, [tenant]);
 
   const updateStatus = async (status: "ACTIVE" | "SUSPENDED" | "CANCELLED") => {
     setActionLoading(status);
     try {
       await api.patch(`/onboarding/tenants/${id}/status`, { status });
+      toast({ description: `Tenant status updated to ${status}.` });
       refetch();
-    } catch (e: any) { alert(e.message); }
-    finally { setActionLoading(""); }
+    } catch (e: any) { 
+      toast({ description: e.message || "Failed to update tenant status.", variant: "destructive" });
+    } finally { 
+      setActionLoading(""); 
+    }
   };
 
-  const resetPassword = async () => {
-    const password = window.prompt("Enter a new temporary password for the school admin");
-    if (!password) return;
+  const executeSecurePasswordReset = async () => {
+    if (!tempPasswordInput.trim()) {
+      toast({ description: "Password cannot be empty.", variant: "destructive" });
+      return;
+    }
     setActionLoading("reset-password");
     try {
-      const result = await api.post<{ adminEmail: string }>(`/onboarding/tenants/${id}/reset-password`, { password });
-      alert(`Password reset for ${result.adminEmail}`);
-    } catch (e: any) { alert(e.message); }
-    finally { setActionLoading(""); }
+      const result = await api.post<{ adminEmail: string }>(`/onboarding/tenants/${id}/reset-password`, { password: tempPasswordInput });
+      toast({ description: `Credentials mapped for admin: ${result.adminEmail}` });
+      setIsResetModalOpen(false);
+      setTempPasswordInput("");
+    } catch (e: any) { 
+      toast({ description: e.message || "Handshake encryption failure.", variant: "destructive" });
+    } finally { 
+      setActionLoading(""); 
+    }
+  };
+
+  const handleLaunchImpersonationToken = async () => {
+    if (!reasonImpersonateInput.trim()) {
+      toast({ description: "Impersonation reason statement is required.", variant: "destructive" });
+      return;
+    }
+    setIsImpersonatingMode(true);
+    try {
+      const res = await api.post<any>(`/superadmin/impersonate`, { targetTenantId: id, reason: reasonImpersonateInput });
+      toast({ description: "Redirecting to school workspace dashboard..." });
+      if (res.token) {
+        localStorage.setItem("accessToken", res.token);
+        localStorage.setItem("token", res.token);
+        window.open(res.frontendUrl || "/login", "_blank");
+      }
+    } catch (e: any) {
+      toast({ description: e.message || "Impersonation authorization rejected.", variant: "destructive" });
+    } finally {
+      setIsImpersonatingMode(false);
+    }
   };
 
   const toggleFlag = async (flag: string, enabled: boolean) => {
+    setLocalFlags(prev => ({ ...prev, [flag]: enabled }));
     try {
-      await api.patch(`/tenant-admin/${id}/toggle-feature`, { flag, enabled });
+      await api.patch(`/tenant-admin/${id}/toggle-feature`, {
+        feature: flag,
+        value: enabled,
+      });
+      toast({ description: `Feature toggled successfully: ${flag}` });
       refetch();
-    } catch (e: any) { alert(e.message); }
+    } catch (e: any) {
+      toast({ description: "Rollback triggered: Core transaction failed.", variant: "destructive" });
+      setLocalFlags(prev => ({ ...prev, [flag]: !enabled }));
+    }
   };
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-24">
-      <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
+  if (loading) return <div className="py-24 text-center text-xs font-mono animate-pulse text-slate-500">Loading tenant details...</div>;
+  if (!tenant) return <div className="text-slate-400 font-mono text-center py-24">Tenant not found.</div>;
 
-  if (!tenant) return <div className="text-slate-400 text-center py-24">Tenant not found</div>;
-
-  const sub        = tenant.subscription;
-  const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL ?? "http://localhost:4000";
+  const sub = tenant.subscription;
 
   return (
-    <div>
-      {/* Back */}
-      <button onClick={() => router.push("/dashboard/tenants")}
-        className="flex items-center gap-2 text-slate-400 hover:text-slate-200 text-sm mb-6 transition-colors">
-        <ArrowLeft className="w-4 h-4" /> Back to tenants
+    <div className="space-y-6 p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto font-sans antialiased bg-slate-950 text-slate-100 min-h-screen relative">
+      
+      <button onClick={() => router.push("/dashboard/tenants")} className="flex items-center gap-2 text-slate-500 hover:text-slate-300 text-xs font-mono transition-colors">
+        <ArrowLeft className="w-3.5 h-3.5" /> Back to Tenants
       </button>
 
-      {/* Header */}
-      <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 mb-6">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400 text-xl font-bold">
-              {tenant.name[0]}
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white">{tenant.name}</h1>
-              <p className="text-slate-400 text-sm">{tenant.slug} · {tenant.contactEmail}</p>
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <Badge label={tenant.status}      variant={statusVariant(tenant.status)} />
-                <Badge label={tenant.featureTier} variant="purple" />
-                <Badge label={tenant.region}      variant="neutral" />
-                <Badge label={tenant.currency}    variant="neutral" />
-              </div>
-            </div>
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-xl font-black tracking-tight text-white">{tenant.name}</h1>
+          <p className="text-xs text-slate-400 font-mono mt-1">{tenant.slug} · {tenant.contactEmail}</p>
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            <Badge label={tenant.status} variant={statusVariant(tenant.status)} />
+            <Badge label={tenant.featureTier} variant="purple" />
+            <Badge label={tenant.region} variant="neutral" />
           </div>
+        </div>
 
-          {/* Action buttons */}
-          <div className="flex gap-2 flex-wrap justify-end">
-            {tenant.status === "ACTIVE" && (
-              <button onClick={() => updateStatus("SUSPENDED")} disabled={!!actionLoading}
-                className="px-3 py-1.5 text-xs bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-lg hover:bg-amber-500/20 transition-colors disabled:opacity-50">
-                Suspend
-              </button>
-            )}
-            {tenant.status === "SUSPENDED" && (
-              <button onClick={() => updateStatus("ACTIVE")} disabled={!!actionLoading}
-                className="px-3 py-1.5 text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg hover:bg-emerald-500/20 transition-colors disabled:opacity-50">
-                Reactivate
-              </button>
-            )}
-            {tenant.status === "TRIAL" && (
-              <button onClick={() => updateStatus("ACTIVE")} disabled={!!actionLoading}
-                className="px-3 py-1.5 text-xs bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-lg hover:bg-blue-500/20 transition-colors disabled:opacity-50">
-                Convert to Active
-              </button>
-            )}
-            <button onClick={resetPassword} disabled={!!actionLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 border border-slate-700 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
-              <KeyRound className="w-3 h-3" /> Reset Password
-            </button>
-            <a href={`${frontendUrl}?tenant=${tenant.slug}`} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 border border-slate-700 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors">
-              <ExternalLink className="w-3 h-3" /> Open School
-            </a>
-          </div>
+        <div className="flex flex-wrap gap-2 justify-end w-full md:w-auto">
+          {tenant.status === "ACTIVE" && <button onClick={() => updateStatus("SUSPENDED")} className="px-3 py-1.5 text-xs font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl hover:bg-amber-500/20 transition-all">Suspend Tenant</button>}
+          {tenant.status === "SUSPENDED" && <button onClick={() => updateStatus("ACTIVE")} className="px-3 py-1.5 text-xs font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl hover:bg-emerald-500/20 transition-all">Reactivate Tenant</button>}
+          <button onClick={() => setIsResetModalOpen(true)} className="px-3 py-1.5 text-xs font-bold bg-slate-800 border border-slate-700 rounded-xl hover:bg-slate-700 flex items-center gap-1.5 transition-all"><KeyRound className="w-3.5 h-3.5" /> Reset Password</button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-slate-800 mb-6">
+      <div className="flex border-b border-slate-800/80 overflow-x-auto whitespace-nowrap scrollbar-none font-mono text-xs">
         {([
-          { key: "overview", label: "Overview",       icon: Users       },
-          { key: "billing",  label: "Billing History", icon: CreditCard  },
-          { key: "flags",    label: "Feature Flags",   icon: Shield      },
+          { key: "overview", label: "Overview", icon: Users },
+          { key: "billing", label: "Billing History", icon: CreditCard },
+          { key: "flags", label: "Feature Flags", icon: Shield },
+          { key: "audit", label: "Audit Logs", icon: ScrollText }
         ] as const).map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setActiveTab(key)}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === key
-                ? "text-orange-400 border-orange-400"
-                : "text-slate-500 border-transparent hover:text-slate-300"
-            }`}>
-            <Icon className="w-4 h-4" />
-            {label}
+          <button key={key} onClick={() => setActiveTab(key)} className={`flex items-center gap-2 px-5 py-3 border-b-2 font-bold transition-all -mb-px ${activeTab === key ? "text-orange-400 border-orange-400 bg-orange-500/[0.02]" : "text-slate-500 border-transparent hover:text-slate-300"}`}>
+            <Icon className="w-3.5 h-3.5" /> {label}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
       {activeTab === "overview" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Subscription */}
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <CreditCard className="w-4 h-4 text-slate-500" />
-              <h2 className="font-semibold text-slate-200">Subscription</h2>
-            </div>
-            {sub ? (
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: "Model",        value: sub.model },
-                  { label: "Status",       value: sub.status },
-                  { label: "Plan",         value: sub.plan?.name ?? "—" },
-                  { label: "Currency",     value: sub.currency },
-                  { label: "Period Start", value: formatDate(sub.currentPeriodStart) },
-                  { label: "Period End",   value: formatDate(sub.currentPeriodEnd) },
-                  { label: "Trial Ends",   value: sub.trialEndsAt ? formatDate(sub.trialEndsAt) : "N/A" },
-                  { label: "Students",     value: sub.studentCountAtBilling ?? "—" },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-slate-800/50 rounded-lg p-3">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">{label}</p>
-                    <p className="text-sm font-semibold text-slate-200 mt-1">{String(value)}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-slate-500 text-sm">No active subscription</p>
-            )}
-          </div>
-
-          {/* School info + admins */}
-          <div className="space-y-5">
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <Users className="w-4 h-4 text-slate-500" />
-                <h2 className="font-semibold text-slate-200">School Info</h2>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: "Max Students", value: tenant.maxStudents },
-                  { label: "Timezone",     value: tenant.timezone ?? "—" },
-                  { label: "GST Number",   value: tenant.gstNumber ?? "—" },
-                  { label: "Created",      value: formatDate(tenant.createdAt) },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-slate-800/50 rounded-lg p-3">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">{label}</p>
-                    <p className="text-sm font-semibold text-slate-200 mt-1">{String(value)}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-slate-900 rounded-xl border border-slate-800 p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <Users className="w-4 h-4 text-slate-500" />
-                <h2 className="font-semibold text-slate-200">Admin Access</h2>
-              </div>
-              {tenant.users?.length ? (
-                <div className="space-y-3">
-                  {tenant.users.map((admin) => (
-                    <div key={admin.email} className="bg-slate-800/50 rounded-lg p-3">
-                      <p className="text-sm font-semibold text-slate-200">{admin.firstName} {admin.lastName}</p>
-                      <p className="text-xs text-orange-400 mt-1">{admin.email}</p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Last login: {admin.lastLoginAt ? formatDate(admin.lastLoginAt) : "Never"}
-                      </p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-3">Subscription Details</h3>
+              {sub ? (
+                <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                  {[
+                    { l: "Pricing Model", v: sub.model },
+                    { l: "Status", v: sub.status },
+                    { l: "Assigned Plan", v: sub.plan?.name ?? "—" },
+                    { l: "Period End", v: formatDate(sub.currentPeriodEnd) }
+                  ].map(item => (
+                    <div key={item.l} className="p-3 bg-slate-950/40 border border-slate-800/60 rounded-xl">
+                      <span className="text-slate-500 block mb-1">{item.l}</span>
+                      <span className="text-slate-200 font-bold">{item.v}</span>
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="text-slate-500 text-sm">No active school admin found</p>
-              )}
+              ) : <p className="text-slate-500 text-xs">No active pricing plan bound.</p>}
             </div>
+
+            <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl">
+              <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-3">School Capacity</h3>
+              <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                {[
+                  { l: "Max Students", v: tenant.maxStudents },
+                  { l: "Timezone", v: tenant.timezone ?? "UTC" },
+                  { l: "GST Number", v: tenant.gstNumber ?? "Unregistered" },
+                  { l: "Created At", v: formatDate(tenant.createdAt) }
+                ].map(item => (
+                  <div key={item.l} className="p-3 bg-slate-950/40 border border-slate-800/60 rounded-xl">
+                    <span className="text-slate-500 block mb-1">{item.l}</span>
+                    <span className="text-slate-200 font-bold">{item.v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl h-fit space-y-4">
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1"><Terminal className="w-3.5 h-3.5 text-orange-400" /> Impersonation</h3>
+            <p className="text-[11px] text-slate-400 font-mono leading-normal">
+              Launch a temporary session as the school's administrator. All actions are logged for auditing.
+            </p>
+            <textarea
+              placeholder="Provide a valid maintenance reference reason statement context track..."
+              value={reasonImpersonateInput}
+              onChange={(e) => setReasonImpersonateInput(e.target.value)}
+              className="w-full h-20 p-2.5 bg-slate-950 border border-slate-800 rounded-xl font-mono text-xs focus:outline-none focus:border-slate-700 text-slate-200 resize-none"
+            />
+            <button
+              onClick={handleLaunchImpersonationToken}
+              disabled={isImpersonatingMode}
+              className="w-full py-2 bg-orange-500 hover:bg-orange-600 font-black text-xs text-slate-950 rounded-xl flex items-center justify-center gap-1.5 uppercase tracking-wider disabled:opacity-50 transition-all"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> {isImpersonatingMode ? "Verifying..." : "Launch Session"}
+            </button>
           </div>
         </div>
       )}
 
       {activeTab === "billing" && <BillingTab tenantId={id} />}
+      {activeTab === "audit" && <AuditLogTab tenantId={id} />}
 
       {activeTab === "flags" && (
-        <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 max-w-lg">
-          <div className="flex items-center gap-2 mb-4">
-            <Shield className="w-4 h-4 text-slate-500" />
-            <h2 className="font-semibold text-slate-200">Feature Flags</h2>
-          </div>
-          <div className="space-y-1">
+        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl max-w-xl">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> Feature Toggles Control System</h3>
+          <div className="divide-y divide-slate-800/60">
             {FEATURE_FLAGS.map((flag) => {
-              const short   = flag.replace("FEATURE_", "").replace(/_/g, " ").toLowerCase();
-              const enabled = false; // TODO: read from tenant.featureFlags once endpoint returns them
+              const short = flag.replace("FEATURE_", "").replace(/_/g, " ").toLowerCase();
+              const enabled = !!localFlags[flag];
               return (
-                <div key={flag} className="flex items-center justify-between py-3 border-b border-slate-800 last:border-0">
+                <div key={flag} className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0">
                   <div>
-                    <p className="text-sm text-slate-300 capitalize">{short}</p>
-                    <p className="text-xs text-slate-600 font-mono">{flag}</p>
+                    <p className="text-xs font-bold text-slate-200 capitalize">{short}</p>
+                    <p className="text-[10px] text-slate-600 font-mono mt-0.5">{flag}</p>
                   </div>
-                  <button
-                    onClick={() => toggleFlag(flag, !enabled)}
-                    className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${
-                      enabled ? "bg-orange-500" : "bg-slate-700"
-                    }`}
-                  >
-                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                      enabled ? "translate-x-5" : "translate-x-0.5"
-                    }`} />
+                  <button onClick={() => toggleFlag(flag, !enabled)} className={`w-9 h-5 rounded-full relative transition-colors ${enabled ? "bg-orange-500" : "bg-slate-800 border border-slate-700"}`}>
+                    <span className={`w-3.5 h-3.5 bg-white rounded-full absolute top-0.5 shadow transition-transform ${enabled ? "translate-x-5" : "translate-x-0.5"}`} />
                   </button>
                 </div>
               );
             })}
           </div>
-          <p className="text-xs text-slate-600 mt-3">
-            Toggle changes take effect immediately for the tenant.
-          </p>
         </div>
       )}
+
+      {isResetModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 w-full max-w-sm space-y-4 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-xs uppercase font-mono font-black tracking-widest text-slate-400 flex items-center gap-1.5"><KeyRound className="w-4 h-4 text-orange-400" /> Reset Password</h3>
+              <button onClick={() => setIsResetModalOpen(false)} className="p-1 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-200"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase font-mono text-slate-500 font-bold block">New Temporary Password</label>
+              <input
+                type="password"
+                placeholder="••••••••••••"
+                value={tempPasswordInput}
+                onChange={(e) => setTempPasswordInput(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono focus:outline-none focus:border-slate-600 text-slate-100"
+              />
+            </div>
+            <div className="flex gap-2 pt-2 text-xs font-bold font-mono">
+              <button onClick={() => setIsResetModalOpen(false)} className="flex-1 py-2 border border-slate-700 rounded-xl hover:bg-slate-800 text-slate-400 transition-all">Cancel</button>
+              <button onClick={executeSecurePasswordReset} disabled={actionLoading === "reset-password"} className="flex-1 py-2 bg-orange-500 text-slate-950 font-black rounded-xl hover:bg-orange-600 transition-all flex items-center justify-center gap-1">{actionLoading === "reset-password" ? "Encrypting..." : <><CheckCircle className="w-3.5 h-3.5" /> Confirm Reset</>}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

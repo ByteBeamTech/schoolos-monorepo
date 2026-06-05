@@ -1,19 +1,24 @@
+// backend/src/modules/onboarding/onboarding.controller.ts
+// FULL REPLACEMENT — swaps JwtGuard for JwtSuperadminGuard
+// FIX: any tenant JWT could previously call POST /onboarding/tenant and create
+// schools, or PATCH status to suspend any other school.
+
 import {
   Controller, Get, Post, Patch, Body, Param,
   Query, UseGuards, HttpCode, HttpStatus,
 }  from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
-import { JwtGuard }        from '../../core/auth/guards/jwt.guard';
-import { RolesGuard }      from '../../core/roles/roles.guard';
-import { Roles }           from '../../core/roles/roles.decorator';
-import { CurrentUser }     from '../../core/auth/decorators/current-user.decorator';
-import { AuthenticatedUser } from '../../core/auth/guards/jwt.strategy';
-import { OnboardingService } from './onboarding.service';
-import { OnboardTenantDto }  from './onboarding.dto';
+import { JwtSuperadminGuard }   from '../../core/auth/guards/jwt-superadmin.guard'; // ← CHANGED
+import { RolesGuard }           from '../../core/roles/roles.guard';
+import { Roles }                from '../../core/roles/roles.decorator';
+import { CurrentUser }          from '../../core/auth/decorators/current-user.decorator';
+import { AuthenticatedUser }    from '../../core/auth/guards/jwt.strategy';
+import { OnboardingService }    from './onboarding.service';
+import { OnboardTenantDto }     from './onboarding.dto';
 
 @ApiTags('onboarding')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtGuard, RolesGuard)
+@UseGuards(JwtSuperadminGuard, RolesGuard)   // ← WAS: JwtGuard — now superadmin-only
 @Roles('SUPER_ADMIN')
 @Controller('onboarding')
 export class OnboardingController {
@@ -64,9 +69,9 @@ export class OnboardingController {
   @Patch('tenants/:id/status')
   @ApiOperation({ summary: 'Update tenant status (ACTIVE/SUSPENDED/CANCELLED)' })
   updateStatus(
-    @Param('id') id: string,
-    @Body('status') status: string,
-    @CurrentUser() u: AuthenticatedUser,
+    @Param('id')        id:     string,
+    @Body('status')     status: string,
+    @CurrentUser()      u:      AuthenticatedUser,
   ) {
     return this.svc.updateTenantStatus(id, status, u.id);
   }
@@ -75,9 +80,9 @@ export class OnboardingController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset the school admin password' })
   resetPassword(
-    @Param('id') id: string,
-    @Body('password') password: string,
-    @CurrentUser() u: AuthenticatedUser,
+    @Param('id')        id:       string,
+    @Body('password')   password: string,
+    @CurrentUser()      u:        AuthenticatedUser,
   ) {
     return this.svc.resetAdminPassword(id, password, u.id);
   }

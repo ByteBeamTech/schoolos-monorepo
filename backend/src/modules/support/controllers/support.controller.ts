@@ -99,6 +99,13 @@ export class SupportController {
     return this.svc.addMessage(id, dto, u.id, 'SUPER_ADMIN');
   }
 
+  @Patch('tickets/:id/reopen')
+@HttpCode(HttpStatus.OK)
+@ApiOperation({ summary: 'Reopen a resolved or closed ticket' })
+reopen(@Param('id') id: string, @CurrentUser() u: AuthenticatedUser) {
+  return this.svc.reopen(id, u.tenantId);
+}
+
   @Post('admin/sla/run')
   @Roles('SUPER_ADMIN')
   @HttpCode(HttpStatus.OK)
