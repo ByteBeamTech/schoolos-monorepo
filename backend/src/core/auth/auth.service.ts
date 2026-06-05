@@ -59,7 +59,7 @@ export class AuthService {
     }
 
     const tokenPair = await this.tokens.issueTokens({
-      userId: user.id, tenantId: user.tenantId, role: user.role, email: user.email,
+      userId: user.id, tenantId: user.tenantId, role: user.role, email: user.email, isSuperadmin: user.role === 'SUPER_ADMIN',
     });
 
     // BUG 7 FIX: pass tenantId explicitly — auth routes are excluded from

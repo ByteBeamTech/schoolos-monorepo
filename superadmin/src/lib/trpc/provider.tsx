@@ -9,14 +9,38 @@ import { trpc } from './client'
 
 export function TrpcProvider({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient())
-  const [trpcClient]  = useState(() =>
+
+  const [trpcClient] = useState(() =>
     trpc.createClient({
-      links: [httpBatchLink({ url: '/api/trpc', headers: () => ({ 'x-trpc-source': 'superadmin' }) })],
+      links: [
+        httpBatchLink({
+          url: '/api/trpc',
+          headers: () => {
+            const token =
+              typeof window !== 'undefined'
+                ? (
+                    localStorage.getItem('sa_token') ||
+                    localStorage.getItem('accessToken')
+                  )
+                : null
+
+            return {
+              'x-trpc-source': 'superadmin',
+              ...(token
+                ? { Authorization: `Bearer ${token}` }
+                : {}),
+            }
+          },
+        }),
+      ],
     }),
   )
+
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
     </trpc.Provider>
   )
 }

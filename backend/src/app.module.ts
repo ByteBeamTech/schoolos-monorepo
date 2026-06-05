@@ -169,6 +169,7 @@ export class AppModule implements NestModule {
       .exclude(
         { path: 'health', method: RequestMethod.GET },
         'auth/(.*)',
+	'superadmin/(.*)',
         'webhooks/(.*)', // Webhooks tenant-agnostic hote hain, isliye exclude zaroori hai
       )
       .forRoutes('*');
