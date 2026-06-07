@@ -1,7 +1,9 @@
 "use client";
-
+import { apiClient } from "@/lib/api";
 import { useState } from "react";
+import { useToast } from "@/lib/use-toast";
 
+const { toast } = useToast();
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,8 +11,39 @@ import { Button } from "@/components/ui/button";
 export function ProviderSettingsTab() {
   const [providerMode, setProviderMode] =
     useState("SCHOOL_PROVIDER");
+const [testEmail, setTestEmail] = useState("");
+const [testingEmail, setTestingEmail] = useState(false);
 
-  return (
+const handleEmailTest = async () => {
+  if (!testEmail) {
+    alert("Please enter an email address");
+    return;
+  }
+
+  try {
+    setTestingEmail(true);
+
+    const response = await apiClient.post(
+      "/notifications/settings/test",
+      {
+        channel: "EMAIL",
+        email: testEmail,
+      },
+    );
+
+   toast.success ("Test email sent successfully",); 
+  } catch (error: any) {
+  	    toast.error(
+  error?.response?.data?.message ??
+  "Unable to send test email",
+);
+  } finally {
+    setTestingEmail(false);
+  }
+};
+
+
+return (
     <div className="space-y-6">
 
       <Card className="border-border bg-card p-4 md:p-6">
@@ -120,21 +153,51 @@ export function ProviderSettingsTab() {
 
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
+      <Card className="border-border bg-card p-4 md:p-6">
 
-        <Button className="w-full sm:w-auto">
-          Test SMS
-        </Button>
+  <div className="space-y-4">
 
-        <Button className="w-full sm:w-auto">
-          Test Email
-        </Button>
+    <h3 className="font-semibold">
+      Provider Testing
+    </h3>
 
-        <Button className="w-full sm:w-auto">
-          Save Settings
-        </Button>
+    <div className="space-y-2">
 
-      </div>
+      <label className="text-sm font-medium">
+        Test Email Address
+      </label>
+
+      <Input
+        type="email"
+        placeholder="admin@school.com"
+        value={testEmail}
+        onChange={(e) =>
+          setTestEmail(e.target.value)
+        }
+      />
+
+    </div>
+
+    <div className="flex flex-col sm:flex-row gap-3">
+
+      <Button
+        onClick={handleEmailTest}
+        disabled={!testEmail || testingEmail}
+      >
+        {testingEmail
+          ? "Sending..."
+          : "Send Test Email"}
+      </Button>
+
+      <Button variant="outline">
+        Save Settings
+      </Button>
+
+    </div>
+
+  </div>
+
+</Card>
 
     </div>
   );

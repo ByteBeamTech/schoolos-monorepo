@@ -176,6 +176,65 @@ export default function SettingsPage() {
           </div>
 
           {/* Integrations status */}
+	  {/* Notification Settings */}
+<div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6">
+  <div className="flex items-center justify-between mb-4">
+    <h2 className="font-semibold text-slate-900">
+      Communication & Notifications
+    </h2>
+
+    <a
+      href="/dashboard/notifications/settings"
+      className="text-xs text-blue-600 hover:text-blue-800"
+    >
+      Configure →
+    </a>
+  </div>
+
+  <div className="space-y-3">
+
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-slate-700">
+        SMS Provider
+      </span>
+
+      <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+        Manage
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-slate-700">
+        Email Provider
+      </span>
+
+      <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+        Manage
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-slate-700">
+        WhatsApp Provider
+      </span>
+
+      <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">
+        Manage
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-slate-700">
+        Delivery Policies
+      </span>
+
+      <span className="text-xs px-2 py-1 rounded-full bg-purple-100 text-purple-700">
+        Advanced
+      </span>
+    </div>
+
+  </div>
+</div>
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-slate-900">Integrations</h2>

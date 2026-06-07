@@ -20,6 +20,8 @@ import { Badge }        from "@/components/ui/badge";
 import { EmptyState }   from "@/components/ui/empty-state";
 import { useApi }       from "@/lib/hooks";
 import { apiClient }    from "@/lib/api";
+import type { BadgeVariant }
+from "@/components/ui/badge";
 import {
   MessageSquare, Plus, Clock, CheckCircle,
   AlertCircle, Send, X, RefreshCw,
@@ -28,11 +30,11 @@ import { useToast } from "@/lib/use-toast";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STATUS_V: Record<string, string> = {
+const STATUS_V: Record<string, BadgeVariant> = {
   OPEN: "error", IN_PROGRESS: "warning", WAITING_CUSTOMER: "info",
   RESOLVED: "success", CLOSED: "neutral",
 };
-const PRIORITY_V: Record<string, string> = {
+const PRIORITY_V: Record<string, BadgeVariant> = {
   CRITICAL: "error", HIGH: "warning", MEDIUM: "info", LOW: "neutral",
 };
 const CATEGORIES = ["BILLING","TECHNICAL","FEATURE_REQUEST","ONBOARDING","BUG","OTHER"];

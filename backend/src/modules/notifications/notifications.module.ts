@@ -9,6 +9,7 @@ import { EmailChannel }     from './channels/email.channel';
 import { SmsChannel }       from './channels/sms.channel';
 import { WhatsAppChannel }  from './channels/whatsapp.channel';
 import { PushChannel }      from './channels/push/push.channel';
+import { ZohoEmailService }from './providers/email/zoho-email.service';
 
 import { NotificationProcessor }  from './queue/notification.processor';
 import { NotificationService }    from './services/notification.service';
@@ -44,6 +45,7 @@ import { ProviderTestController } from './settings/controllers/provider-test.con
     // Service
     NotificationEventService,
     NotificationSettingsService,
+    ZohoEmailService,
     NotificationService,
     ProviderTestService,
   ],
