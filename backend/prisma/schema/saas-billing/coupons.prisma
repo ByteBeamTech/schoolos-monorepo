@@ -7,19 +7,19 @@ model Coupon {
   uses      Int          @default(0)
   status    CouponStatus @default(ACTIVE)
   expiresAt DateTime
-  createdBy String?      // superadmin user id
+  createdBy String? // superadmin user id
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
- 
+
   @@index([code, status])
   @@index([expiresAt])
 }
- 
+
 enum CouponType {
   PERCENT
   FLAT
 }
- 
+
 enum CouponStatus {
   ACTIVE
   EXPIRED

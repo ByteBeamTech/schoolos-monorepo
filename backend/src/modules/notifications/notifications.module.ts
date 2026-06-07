@@ -1,4 +1,5 @@
 import { Module }           from '@nestjs/common';
+import { PrismaModule } from '../../infra/database/prisma.module';
 import { BullModule }       from '@nestjs/bull';
 import { QUEUE_NAMES }      from '../../infra/queue/queue.module';
 
@@ -12,14 +13,19 @@ import { PushChannel }      from './channels/push/push.channel';
 import { NotificationProcessor }  from './queue/notification.processor';
 import { NotificationService }    from './services/notification.service';
 import { NotificationController } from './controllers/notification.controller';
-
 import { NotificationEventService } from './events/notification-event.service';
 import { NotificationDispatcherService }from './dispatcher/notification-dispatcher.service';
-
+import { NotificationSettingsService } from './settings/services/notification-settings.service';
+import { NotificationSettingsController } from './settings/controllers/notification-settings.controller';
+import { NotificationPreferencesService }from './preferences/services/notification-preferences.service';
+import { NotificationPreferencesController }from './preferences/controllers/notification-preferences.controller';
+import { NotificationHistoryService } from './history/services/notification-history.service';
+import { NotificationHistoryController } from './history/controllers/notification-history.controller';
 
 
 @Module({
   imports: [
+	  PrismaModule,
     BullModule.registerQueue({ name: QUEUE_NAMES.NOTIFICATIONS }),
   ],
   providers: [
@@ -27,6 +33,8 @@ import { NotificationDispatcherService }from './dispatcher/notification-dispatch
     EmailChannel,
     SmsChannel,
     NotificationDispatcherService,
+    NotificationHistoryService,
+    NotificationPreferencesService,
     WhatsAppChannel,
     PushChannel,
     TemplateService,
@@ -34,9 +42,10 @@ import { NotificationDispatcherService }from './dispatcher/notification-dispatch
     NotificationProcessor,
     // Service
     NotificationEventService,
+    NotificationSettingsService,
     NotificationService,
   ],
-  controllers: [ NotificationController ],
+  controllers: [ NotificationController, NotificationSettingsController, NotificationPreferencesController, NotificationHistoryController,],
   exports:     [NotificationService, 
 NotificationEventService, NotificationDispatcherService, TemplateService,
 ],

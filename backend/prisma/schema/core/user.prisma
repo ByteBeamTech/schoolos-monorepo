@@ -29,7 +29,7 @@ model User {
   customRole      Role?     @relation(fields: [roleId], references: [id])
   tenant          Tenant    @relation(fields: [tenantId], references: [id])
 
-  staff Staff?
+  staff          Staff?
   branchMappings UserBranch[]
 
   // 🤝 CRM & Admission Master Handshake
@@ -42,22 +42,22 @@ model User {
   // Must match @relation names in AdmissionActivity/StepLog
 
   // 🔗 Other Module Relations
-  applicationApprovals ApplicationApproval[]
-  auditLogs            AuditLog[]
-  discountApprovals    DiscountApproval[]    @relation("Approver")
-  discountRequests     DiscountApproval[]    @relation("Requester")
-  followUpTasks        FollowUpTask[]
-  interactionLogs      InteractionLog[]
-  assignedLeads        Lead[]                @relation("AssignedLeads")
-  referredLeads        Lead[]                @relation("ReferredLeads")
-  oauthAccounts        OAuthAccount[]
-  performedActivities  AdmissionActivity[]   @relation("PerformedActivities")
-  updatedStepLogs      AdmissionStepLog[]    @relation("UpdatedStepLogs")
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  applicationApprovals  ApplicationApproval[]
+  auditLogs             AuditLog[]
+  discountApprovals     DiscountApproval[]      @relation("Approver")
+  discountRequests      DiscountApproval[]      @relation("Requester")
+  followUpTasks         FollowUpTask[]
+  interactionLogs       InteractionLog[]
+  assignedLeads         Lead[]                  @relation("AssignedLeads")
+  referredLeads         Lead[]                  @relation("ReferredLeads")
+  oauthAccounts         OAuthAccount[]
+  performedActivities   AdmissionActivity[]     @relation("PerformedActivities")
+  updatedStepLogs       AdmissionStepLog[]      @relation("UpdatedStepLogs")
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
   //calendar module relaion
-  calendarEventsCreated AcademicCalendarEvent[] @relation("EventCreator") 
- 
+  calendarEventsCreated AcademicCalendarEvent[] @relation("EventCreator")
+
   discountsCreated Discount[] @relation("DiscountCreator")
   discountsRevoked Discount[] @relation("DiscountRevoker")
 
@@ -81,22 +81,21 @@ model User {
   @@index([role])
 }
 
-
 model UserBranch {
-  id         String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  tenantId   String
-  userId     String
-  branchId   String
+  tenantId String
+  userId   String
+  branchId String
 
-  isDefault  Boolean  @default(false)
-  isActive   Boolean  @default(true)
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
-  user       User     @relation(fields: [userId], references: [id])
-  branch     Branch   @relation(fields: [branchId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
 
   @@unique([userId, branchId])
   @@index([tenantId])

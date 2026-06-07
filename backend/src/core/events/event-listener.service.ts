@@ -10,6 +10,12 @@ import {
   InvoiceGeneratedEvent,
   AttendanceMarkedEvent,
 } from './events.types';
+import { NotificationService } from '../../modules/notifications/services/notification.service';
+import {
+  NotificationChannel,
+  NotificationTemplate,
+} from '../../modules/notifications/dto/notification.dto';
+
 
 @Injectable()
 export class EventListenerService {
@@ -19,6 +25,7 @@ export class EventListenerService {
     private readonly prisma: PrismaService,
     @InjectQueue(QUEUE_NAMES.NOTIFICATIONS)
     private readonly notifQueue: Queue,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // ── payment.success → send receipt notification ───────────────────────
@@ -62,6 +69,83 @@ export class EventListenerService {
       this.logger.error(`invoice.generated handler error: ${err}`);
     }
   }
+
+
+  @OnEvent(EVENTS.INVOICE_SENT, { async: true })
+async onInvoiceSent(evt: {
+  tenantId: string;
+  invoiceId: string;
+  studentId: string;
+  invoiceNumber: string;
+  totalAmount: number;
+  dueDate: Date;
+}) {
+  try {
+    const student = await this.prisma.student.findFirst({
+      where: {
+        id: evt.studentId,
+        tenantId: evt.tenantId,
+      },
+      include: {
+        guardianLinks: {
+          where: { isPrimary: true },
+          include: {
+            guardian: true,
+          },
+          take: 1,
+        },
+      },
+    });
+
+    const guardian = student?.guardianLinks?.[0]?.guardian;
+
+    if (!guardian) return;
+
+    const data = {
+      studentName: `${student?.firstName ?? ''} ${student?.lastName ?? ''}`.trim(),
+      invoiceNumber: evt.invoiceNumber,
+      amount: evt.totalAmount,
+      dueDate: evt.dueDate,
+    };
+
+    if (guardian.phone) {
+      await this.notificationService.send(
+        evt.tenantId,
+        {
+          channel: NotificationChannel.SMS,
+          phone: guardian.phone,
+          templateId: NotificationTemplate.INVOICE_GENERATED,
+	  body: `Invoice ${evt.invoiceNumber} of ₹${evt.totalAmount} has been generated and is due on ${new Date(evt.dueDate).toLocaleDateString('en-IN')}.`,
+	  data,
+        },
+        'system',
+      );
+    }
+
+    if (guardian.email) {
+      await this.notificationService.send(
+        evt.tenantId,
+        {
+          channel: NotificationChannel.EMAIL,
+          email: guardian.email,
+	  templateId: NotificationTemplate.INVOICE_GENERATED,
+          subject: `Invoice ${evt.invoiceNumber}`,
+          body: `Invoice ${evt.invoiceNumber} for ₹${evt.totalAmount} is now available. Due date: ${new Date(evt.dueDate).toLocaleDateString('en-IN')}.`,
+	  data,
+        },
+        'system',
+      );
+    }
+
+    this.logger.log(
+      `Invoice notification queued for ${evt.invoiceNumber}`,
+    );
+  } catch (err) {
+    this.logger.error(
+      `invoice.sent handler error: ${err}`,
+    );
+  }
+}
 
   // ── attendance.marked → send absent alerts to guardians ───────────────
   @OnEvent(EVENTS.ATTENDANCE_MARKED, { async: true })

@@ -14,7 +14,7 @@ export const EVENTS = {
   ATTENDANCE_MARKED:             'attendance.marked',
   ATTENDANCE_ABSENT:             'attendance.absent',
   ATTENDANCE_LOW:                'attendance.low',         // < 75% threshold
-
+  INVOICE_SENT: 'invoice.sent',
   // ── Students ──────────────────────────────────────────────────────────────
   STUDENT_ENROLLED:              'student.enrolled',
   STUDENT_PROMOTED:              'student.promoted',

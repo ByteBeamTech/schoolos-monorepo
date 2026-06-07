@@ -1,39 +1,41 @@
 model Class {
-  id                String              @id @default(cuid())
-  tenantId          String
-  branchId          String
-  sessionId         String
-  name              String
-  displayOrder      Int                 @default(0)
-  isActive          Boolean             @default(true)
-  createdAt         DateTime            @default(now())
-  session           AcademicSession     @relation(fields: [sessionId], references: [id])
-  feeStructures     FeeStructure[]
-  sections          Section[]
-  TeacherAssignment TeacherAssignment[]
-  students          Student[]
+  id                   String                        @id @default(cuid())
+  tenantId             String
+  branchId             String
+  sessionId            String
+  name                 String
+  displayOrder         Int                           @default(0)
+  isActive             Boolean                       @default(true)
+  createdAt            DateTime                      @default(now())
+  session              AcademicSession               @relation(fields: [sessionId], references: [id])
+  feeStructures        FeeStructure[]
+  sections             Section[]
+  TeacherAssignment    TeacherAssignment[]
+  students             Student[]
   calendarEventTargets AcademicCalendarEventTarget[]
+
   @@unique([tenantId, branchId, sessionId, name])
   @@index([tenantId])
   @@index([tenantId, branchId, sessionId])
 }
 
 model Section {
-  id                String              @id @default(cuid())
-  classId           String
-  tenantId          String
-  branchId          String
-  name              String
-  capacity          Int                 @default(40)
-  classTeacherId    String?
-  roomId            String?
-  isActive          Boolean             @default(true)
-  createdAt         DateTime            @default(now())
-  class             Class               @relation(fields: [classId], references: [id])
-  students          Student[]
-  timetableSlots    TimetableSlot[]
-  TeacherAssignment TeacherAssignment[]
+  id                   String                        @id @default(cuid())
+  classId              String
+  tenantId             String
+  branchId             String
+  name                 String
+  capacity             Int                           @default(40)
+  classTeacherId       String?
+  roomId               String?
+  isActive             Boolean                       @default(true)
+  createdAt            DateTime                      @default(now())
+  class                Class                         @relation(fields: [classId], references: [id])
+  students             Student[]
+  timetableSlots       TimetableSlot[]
+  TeacherAssignment    TeacherAssignment[]
   calendarEventTargets AcademicCalendarEventTarget[]
+
   @@unique([tenantId, classId, name])
   @@index([tenantId])
   @@index([tenantId, branchId, classId])

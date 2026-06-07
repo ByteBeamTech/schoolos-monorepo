@@ -1,7 +1,7 @@
 import { RawBodyMiddleware } from './common/middleware/raw-body.middleware';
 import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-
+import { EventsModule } from './core/events/events.module';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -90,6 +90,9 @@ import { BehaviorModule } from './modules/behavior/behavior.module';
         },
       }),
     }),
+    NotificationsModule,
+    EventsModule,
+    SchoolManagementModule,
     PrismaModule,
     RedisModule,
     QueueModule,

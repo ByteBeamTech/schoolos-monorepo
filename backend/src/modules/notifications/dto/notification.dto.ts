@@ -3,7 +3,6 @@ import {
   IsEnum, IsObject, IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
 export enum NotificationChannel {
   EMAIL    = 'EMAIL',
   SMS      = 'SMS',

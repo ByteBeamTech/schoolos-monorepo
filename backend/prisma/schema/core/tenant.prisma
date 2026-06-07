@@ -46,7 +46,7 @@ model Tenant {
   deletedAt DateTime?
 
   // --- 🔗 ALL EXISTING RELATIONS (Nothing Missed) ---
-  userBranches UserBranch[]
+  userBranches         UserBranch[]
   academicSessions     AcademicSession[]
   alumni               Alumni[]
   workflowConfigs      ApprovalWorkflowConfig[]
@@ -83,7 +83,9 @@ model Tenant {
   branches             Branch[]
   cronLogs             CronExecutionLog[]
   jobSchedules         TenantJobSchedule[]
-  calendarEvents AcademicCalendarEvent[]
+  calendarEvents       AcademicCalendarEvent[]
+  NotificationSetting  NotificationSetting?
+
   // --- ⚡ Speed Indices ---
   @@index([slug])
   @@index([subdomain])

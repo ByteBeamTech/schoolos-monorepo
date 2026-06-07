@@ -24,8 +24,82 @@ export class NotificationService {
     private readonly queue:  Queue,
   ) {}
 
+  private async canSend(
+  tenantId: string,
+  channel: string,
+  eventType?: string,
+) {
+  const settings =
+    await this.prisma.notificationSetting.findUnique({
+      where: { tenantId },
+    });
+
+  if (settings) {
+    if (
+      channel === NotificationChannel.SMS &&
+      !settings.smsEnabled
+    ) {
+      return false;
+    }
+
+    if (
+      channel === NotificationChannel.EMAIL &&
+      !settings.emailEnabled
+    ) {
+      return false;
+    }
+
+    if (
+      channel === NotificationChannel.WHATSAPP &&
+      !settings.whatsappEnabled
+    ) {
+      return false;
+    }
+  }
+
+  if (!eventType) {
+    return true;
+  }
+
+  const policy =
+    await this.prisma.communicationPolicy.findUnique({
+      where: {
+        tenantId_eventType: {
+          tenantId,
+          eventType,
+        },
+      },
+    });
+
+  if (!policy) {
+    return true;
+  }
+
+  return policy.channels.includes(
+  channel as (typeof policy.channels)[number],
+);
+}
+
   async send(tenantId: string, dto: SendNotificationDto, actorId: string) {
     let to = dto.email ?? dto.phone ?? '';
+
+    const allowed =
+  await this.canSend(
+    tenantId,
+    dto.channel,
+    dto.templateId,
+  );
+
+if (!allowed) {
+  this.logger.warn(
+    `[NOTIFICATION BLOCKED] ${dto.templateId} -> ${dto.channel}`,
+  );
+
+  return {
+    queued: false,
+    reason: 'Blocked by notification policy',
+  };
+}
 
     if (!to && dto.recipientId) {
       const user = await this.prisma.user.findFirst({

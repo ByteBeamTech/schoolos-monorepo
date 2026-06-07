@@ -1,0 +1,30 @@
+model NotificationSetting {
+  id String @id @default(cuid())
+
+  tenantId String @unique
+
+  smsEnabled      Boolean @default(true)
+  emailEnabled    Boolean @default(true)
+  whatsappEnabled Boolean @default(false)
+  pushEnabled     Boolean @default(true)
+
+  providerMode NotificationProviderMode @default(SCHOOL_PROVIDER)
+
+  smsProvider      String?
+  emailProvider    String?
+  whatsappProvider String?
+
+  smsConfig      Json?
+  emailConfig    Json?
+  whatsappConfig Json?
+
+  senderName String?
+  replyTo    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+}

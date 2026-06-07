@@ -1,41 +1,41 @@
 model AcademicCalendarEvent {
-  id                String              @id @default(cuid())
+  id               String            @id @default(cuid())
   // Tenant Context
-  tenantId          String
-  tenant            Tenant              @relation(fields: [tenantId], references: [id])
-  branchId          String?
-  branch            Branch?             @relation(fields: [branchId], references: [id])
+  tenantId         String
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  branchId         String?
+  branch           Branch?           @relation(fields: [branchId], references: [id])
   // Academic Session Context
-  sessionId         String
-  session           AcademicSession     @relation(fields: [sessionId], references: [id])
+  sessionId        String
+  session          AcademicSession   @relation(fields: [sessionId], references: [id])
   // Metadata
-  title             String
-  description       String?             @db.Text
-  type              CalendarEventType
-  scope             EventScope          @default(ALL_SCHOOL)
-  audience          AudienceType        @default(BOTH)
+  title            String
+  description      String?           @db.Text
+  type             CalendarEventType
+  scope            EventScope        @default(ALL_SCHOOL)
+  audience         AudienceType      @default(BOTH)
   // Date Range
-  startDate         DateTime            @db.Date
-  endDate           DateTime            @db.Date
+  startDate        DateTime          @db.Date
+  endDate          DateTime          @db.Date
   // Working Day Engine
-  isWorkingDay      Boolean             @default(true)
-  blocksAttendance  Boolean             @default(false)
+  isWorkingDay     Boolean           @default(true)
+  blocksAttendance Boolean           @default(false)
   // Publishing
-  isPublished       Boolean             @default(false)
+  isPublished      Boolean           @default(false)
   // UI
-  color             String?             @default("#2563eb")
+  color            String?           @default("#2563eb")
   // Recurrence
-  isRecurring       Boolean             @default(false)
-  recurrenceRule    String?
+  isRecurring      Boolean           @default(false)
+  recurrenceRule   String?
 
-  targets           AcademicCalendarEventTarget[]
+  targets AcademicCalendarEventTarget[]
 
   // Audit
-  createdBy         String
-  creator           User                @relation("EventCreator", fields: [createdBy], references: [id])
+  createdBy String
+  creator   User   @relation("EventCreator", fields: [createdBy], references: [id])
 
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId])
   @@index([branchId])
@@ -47,20 +47,21 @@ model AcademicCalendarEvent {
 }
 
 model AcademicCalendarEventTarget {
-  id                String                @id @default(cuid())
+  id String @id @default(cuid())
 
-  eventId           String
-  event             AcademicCalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId String
+  event   AcademicCalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  classId           String?
-  class             Class?                @relation(fields: [classId], references: [id])
+  classId String?
+  class   Class?  @relation(fields: [classId], references: [id])
 
-  sectionId         String?
-  section           Section?              @relation(fields: [sectionId], references: [id])
+  sectionId String?
+  section   Section? @relation(fields: [sectionId], references: [id])
 
-  createdAt         DateTime              @default(now())
-   houseId   String?
+  createdAt DateTime @default(now())
+  houseId   String?
   streamId  String?
+
   @@index([eventId])
   @@index([classId])
   @@index([sectionId])

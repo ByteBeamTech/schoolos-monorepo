@@ -720,8 +720,14 @@ enum EventScope {
   STAFF
   CUSTOM
 }
+
 enum AudienceType {
   STUDENTS
   STAFF
   BOTH
+}
+
+enum NotificationProviderMode {
+  SCHOOL_PROVIDER
+  BYTEBEAM_MANAGED
 }

@@ -141,6 +141,14 @@ export class InvoiceService {
     const invoice = await this.findById(tenantId, id);
     if (invoice.status !== 'DRAFT') throw new BadRequestException(`Invoice is already ${invoice.status}.`);
     const updated = await this.prisma.invoice.update({ where: { id }, data: { status: 'SENT' } });
+    this.emitter.emit(EVENTS.INVOICE_SENT, {
+  tenantId,
+  invoiceId: updated.id,
+  studentId: updated.studentId,
+  invoiceNumber: updated.invoiceNumber,
+  totalAmount: updated.totalAmount,
+  dueDate: updated.dueDate,
+});
     await this.audit.logUpdate({ tenantId, actorId, entityType: 'Invoice', entityId: id, before: { status: 'DRAFT' }, after: { status: 'SENT' } });
     return updated;
   }
