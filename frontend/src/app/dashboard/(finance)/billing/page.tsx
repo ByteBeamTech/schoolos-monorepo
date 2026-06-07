@@ -59,7 +59,8 @@ export default function BillingPage() {
   const { data: feePlans, loading: pLoading, refetch: refetchPlans } = useFeePlans(academicYear);
 
   // Students for invoice generation
-  const { data: studentsData } = useStudents(1, "");
+  const { data: studentsData } =
+  useStudents(1, {});
   const students = studentsData?.data ?? [];
 
   // ── Create fee plan ──────────────────────────────────────────────────────

@@ -1,15 +1,58 @@
 import type { FilterSchema } from "@/components/ui/filter-builder";
 
+
 export const STUDENT_FILTER_SCHEMA: FilterSchema = {
-  module: "STUDENTS", searchField: "search",
+  module: "STUDENTS",
+  searchField: "search",
+
   fields: [
-    { id: "search",       label: "Student",      type: "text",   placeholder: "Name or admission no…" },
-    { id: "gender",       label: "Gender",        type: "select", options: [{ label:"Male",value:"MALE"},{ label:"Female",value:"FEMALE"},{ label:"Other",value:"OTHER"}] },
-    { id: "isActive",     label: "Status",        type: "select", options: [{ label:"Active",value:"true"},{ label:"Inactive",value:"false"}] },
-    { id: "academicYear", label: "Academic Year", type: "select", options: [] },
-    { id: "sectionId",    label: "Section",       type: "select", options: [] },
+    {
+      id: "search",
+      label: "Student",
+      type: "text",
+      placeholder: "Name or admission no..."
+    },
+
+    {
+      id: "isActive",
+      label: "Status",
+      type: "select",
+      options: [
+        { label: "Active", value: "true" },
+        { label: "Inactive", value: "false" },
+      ],
+    },
+
+    {
+      id: "academicYear",
+      label: "Academic Year",
+      type: "select",
+      options: [],
+    },
+
+    {
+      id: "classId",
+      label: "Class",
+      type: "select",
+      options: [],
+    },
+
+    {
+      id: "sectionId",
+      label: "Section",
+      type: "select",
+      options: [],
+    },
   ],
 };
+
+
+
+
+
+
+
+
 
 export const INVOICE_FILTER_SCHEMA: FilterSchema = {
   module: "INVOICES", searchField: "search",

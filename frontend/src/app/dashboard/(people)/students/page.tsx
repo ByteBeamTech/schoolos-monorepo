@@ -9,8 +9,10 @@ import { EmptyState }  from "@/components/ui/empty-state";
 import { useStudents, useAcademicSessions, useClasses } from "@/lib/hooks";
 import { apiClient }   from "@/lib/api";
 import { useToast } from '@/lib/use-toast';
-
-
+import { FilterBuilder } from "@/components/ui/filter-builder";
+import { STUDENT_FILTER_SCHEMA } from "@/lib/filter-schemas";
+import { useFilterParams }
+  from "@/lib/use-filter-params";
 function statusVariant(s: string) {
   if (s === "ACTIVE")   return "success" as const;
   if (s === "INACTIVE") return "error"   as const;
@@ -22,21 +24,85 @@ export default function StudentsPage() {
   const { toast } = useToast();
 
   const [page,  setPage]  = useState(1);
-  const [search, setSearch] = useState("");
-  const [query,  setQuery]  = useState("");
   const [showForm, setShowForm] = useState(false);
   const [saving,   setSaving]   = useState(false);
+ 
+   const { getParam } = useFilterParams();
 
-  const { data, loading, error, refetch } = useStudents(page, query);
-  const students = data?.data ?? [];
+const { data, loading, error, refetch } =
+  useStudents(page, {
+    search: getParam("search"),
+    academicYear: getParam("academicYear"),
+    classId: getParam("classId"),
+    sectionId: getParam("sectionId"),
+    isActive: getParam("isActive"),
+  });
+
+
+const students = data?.data ?? [];
   const meta     = data?.meta;
-
+const filteredStudents = students;
   // For the add student form
   const { data: sessions }  = useAcademicSessions();
+
   const { data: branches }  = useApi<any[]>("/school-management/branches");
   const currentSession      = sessions?.find(s => s.isCurrent) ?? sessions?.[0];
   const { data: classes }   = useClasses(currentSession?.id ?? "");
+  const selectedClassId =
+  getParam("classId");
 
+const studentFilterSchema = {
+  ...STUDENT_FILTER_SCHEMA,
+
+  fields: STUDENT_FILTER_SCHEMA.fields.map(
+    (field: any) => {
+
+      if (field.id === "academicYear") {
+        return {
+          ...field,
+          options:
+            sessions?.map((s: any) => ({
+              label: s.name,
+              value: s.id,
+            })) ?? [],
+        };
+      }
+
+      if (field.id === "classId") {
+        return {
+          ...field,
+          options:
+            classes?.map((c: any) => ({
+              label: c.name,
+              value: c.id,
+            })) ?? [],
+        };
+      }
+
+      if (field.id === "sectionId") {
+        const selectedClass =
+          classes?.find(
+            (c: any) =>
+              c.id === selectedClassId,
+          );
+
+        return {
+          ...field,
+          options:
+            selectedClass?.sections?.map(
+              (s: any) => ({
+                label: s.name,
+                value: s.id,
+              }),
+            ) ?? [],
+        };
+      }
+
+      return field;
+    },
+  ),
+};
+ 
 
   
   const allSections = classes?.flatMap((c: any) =>
@@ -114,13 +180,11 @@ setForm({
     }
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault(); setQuery(search); setPage(1);
-  };
 
   return (
     <div>
       <PageHeader
+
         title="Students"
         subtitle={meta ? `${meta.total} students enrolled` : "Manage student records"}
         action={
@@ -130,6 +194,60 @@ setForm({
           </button>
         }
       />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
+  <div className="bg-white rounded-xl border border-slate-200 p-5">
+    <p className="text-xs font-medium text-slate-500 uppercase">
+      Total Students
+    </p>
+    <p className="text-3xl font-bold text-slate-900 mt-2">
+      {meta?.total ?? filteredStudents.length}
+    </p>
+  </div>
+
+  <div className="bg-white rounded-xl border border-green-200 p-5">
+    <p className="text-xs font-medium text-green-600 uppercase">
+      Active Students
+    </p>
+    <p className="text-3xl font-bold text-green-700 mt-2">
+      {students.filter((s:any)=>s.status==="ACTIVE").length}
+    </p>
+  </div>
+
+  <div className="bg-white rounded-xl border border-blue-200 p-5">
+    <p className="text-xs font-medium text-blue-600 uppercase">
+      New Admissions
+    </p>
+    <p className="text-3xl font-bold text-blue-700 mt-2">
+      {
+        students.filter((s:any)=>{
+          if(!s.createdAt) return false;
+          const d=new Date(s.createdAt);
+          const n=new Date();
+          return d.getMonth()===n.getMonth() &&
+                 d.getFullYear()===n.getFullYear();
+        }).length
+      }
+    </p>
+  </div>
+
+  <div className="bg-white rounded-xl border border-amber-200 p-5">
+    <p className="text-xs font-medium text-amber-600 uppercase">
+      Parent Pending
+    </p>
+    <p className="text-3xl font-bold text-amber-700 mt-2">
+      {
+        students.filter(
+          (s:any)=>
+            !s.guardianLinks ||
+            s.guardianLinks.length===0
+        ).length
+      }
+    </p>
+  </div>
+
+</div>
 
       {/* Add student form */}
       {showForm && (
@@ -241,19 +359,14 @@ setForm({
       )}
 
       {/* Search */}
-      <form onSubmit={handleSearch} className="mb-6 flex gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input type="text" placeholder="Search by name or admission number…"
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-        <button type="submit" className="px-4 py-2.5 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 transition-colors">Search</button>
-        {query && (
-          <button type="button" onClick={() => { setSearch(""); setQuery(""); setPage(1); }}
-            className="px-4 py-2.5 text-sm border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Clear</button>
-        )}
-      </form>
+      {/* Search & Filters */}
+
+<FilterBuilder
+  schema={studentFilterSchema}
+/>
+
+
+
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
@@ -265,7 +378,11 @@ setForm({
           <div className="p-8 text-center text-red-500 text-sm">{error}</div>
         ) : students.length === 0 ? (
           <EmptyState title="No students found"
-            message={query ? "Try a different search term." : "Add your first student to get started."}
+          message={
+  filteredStudents.length === 0
+    ? "No students match the selected filters."
+    : "Add your first student to get started."
+}
             icon={<Users className="w-12 h-12" />} />
         ) : (
           <>
@@ -278,7 +395,7 @@ setForm({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {students.map((s: any) => {
+                {filteredStudents.map((s: any) => {
                   const guardian = s.guardianLinks?.[0]?.guardian;
                   const cls = s.section ? `${s.section.class.name} — ${s.section.name}` : "—";
                   return (
@@ -292,7 +409,7 @@ setForm({
                           </div>
                           <div>
                             <p className="font-medium text-slate-900">{s.firstName} {s.lastName}</p>
-                            <p className="text-xs text-slate-400">{new Date(s.createdAt).toLocaleDateString("en-IN")}</p>
+			    <p className="text-xs text-slate-400">{s.phone || s.admissionNo}</p>
                           </div>
                         </div>
                       </td>

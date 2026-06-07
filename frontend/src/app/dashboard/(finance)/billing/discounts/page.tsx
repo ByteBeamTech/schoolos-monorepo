@@ -35,7 +35,8 @@ export default function DiscountsPage() {
 
   const url = `/billing/discounts${statusFilter ? `?approvalStatus=${statusFilter}` : ""}`;
   const { data: discounts, loading, refetch } = useApi<any[]>(url, [statusFilter]);
-  const { data: studentsData } = useStudents(1, "");
+  const { data: studentsData } =
+  useStudents(1, {});
   const students = studentsData?.data ?? [];
 
   const pending  = (discounts ?? []).filter(d => d.approvalStatus === "PENDING").length;

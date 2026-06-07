@@ -101,10 +101,50 @@ export interface Student {
   guardianLinks?: { guardian: { firstName: string; lastName: string; phone?: string; email?: string } }[];
   createdAt: string;
 }
-export function useStudents(page = 1, search = "") {
-  const url = `/students?page=${page}&limit=20${search ? `&search=${encodeURIComponent(search)}` : ""}`;
-  return useApi<{ data: Student[]; meta: { total: number; page: number; lastPage: number } }>(url, [page, search]);
+
+export function useStudents(
+  page = 1,
+  filters: Record<string, string> = {},
+) {
+
+  const params =
+    new URLSearchParams();
+
+  params.set(
+    "page",
+    String(page),
+  );
+
+  params.set(
+    "limit",
+    "20",
+  );
+
+  Object.entries(filters).forEach(
+    ([key, value]) => {
+      if (value) {
+        params.set(key, value);
+      }
+    },
+  );
+
+  return useApi<
+    {
+      data: Student[];
+      meta: {
+        total: number;
+        page: number;
+        lastPage: number;
+      };
+    }
+  >(
+    `/students?${params.toString()}`,
+    [page, JSON.stringify(filters)],
+  );
 }
+
+
+
 
 // ── Staff ─────────────────────────────────────────────────────────────────────
 export interface StaffMember {

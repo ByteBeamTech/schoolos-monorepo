@@ -25,22 +25,40 @@ export class StudentsController {
   @Get()
   @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
   async findAll(
-    @Query('page') page: string,
-    @Query('limit') limit: string,
-    @Query('academicYear') academicYear: string,
-    @Query('sectionId') sectionId: string,
-    @Query('search') search: string,
-    @CurrentUser() user: AuthenticatedUser
+	  @Query('page') page: string,
+          @Query('limit') limit: string,
+  @Query('academicYear') academicYear: string,
+  @Query('classId') classId: string,
+  @Query('sectionId') sectionId: string,
+  @Query('isActive') isActive: string,
+  @Query('search') search: string,
+  @CurrentUser() user: AuthenticatedUser,
   ) {
-    if (!user.branchId) throw new Error('Branch context mapping required for listing views.');
-    return this.service.findAll(user.tenantId, user.branchId, {
+  if (!user.branchId) {
+    throw new Error(
+      'Branch context mapping required for listing views.',
+    );
+  }
+
+  return this.service.findAll(
+    user.tenantId,
+    user.branchId,
+    {
       page: page ? +page : 1,
       limit: limit ? +limit : 20,
+
       academicYear,
+      classId,
       sectionId,
       search,
-    });
-  }
+
+      isActive:
+        isActive === undefined
+          ? undefined
+          : isActive === 'true',
+    },
+  );
+}
 
   @Get('stats')
   @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
