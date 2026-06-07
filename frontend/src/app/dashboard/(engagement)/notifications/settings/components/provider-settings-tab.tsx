@@ -1,49 +1,196 @@
 "use client";
+
+import { useEffect, useState } from "react";
+
 import { apiClient } from "@/lib/api";
-import { useState } from "react";
 import { useToast } from "@/lib/use-toast";
 
-const { toast } = useToast();
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 
-export function ProviderSettingsTab() {
+import { EmailProviderConfig } from "./email-provider-config";
+import { SmsProviderConfig } from "./sms-provider-config";
+import { WhatsappProviderConfig } from "./whatsapp-provider-config";
+import { DeliverySettings } from "./delivery-settings";
+import { ProviderTesting } from "./provider-testing";
+import { SaveBar } from "./save-bar";
+
+export function ProviderSettingsTab({
+  notificationSettings,
+}: any) {
+  const { toast } = useToast();
+
   const [providerMode, setProviderMode] =
     useState("SCHOOL_PROVIDER");
-const [testEmail, setTestEmail] = useState("");
-const [testingEmail, setTestingEmail] = useState(false);
 
-const handleEmailTest = async () => {
-  if (!testEmail) {
-    alert("Please enter an email address");
-    return;
-  }
+  const [testEmail, setTestEmail] =
+    useState("");
 
-  try {
-    setTestingEmail(true);
+  const [testingEmail, setTestingEmail] =
+    useState(false);
 
-    const response = await apiClient.post(
-      "/notifications/settings/test",
-      {
-        channel: "EMAIL",
-        email: testEmail,
-      },
+  const [values, setValues] = useState({
+    emailProvider: "",
+    smtpHost: "",
+    smtpPort: "",
+    smtpUser: "",
+    smtpPassword: "",
+    fromEmail: "",
+    fromName: "",
+
+    smsProvider: "",
+    smsAuthKey: "",
+    senderId: "",
+    dltPeId: "",
+
+    whatsappProvider: "",
+    accessToken: "",
+    phoneNumberId: "",
+    businessAccountId: "",
+
+    senderName: "",
+    replyTo: "",
+  });
+
+  const settings =
+    notificationSettings?.settings;
+
+  useEffect(() => {
+    if (!settings) return;
+
+    setProviderMode(
+      settings.providerMode ??
+      "SCHOOL_PROVIDER"
     );
 
-   toast.success ("Test email sent successfully",); 
-  } catch (error: any) {
-  	    toast.error(
-  error?.response?.data?.message ??
-  "Unable to send test email",
-);
-  } finally {
-    setTestingEmail(false);
-  }
-};
+    setValues((prev) => ({
+      ...prev,
 
+      emailProvider:
+        settings.emailProvider ?? "",
 
-return (
+      smsProvider:
+        settings.smsProvider ?? "",
+
+      whatsappProvider:
+        settings.whatsappProvider ?? "",
+
+      senderName:
+        settings.senderName ?? "",
+
+      replyTo:
+        settings.replyTo ?? "",
+    }));
+  }, [settings]);
+
+  const handleSave = async () => {
+    const result =
+      await notificationSettings.saveSettings({
+        providerMode,
+
+        emailProvider:
+          values.emailProvider,
+
+        smsProvider:
+          values.smsProvider,
+
+        whatsappProvider:
+          values.whatsappProvider,
+
+        senderName:
+          values.senderName,
+
+        replyTo:
+          values.replyTo,
+
+        emailConfig: {
+          smtpHost:
+            values.smtpHost,
+
+          smtpPort:
+            values.smtpPort,
+
+          username:
+            values.smtpUser,
+
+          password:
+            values.smtpPassword,
+
+          fromEmail:
+            values.fromEmail,
+
+          fromName:
+            values.fromName,
+        },
+
+        smsConfig: {
+          authKey:
+            values.smsAuthKey,
+
+          senderId:
+            values.senderId,
+
+          dltPeId:
+            values.dltPeId,
+        },
+
+        whatsappConfig: {
+          accessToken:
+            values.accessToken,
+
+          phoneNumberId:
+            values.phoneNumberId,
+
+          businessAccountId:
+            values.businessAccountId,
+        },
+      });
+
+    if (result.success) {
+      toast.success(
+        "Settings saved successfully"
+      );
+
+      await notificationSettings.refresh();
+    } else {
+      toast.error(
+        "Failed to save settings"
+      );
+    }
+  };
+
+  const handleEmailTest = async () => {
+    if (!testEmail) {
+      toast.error(
+        "Please enter an email address"
+      );
+      return;
+    }
+
+    try {
+      setTestingEmail(true);
+
+      await apiClient.post(
+        "/notifications/settings/test",
+        {
+          channel: "EMAIL",
+          email: testEmail,
+        }
+      );
+
+      toast.success(
+        "Test email sent successfully"
+      );
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message ??
+        "Unable to send test email"
+      );
+    } finally {
+      setTestingEmail(false);
+    }
+  };
+
+  return (
     <div className="space-y-6">
 
       <Card className="border-border bg-card p-4 md:p-6">
@@ -55,12 +202,18 @@ return (
         <div className="grid gap-3">
 
           <label className="flex items-center gap-3 rounded-lg border border-border p-3 cursor-pointer">
+
             <input
               type="radio"
               value="SCHOOL_PROVIDER"
-              checked={providerMode === "SCHOOL_PROVIDER"}
+              checked={
+                providerMode ===
+                "SCHOOL_PROVIDER"
+              }
               onChange={() =>
-                setProviderMode("SCHOOL_PROVIDER")
+                setProviderMode(
+                  "SCHOOL_PROVIDER"
+                )
               }
             />
 
@@ -70,18 +223,26 @@ return (
               </div>
 
               <div className="text-sm text-muted-foreground">
-                School manages its own SMS, Email and WhatsApp providers.
+                School manages its own
+                providers.
               </div>
             </div>
+
           </label>
 
           <label className="flex items-center gap-3 rounded-lg border border-border p-3 cursor-pointer">
+
             <input
               type="radio"
               value="BYTEBEAM_MANAGED"
-              checked={providerMode === "BYTEBEAM_MANAGED"}
+              checked={
+                providerMode ===
+                "BYTEBEAM_MANAGED"
+              }
               onChange={() =>
-                setProviderMode("BYTEBEAM_MANAGED")
+                setProviderMode(
+                  "BYTEBEAM_MANAGED"
+                )
               }
             />
 
@@ -91,113 +252,47 @@ return (
               </div>
 
               <div className="text-sm text-muted-foreground">
-                ByteBeam manages delivery infrastructure and providers.
+                ByteBeam manages
+                delivery infrastructure.
               </div>
             </div>
+
           </label>
 
         </div>
 
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-        <Card className="border-border bg-card p-4 md:p-6">
-          <label className="block space-y-2">
-            <span className="text-sm font-medium">
-              SMS Provider
-            </span>
-
-            <Input
-              defaultValue="MSG91"
-              disabled={providerMode === "BYTEBEAM_MANAGED"}
-            />
-          </label>
-        </Card>
-
-        <Card className="border-border bg-card p-4 md:p-6">
-          <label className="block space-y-2">
-            <span className="text-sm font-medium">
-              Email Provider
-            </span>
-
-            <Input
-              defaultValue="RESEND"
-              disabled={providerMode === "BYTEBEAM_MANAGED"}
-            />
-          </label>
-        </Card>
-
-        <Card className="border-border bg-card p-4 md:p-6">
-          <label className="block space-y-2">
-            <span className="text-sm font-medium">
-              WhatsApp Provider
-            </span>
-
-            <Input
-              defaultValue="META"
-              disabled={providerMode === "BYTEBEAM_MANAGED"}
-            />
-          </label>
-        </Card>
-
-        <Card className="border-border bg-card p-4 md:p-6">
-          <label className="block space-y-2">
-            <span className="text-sm font-medium">
-              Sender Name
-            </span>
-
-            <Input placeholder="BYTEBEAM" />
-          </label>
-        </Card>
-
-      </div>
-
-      <Card className="border-border bg-card p-4 md:p-6">
-
-  <div className="space-y-4">
-
-    <h3 className="font-semibold">
-      Provider Testing
-    </h3>
-
-    <div className="space-y-2">
-
-      <label className="text-sm font-medium">
-        Test Email Address
-      </label>
-
-      <Input
-        type="email"
-        placeholder="admin@school.com"
-        value={testEmail}
-        onChange={(e) =>
-          setTestEmail(e.target.value)
-        }
+      <EmailProviderConfig
+        values={values}
+        setValues={setValues}
       />
 
-    </div>
+      <SmsProviderConfig
+        values={values}
+        setValues={setValues}
+      />
 
-    <div className="flex flex-col sm:flex-row gap-3">
+      <WhatsappProviderConfig
+        values={values}
+        setValues={setValues}
+      />
 
-      <Button
-        onClick={handleEmailTest}
-        disabled={!testEmail || testingEmail}
-      >
-        {testingEmail
-          ? "Sending..."
-          : "Send Test Email"}
-      </Button>
+      <DeliverySettings
+        values={values}
+        setValues={setValues}
+      />
 
-      <Button variant="outline">
-        Save Settings
-      </Button>
+      <ProviderTesting
+        testEmail={testEmail}
+        setTestEmail={setTestEmail}
+        testingEmail={testingEmail}
+        handleEmailTest={handleEmailTest}
+      />
 
-    </div>
-
-  </div>
-
-</Card>
+      <SaveBar
+        onSave={handleSave}
+      />
 
     </div>
   );

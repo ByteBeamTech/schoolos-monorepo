@@ -1,5 +1,5 @@
 "use client";
-
+import { useNotificationSettings } from "./hooks/use-notification-settings";
 import { Card } from "@/components/ui/card";
 import {
   Tabs,
@@ -10,9 +10,11 @@ import {
 
 import { GeneralSettingsTab } from "./components/general-settings-tab";
 import { ProviderSettingsTab } from "./components/provider-settings-tab";
-
 export default function NotificationSettingsPage() {
-  return (
+ const notificationSettings =
+    useNotificationSettings();
+      
+	return (
     <div className="space-y-6">
 
       <div>
@@ -43,13 +45,18 @@ export default function NotificationSettingsPage() {
 
           <div className="p-4 md:p-6">
 
-            <TabsContent value="general">
-              <GeneralSettingsTab />
-            </TabsContent>
+	  <TabsContent value="general">
+  <GeneralSettingsTab
+    notificationSettings={notificationSettings}
+  />
+</TabsContent>
 
-            <TabsContent value="providers">
-              <ProviderSettingsTab />
-            </TabsContent>
+<TabsContent value="providers">
+  <ProviderSettingsTab
+    notificationSettings={notificationSettings}
+  />
+</TabsContent>
+
 
           </div>
 

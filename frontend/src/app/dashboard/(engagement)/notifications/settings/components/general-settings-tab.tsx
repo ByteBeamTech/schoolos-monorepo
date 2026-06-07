@@ -1,22 +1,35 @@
 "use client";
 
-import { useState } from "react";
-
 import { Card } from "@/components/ui/card";
+import { useToast } from "@/lib/use-toast";
 
-export function GeneralSettingsTab() {
-  const [settings, setSettings] = useState({
-    smsEnabled: true,
-    emailEnabled: true,
-    whatsappEnabled: false,
-    pushEnabled: true,
-  });
+export function GeneralSettingsTab({
+  notificationSettings,
+}: any) {
+  const { toast } = useToast();
 
-  const toggle = (key: keyof typeof settings) => {
-    setSettings((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+  const settings = notificationSettings?.settings;
+
+  if (!settings) {
+    return (
+      <Card className="border-border bg-card p-4">
+        Loading settings...
+      </Card>
+    );
+  }
+
+  const toggle = async (key: string) => {
+    const result = await notificationSettings.saveSettings({
+      ...settings,
+      [key]: !settings[key],
+    });
+
+    if (result.success) {
+      toast.success("Settings updated");
+      await notificationSettings.refresh();
+    } else {
+      toast.error("Failed to update settings");
+    }
   };
 
   const items = [
@@ -44,14 +57,12 @@ export function GeneralSettingsTab() {
 
   return (
     <div className="grid gap-4">
-
       {items.map((item) => (
         <Card
           key={item.key}
           className="border-border bg-card p-4"
         >
           <div className="flex items-center justify-between gap-4">
-
             <div>
               <h3 className="font-medium text-foreground">
                 {item.label}
@@ -64,13 +75,10 @@ export function GeneralSettingsTab() {
 
             <input
               type="checkbox"
-              checked={settings[item.key as keyof typeof settings]}
-              onChange={() =>
-                toggle(item.key as keyof typeof settings)
-              }
+              checked={Boolean(settings[item.key])}
+              onChange={() => toggle(item.key)}
               className="h-5 w-5 shrink-0"
             />
-
           </div>
         </Card>
       ))}
