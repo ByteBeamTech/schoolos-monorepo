@@ -66,6 +66,9 @@ model CommunicationTemplate {
   updatedAt DateTime @updatedAt
 
   @@index([tenantId, eventType])
+  @@unique([tenantId, eventType, channel, language])
+
+
 }
 
 model CommunicationPolicy {

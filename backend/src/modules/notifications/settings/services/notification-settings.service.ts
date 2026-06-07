@@ -9,6 +9,24 @@ export class NotificationSettingsService {
     private readonly prisma: PrismaService,
   ) {}
 
+  private maskSettings(settings: any) {
+    return {
+      ...settings,
+
+      smsConfig: settings.smsConfig
+        ? { configured: true }
+        : null,
+
+      emailConfig: settings.emailConfig
+        ? { configured: true }
+        : null,
+
+      whatsappConfig: settings.whatsappConfig
+        ? { configured: true }
+        : null,
+    };
+  }
+
   async getSettings(tenantId: string) {
     let settings =
       await this.prisma.notificationSetting.findUnique({
@@ -24,22 +42,25 @@ export class NotificationSettingsService {
         });
     }
 
-    return settings;
+    return this.maskSettings(settings);
   }
 
   async updateSettings(
     tenantId: string,
     dto: UpdateNotificationSettingsDto,
   ) {
-    return this.prisma.notificationSetting.upsert({
-      where: {
-        tenantId,
-      },
-      create: {
-        tenantId,
-        ...dto,
-      },
-      update: dto,
-    });
+    const settings =
+      await this.prisma.notificationSetting.upsert({
+        where: {
+          tenantId,
+        },
+        create: {
+          tenantId,
+          ...dto,
+        },
+        update: dto,
+      });
+
+    return this.maskSettings(settings);
   }
 }

@@ -21,7 +21,8 @@ import { NotificationPreferencesService }from './preferences/services/notificati
 import { NotificationPreferencesController }from './preferences/controllers/notification-preferences.controller';
 import { NotificationHistoryService } from './history/services/notification-history.service';
 import { NotificationHistoryController } from './history/controllers/notification-history.controller';
-
+import { ProviderTestService } from './settings/services/provider-test.service';
+import { ProviderTestController } from './settings/controllers/provider-test.controller';
 
 @Module({
   imports: [
@@ -44,8 +45,9 @@ import { NotificationHistoryController } from './history/controllers/notificatio
     NotificationEventService,
     NotificationSettingsService,
     NotificationService,
+    ProviderTestService,
   ],
-  controllers: [ NotificationController, NotificationSettingsController, NotificationPreferencesController, NotificationHistoryController,],
+  controllers: [ NotificationController, NotificationSettingsController, NotificationPreferencesController, NotificationHistoryController, ProviderTestController,],
   exports:     [NotificationService, 
 NotificationEventService, NotificationDispatcherService, TemplateService,
 ],

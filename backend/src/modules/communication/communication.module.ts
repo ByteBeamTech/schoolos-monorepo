@@ -12,7 +12,11 @@ import { CommunicationsOrchestrator } from './orchestrator/communications.orches
 import { QueueManagerService } from './queues/queue-manager.service';
 import { NotificationLogService } from './logs/notification-log.service';
 import { TemplateService } from './templates/template.service';
+import { TemplateAdminService }
+from './templates/template-admin.service';
 
+import { TemplateAdminController }
+from './templates/template-admin.controller';
 import { COMMUNICATION_QUEUES } from './queues/queue.constants';
 
 @Module({
@@ -29,11 +33,13 @@ import { COMMUNICATION_QUEUES } from './queues/queue.constants';
     ),
   ],
 
-  controllers: [CommunicationController],
-
+controllers: [
+  CommunicationController,
+  TemplateAdminController,
+],
   providers: [
     CommunicationService,
-
+    TemplateAdminService,
     CommunicationsOrchestrator,
     QueueManagerService,
     NotificationLogService,

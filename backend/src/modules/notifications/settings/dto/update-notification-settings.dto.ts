@@ -3,6 +3,7 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  IsObject,
 } from 'class-validator';
 
 import { NotificationProviderMode } from '@prisma/client';
@@ -45,4 +46,17 @@ export class UpdateNotificationSettingsDto {
 
   @IsOptional()
   replyTo?: string;
+  
+  @IsOptional()
+@IsObject()
+smsConfig?: Record<string, any>;
+
+@IsOptional()
+@IsObject()
+emailConfig?: Record<string, any>;
+
+@IsOptional()
+@IsObject()
+whatsappConfig?: Record<string, any>;
+
 }

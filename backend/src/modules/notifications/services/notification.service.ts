@@ -91,12 +91,29 @@ export class NotificationService {
   );
 
 if (!allowed) {
+
+  const blocked =
+    await this.prisma.notification.create({
+      data: {
+        tenantId,
+        recipientId: dto.recipientId ?? null,
+        channel: dto.channel as any,
+        status: 'FAILED' as any,
+        subject: dto.subject ?? null,
+        body: dto.body ?? '',
+        templateId: dto.templateId ?? null,
+        data: dto.data ?? {},
+        failReason: 'Blocked by notification policy',
+      },
+    });
+
   this.logger.warn(
     `[NOTIFICATION BLOCKED] ${dto.templateId} -> ${dto.channel}`,
   );
 
   return {
     queued: false,
+    notificationId: blocked.id,
     reason: 'Blocked by notification policy',
   };
 }
