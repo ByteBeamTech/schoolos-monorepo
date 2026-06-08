@@ -46,6 +46,7 @@ model InvoiceItem {
   createdAt      DateTime @default(now())
   feeItem        FeeItem? @relation(fields: [feeItemId], references: [id])
   invoice        Invoice  @relation(fields: [invoiceId], references: [id])
+  chargeCategory String   @default("ACADEMIC")
 
   @@index([invoiceId])
 }

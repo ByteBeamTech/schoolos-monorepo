@@ -38,7 +38,12 @@ export class StandardDiscountService {
     });
     if (!student) return { applied: 0, totalDiscount: 0 };
 
-    const invoice = await this.prisma.invoice.findFirst({ where: { id: invoiceId, tenantId } });
+    const invoice = await this.prisma.invoice.findFirst({
+  where: { id: invoiceId, tenantId },
+  include: {
+    items: true,
+  },
+});
     if (!invoice) return { applied: 0, totalDiscount: 0 };
 
     const existingDiscounts = await this.prisma.discount.findMany({
@@ -48,7 +53,17 @@ export class StandardDiscountService {
 
     let totalDiscount = 0;
     let applied       = 0;
-    const invoiceAmount = Number(invoice.totalAmount);
+   
+   
+    const academicAmount = invoice.items
+  .filter((i: any) => i.chargeCategory === 'ACADEMIC')
+  .reduce(
+    (sum: number, i: any) =>
+      sum + Number(i.netAmount),
+    0,
+  );
+
+const invoiceAmount = academicAmount;
 
     // ── Merit ─────────────────────────────────────────────────────────────────
     if (!appliedCategories.has('MERIT')) {

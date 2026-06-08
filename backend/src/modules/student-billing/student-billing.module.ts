@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ComplianceModule } from '../../core/compliance/compliance.module';
-
+import { AnalyticsModule }
+from './analytics/analytics.module';
 import { FeePlansService }     from './plans/services/fee-plans.service';
 import { FeePlansController }  from './plans/controllers/fee-plans.controller';
 import { InvoiceService }      from './invoice/services/invoice.service';
@@ -20,7 +21,7 @@ import { StorageModule }            from '../../infra/storage/storage.module';
 
 
 @Module({
-  imports: [ComplianceModule, StorageModule],
+  imports: [ComplianceModule, StorageModule, AnalyticsModule,],
   providers: [FeePlansService, InvoiceService, PaymentService, DiscountService, ReconciliationService, ReceiptService, RefundService,
     LateFeeService, StandardDiscountService, GatewayFactory],
   controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController],

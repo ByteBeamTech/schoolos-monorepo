@@ -176,6 +176,7 @@ export function useSubjects() {
   return useApi<Subject[]>("/academics/subjects");
 }
 
+
 // ── Attendance ────────────────────────────────────────────────────────────────
 export interface AttendanceRecord {
   id: string; studentId: string; date: string; status: string;
@@ -266,6 +267,32 @@ export function useInvoiceStats(academicYear?: string) {
   return useApi<InvoiceStats>(
     `/billing/invoices/stats${academicYear ? `?academicYear=${academicYear}` : ""}`,
     [academicYear]
+  );
+}
+
+export function useBillingAnalytics(
+  filters: {
+    academicYear?: string;
+    fromDate?: string;
+    toDate?: string;
+  } = {},
+) {
+  const params =
+    new URLSearchParams();
+
+  Object.entries(filters).forEach(
+    ([key, value]) => {
+      if (value) {
+        params.set(key, value);
+      }
+    },
+  );
+
+  const qs = params.toString();
+
+  return useApi<any>(
+    `/billing/analytics${qs ? `?${qs}` : ""}`,
+    [JSON.stringify(filters)],
   );
 }
 

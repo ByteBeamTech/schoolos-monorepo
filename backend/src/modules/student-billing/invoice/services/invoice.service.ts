@@ -69,29 +69,119 @@ export class InvoiceService {
 
     if (!plan.feeItems.length) throw new BadRequestException('Fee plan has no items.');
 
-    let subtotal = 0, gstTotal = 0;
-    const itemData = plan.feeItems.map((item: any) => {
-      const amount    = Number(item.amount);
-      const gstRate   = Number(item.gstRate ?? 0);
-      const gstAmount = Math.round(amount * gstRate / 100 * 100) / 100;
-      subtotal += amount; gstTotal += gstAmount;
-      return { feeItemId: item.id, name: item.name, amount, discountAmount: 0, gstRate: gstRate || null, gstAmount, netAmount: amount + gstAmount, sortOrder: item.sortOrder };
-    });
 
-    const totalAmount   = subtotal + gstTotal;
-    const invoiceNumber = await this.generateInvoiceNumber(tenantId);
+    // Build academic items
+const itemData = plan.feeItems.map((item: any) => {
+  const amount = Number(item.amount);
+  const gstRate = Number(item.gstRate ?? 0);
+  const gstAmount =
+    Math.round((amount * gstRate) / 100 * 100) / 100;
 
-    const invoice = await this.prisma.invoice.create({
-      data: {
-        tenantId, studentId: dto.studentId, invoiceNumber,
-        academicYear: plan.academicYear, status: 'DRAFT',
-        currency: plan.currency, subtotal, discountAmount: 0,
-        gstAmount: gstTotal, totalAmount, paidAmount: 0, dueAmount: totalAmount,
-        dueDate: new Date(dto.dueDate), notes: dto.notes ?? null,
-        items: { create: itemData },
+  return {
+    feeItemId: item.id,
+    chargeCategory: 'ACADEMIC',
+    name: item.name,
+    amount,
+    discountAmount: 0,
+    gstRate: gstRate || null,
+    gstAmount,
+    netAmount: amount + gstAmount,
+    sortOrder: item.sortOrder,
+  };
+});
+
+// Add transport fee if assigned
+const transport =
+  await this.prisma.transportAssignment.findFirst({
+    where: {
+      studentId: dto.studentId,
+      endedAt: null,
+      route: {
+        tenantId,
       },
-      include: { items: { orderBy: { sortOrder: 'asc' } }, student: { select: { firstName: true, lastName: true, admissionNumber: true } } },
-    });
+    },
+    include: {
+      route: true,
+    },
+  });
+
+if (transport) {
+  const transportAmount =
+    Number(transport.route.feeAmount);
+
+  itemData.push({
+    feeItemId: null,
+    chargeCategory: 'TRANSPORT',
+    name: 'Transport Fee',
+    amount: transportAmount,
+    discountAmount: 0,
+    gstRate: null,
+    gstAmount: 0,
+    netAmount: transportAmount,
+    sortOrder: 999,
+  });
+}
+
+// Recalculate totals from ALL items
+const subtotal = itemData.reduce(
+  (sum, item) => sum + Number(item.amount),
+  0,
+);
+
+const gstTotal = itemData.reduce(
+  (sum, item) => sum + Number(item.gstAmount),
+  0,
+);
+
+const totalAmount = subtotal + gstTotal;
+
+const invoiceNumber =
+  await this.generateInvoiceNumber(
+    tenantId,
+  );
+
+const invoice = await this.prisma.invoice.create({
+  data: {
+    tenantId,
+    studentId: dto.studentId,
+    invoiceNumber,
+
+    academicYear: plan.academicYear,
+    status: 'DRAFT',
+
+    currency: plan.currency,
+
+    subtotal,
+    discountAmount: 0,
+    gstAmount: gstTotal,
+
+    totalAmount,
+    paidAmount: 0,
+    dueAmount: totalAmount,
+
+    dueDate: new Date(dto.dueDate),
+    notes: dto.notes ?? null,
+
+    items: {
+      create: itemData,
+    },
+  },
+  include: {
+    items: {
+      orderBy: {
+        sortOrder: 'asc',
+      },
+    },
+    student: {
+      select: {
+        firstName: true,
+        lastName: true,
+        admissionNumber: true,
+      },
+    },
+  },
+});
+
 
     await this.audit.logCreate({ tenantId, actorId, entityType: 'Invoice', entityId: invoice.id, after: { invoiceNumber, totalAmount } });
     this.logger.log(`Invoice: ${invoiceNumber} ₹${totalAmount} | tenant: ${tenantId}`);
