@@ -18,7 +18,8 @@ export class SuperadminService {
   // ── Revenue Intelligence ─────────────────────────────────────────────────
   async getRevenueIntelligence() {
     const subs = await this.prisma.tenantSubscription.findMany({
-      where:   { status: { in: ['ACTIVE', 'PAST_DUE'] } },
+      where:   { status: { in: ['ACTIVE', 'PAST_DUE'] }, tenant: {
+      slug: { not: 'schoolos-platform' },  }, },
       include: { plan: true, tenant: { select: { name: true, slug: true, region: true, createdAt: true } } },
     });
 
@@ -109,7 +110,7 @@ export class SuperadminService {
   // ✅ Fixed N+1 Performance bottleneck via discrete memory allocation grouping arrays map hashes
   async getTenantHealthScores() {
     const tenants = await this.prisma.tenant.findMany({
-      where:   { status: { in: ['ACTIVE', 'TRIAL'] } },
+      where:   { status: { in: ['ACTIVE', 'TRIAL'] }, slug: { not: 'schoolos-platform' }, },
       include: {
         subscription: { include: { plan: true } },
         _count:       { select: { students: true, users: true, auditLogs: true } },
@@ -198,7 +199,8 @@ export class SuperadminService {
   // ── Trial Funnel ─────────────────────────────────────────────────────────
   async getTrialFunnel() {
     const trials = await this.prisma.tenantSubscription.findMany({
-      where:   { status: 'TRIAL' },
+      where:   { status: 'TRIAL' , tenant: {
+        slug: { not: 'schoolos-platform' }, },},
       include: {
         tenant: { select: { id: true, name: true, slug: true, contactEmail: true, createdAt: true, _count: { select: { students: true } } } },
         plan:   true,
@@ -233,7 +235,9 @@ export class SuperadminService {
 
   // ── Cohort Analytics ─────────────────────────────────────────────────────
   async getCohortData() {
-    const tenants = await this.prisma.tenant.findMany({
+    const tenants = await this.prisma.tenant.findMany({ where: {
+    slug: { not: 'schoolos-platform' },
+  },
       include: { subscription: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -269,8 +273,16 @@ export class SuperadminService {
     ]);
 
     const recentSignups = await this.prisma.tenant.count({
-      where: { createdAt: { gte: new Date(Date.now() - 86400000) } },
-    });
+  where: {
+    slug: {
+      not: 'schoolos-platform',
+    },
+    createdAt: {
+      gte: new Date(Date.now() - 86400000),
+    },
+  },
+});
+
 
     const recentActivity = await this.prisma.auditLog.count({
       where: { createdAt: { gte: new Date(Date.now() - 3600000) } },
@@ -295,6 +307,41 @@ export class SuperadminService {
       timestamp: new Date().toISOString(),
     };
   }
+    
+  async getTenants(page = 1, limit = 20) {
+  const skip = (page - 1) * limit;
+
+  const [items, total] = await Promise.all([
+    this.prisma.tenant.findMany({
+      where: {
+        slug: { not: 'schoolos-platform' },
+      },
+      include: {
+        subscription: true,
+      },
+      skip,
+      take: limit,
+      orderBy: {
+        createdAt: 'desc',
+      },
+    }),
+    this.prisma.tenant.count({
+      where: {
+        slug: { not: 'schoolos-platform' },
+      },
+    }),
+  ]);
+
+  return {
+    items,
+    total,
+    page,
+    limit,
+  };
+}
+
+
+
 
   // ── Shadow Login / Impersonation ─────────────────────────────────────────
   // ✅ Fixed Exception Wordings & Reason String Guards Compliance validation checks

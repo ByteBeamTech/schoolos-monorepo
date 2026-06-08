@@ -1,6 +1,6 @@
 // backend/src/modules/superadmin/superadmin.controller.ts
 // FULL REPLACEMENT — adds impersonate + knowledge routes that were missing
-
+import { SuperadminRoute } from '../../core/auth/decorators/superadmin-route.decorator';
 import {
   Controller, Get, Post, Body, Param, Query,
   UseGuards, HttpCode, HttpStatus,
@@ -13,6 +13,7 @@ import { Roles }                from '../../core/roles/roles.decorator';
 import { CurrentUser }          from '../../core/auth/decorators/current-user.decorator';
 import { SuperadminUser }       from '../../core/auth/guards/jwt-superadmin.strategy';
 
+@SuperadminRoute()
 @ApiTags('superadmin')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtSuperadminGuard, RolesGuard)
@@ -22,6 +23,18 @@ export class SuperadminController {
   constructor(private readonly svc: SuperadminService) {}
 
   // ── Analytics ─────────────────────────────────────────────────────────────
+  //
+  @Get('tenants')
+@ApiOperation({ summary: 'List all tenant schools' })
+getTenants(
+  @Query('page') page = '1',
+  @Query('limit') limit = '20',
+) {
+  return this.svc.getTenants(
+    Number(page),
+    Number(limit),
+  );
+}
 
   @Get('revenue')
   @ApiOperation({ summary: 'MRR, ARR, churn, invoice aging' })

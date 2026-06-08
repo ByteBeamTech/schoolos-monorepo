@@ -2,6 +2,7 @@ import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/com
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { IS_SUPERADMIN_ROUTE } from '../decorators/superadmin-route.decorator';
 
 @Injectable()
 export class JwtGuard extends AuthGuard('jwt') {
@@ -9,15 +10,31 @@ export class JwtGuard extends AuthGuard('jwt') {
     super();
   }
 
-  canActivate(context: ExecutionContext) {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (isPublic) return true;
-    return super.canActivate(context);
+canActivate(context: ExecutionContext) {
+  const isPublic =
+    this.reflector.getAllAndOverride<boolean>(
+      IS_PUBLIC_KEY,
+      [
+        context.getHandler(),
+        context.getClass(),
+      ],
+    );
+
+  const isSuperadminRoute =
+    this.reflector.getAllAndOverride<boolean>(
+      IS_SUPERADMIN_ROUTE,
+      [
+        context.getHandler(),
+        context.getClass(),
+      ],
+    );
+
+  if (isPublic || isSuperadminRoute) {
+    return true;
   }
 
+  return super.canActivate(context);
+}
   handleRequest(err: any, user: any, info: any) {
     console.log('GLOBAL JWT GUARD');
     console.log(info);

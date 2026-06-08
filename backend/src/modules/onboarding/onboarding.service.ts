@@ -89,6 +89,30 @@ export class OnboardingService {
         },
       });
 
+      // 2A. Create primary branch
+const primaryBranch = await tx.branch.create({
+  data: {
+    tenantId: tenant.id,
+    name: 'Main Campus',
+    branchCode: 'MAIN',
+    isPrimary: true,
+    isActive: true,
+    status: 'ACTIVE',
+    slug: `${tenant.slug}-main`,
+  },
+});
+
+// 2B. Assign admin to default branch
+await tx.userBranch.create({
+  data: {
+    tenantId: tenant.id,
+    userId: adminUser.id,
+    branchId: primaryBranch.id,
+    isDefault: true,
+    isActive: true,
+  },
+});
+
       // 3. Create subscription
       const subscription = await tx.tenantSubscription.create({
         data: {
@@ -131,7 +155,7 @@ export class OnboardingService {
         },
       });
 
-      return { tenant, adminUser, subscription, session };
+      return { tenant, adminUser, primaryBranch, subscription, session };
     });
 
     this.logger.log(
@@ -141,6 +165,7 @@ export class OnboardingService {
     return {
       success:      true,
       tenantId:     result.tenant.id,
+      branchId:     result.primaryBranch.id,
       slug:         result.tenant.slug,
       name:         result.tenant.name,
       adminEmail:   result.adminUser.email,

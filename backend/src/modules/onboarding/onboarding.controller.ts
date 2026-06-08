@@ -15,9 +15,12 @@ import { CurrentUser }          from '../../core/auth/decorators/current-user.de
 import { AuthenticatedUser }    from '../../core/auth/guards/jwt.strategy';
 import { OnboardingService }    from './onboarding.service';
 import { OnboardTenantDto }     from './onboarding.dto';
+import { SuperadminRoute }
+from '../../core/auth/decorators/superadmin-route.decorator';
 
 @ApiTags('onboarding')
 @ApiBearerAuth('access-token')
+@SuperadminRoute()
 @UseGuards(JwtSuperadminGuard, RolesGuard)   // ← WAS: JwtGuard — now superadmin-only
 @Roles('SUPER_ADMIN')
 @Controller('onboarding')
