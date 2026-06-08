@@ -135,11 +135,24 @@ export class PasswordResetService {
     const fromEmail  = this.config.get<string>('EMAIL_FROM', 'noreply@schoolos.in');
     const appName    = this.config.get<string>('APP_NAME', 'SchoolOS');
 
-    const transporter = nodemailer.createTransport(
-      sgKey?.startsWith('SG.')
-        ? { host: 'smtp.sendgrid.net', port: 587, auth: { user: 'apikey', pass: sgKey } }
-        : { host: this.config.get('SMTP_HOST', 'localhost'), port: 1025, ignoreTLS: true },
-    );
+
+
+    // REPLACE the entire transporter creation block with:
+const transporter = nodemailer.createTransport({
+  host: this.config.get<string>('SMTP_HOST'),
+  port: parseInt(this.config.get<string>('SMTP_PORT', '587')),
+  secure: this.config.get<string>('SMTP_SECURE', 'false') === 'true',
+  auth: {
+    user: this.config.get<string>('SMTP_USER'),
+    pass: this.config.get<string>('SMTP_PASSWORD'),
+  },
+});
+
+
+
+
+
+
 
     const html = `
 <!DOCTYPE html>
