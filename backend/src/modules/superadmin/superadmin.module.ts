@@ -8,8 +8,10 @@ import { CouponsService } from './coupons.service';
 import { PlatformNotificationController } from './platform-notification.controller';
 import { PlatformNotificationService } from './platform-notification.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ComplianceModule } from '../../core/compliance/compliance.module';
+
 @Module({
-  imports: [NotificationsModule,
+  imports: [NotificationsModule, ComplianceModule,
     JwtModule.registerAsync({
       imports:    [ConfigModule,],
       useFactory: (config: ConfigService) => ({

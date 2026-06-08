@@ -3,13 +3,19 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { SendEmailDto } from './dto/send-email.dto';
 import { NotificationService } from '../notifications/services/notification.service';
 import { BroadcastNotificationDto } from './dto/broadcast-notification.dto';
+import { AuditService } from '../../core/compliance/audit.service';
+
 
 @Injectable()
 export class PlatformNotificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationService,
+    private readonly audit: AuditService,
   ) {}
+
+
+
 
   async broadcast(
     dto: BroadcastNotificationDto,
@@ -54,6 +60,23 @@ export class PlatformNotificationService {
       }
     }
 
+
+    await this.audit.log({
+  tenantId: 'cmpr9a5h80000zruspxyjew1l', // SchoolOS Platform
+  actorId,
+  actorRole: 'SUPER_ADMIN',
+  action: 'BROADCAST_NOTIFICATION_SENT' as any,
+  entityType: 'Notification',
+  entityId: null,
+  after: {
+    channel: dto.channel,
+    subject: dto.subject,
+    sent,
+    failed,
+    total: tenants.length,
+  },
+});
+
     return {
       sent,
       failed,
@@ -88,7 +111,18 @@ async sendEmail(
     } as any,
     actorId,
   );
-
+await this.audit.log({
+  tenantId: 'cmpr9a5h80000zruspxyjew1l',
+  actorId,
+  actorRole: 'SUPER_ADMIN',
+  action: 'EMAIL_SENT' as any,
+  entityType: 'Notification',
+  entityId: null,
+  after: {
+    recipient: dto.email,
+    subject: dto.subject,
+  },
+});
   return {
     success: true,
     email: dto.email,
