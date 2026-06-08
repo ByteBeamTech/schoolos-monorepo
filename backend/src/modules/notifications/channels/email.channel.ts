@@ -58,7 +58,7 @@ export class EmailChannel {
 
       auth: {
         user: this.config.get<string>('SMTP_USER'),
-        pass: this.config.get<string>('SMTP_PASS'),
+        pass: this.config.get<string>('SMTP_PASSWORD'),
       },
 
       tls: {
@@ -108,7 +108,7 @@ if (
         this.config.get<string>('SMTP_USER');
 
       const smtpPass =
-        this.config.get<string>('SMTP_PASS');
+        this.config.get<string>('SMTP_PASSWORD');
 
       if (!smtpUser || !smtpPass) {
         this.logger.warn(
