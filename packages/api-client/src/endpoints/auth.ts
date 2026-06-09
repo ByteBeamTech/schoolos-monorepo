@@ -23,6 +23,29 @@ forgotPassword: (email: string, tenantId?: string): Promise<void> =>
     //getClient()
       //.post('/auth/reset-password', data)
       //.then(() => undefined),
-resetPassword: (data: { email: string; tenantId?: string; otp: string; password: string }): Promise<any> =>
-    getClient().post('/auth/reset-password', data).then(r => r.data),
+
+resetPassword: (data: {
+  email: string;
+  tenantId?: string;
+  otp: string;
+  newPassword: string;
+}): Promise<any> =>
+  getClient()
+    .post(
+      '/auth/reset-password',
+      {
+        email: data.email,
+        otp: data.otp,
+        newPassword: data.newPassword,
+      },
+      data.tenantId
+        ? {
+            headers: {
+              'x-tenant-id': data.tenantId,
+            },
+          }
+        : undefined,
+    )
+    .then(r => r.data),	      
+	      
 };

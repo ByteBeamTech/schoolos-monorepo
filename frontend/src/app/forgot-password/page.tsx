@@ -40,7 +40,14 @@ export default function ForgotPasswordPage() {
     if (password.length < 8)   { setError("Password must be at least 8 characters."); return; }
     setLoading(true); setError("");
     try {
-      const data = await authApi.resetPassword({email, tenantId:slug, otp, password});
+
+	    const data = await authApi.resetPassword({
+  email,
+  tenantId: slug,
+  otp,
+  newPassword: password,
+});
+
       // Auto-login after reset
       if (data.accessToken) {
         localStorage.setItem("accessToken",  data.accessToken);
