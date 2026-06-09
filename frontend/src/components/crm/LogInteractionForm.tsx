@@ -26,11 +26,11 @@ export function LogInteractionForm({ leadId, onLogged }: Props) {
     setBusy(true);
     try {
       await logInteraction(leadId, { ...form, summary: form.summary.trim() });
-      toast({ title: "Interaction logged" });
+      toast.success("Interaction logged");
       setForm({ type: "CALL", direction: "OUTBOUND", summary: "" });
       onLogged?.();
     } catch (e: any) {
-      toast({ title: "Couldn't log", description: e?.response?.data?.message ?? "Try again", variant: "destructive" });
+      toast.error(e);
     } finally { setBusy(false); }
   };
 

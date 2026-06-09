@@ -35,10 +35,10 @@ export default function LeadDetailPage() {
     setUpdatingStatus(true);
     try {
       await changeLeadStatus(lead.id, { status });
-      toast({ title: `Status updated to ${LEAD_STATUS_LABELS[status]}` });
+      toast.success(`Status updated to ${LEAD_STATUS_LABELS[status]}`);
       refetchLead();
     } catch (e: any) {
-      toast({ title: "Couldn't update", description: e?.response?.data?.message, variant: "destructive" });
+      toast.error(e);
     } finally { setUpdatingStatus(false); }
   };
 

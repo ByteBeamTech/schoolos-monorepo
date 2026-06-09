@@ -29,11 +29,11 @@ export function FollowUpModal({ leadId, onClose, onCreated }: Props) {
         dueDate: new Date(form.dueDate).toISOString(),
         description: form.description?.trim() || undefined,
       });
-      toast({ title: "Follow-up scheduled" });
+      toast.success("Follow-up scheduled");
       onCreated?.();
       onClose();
     } catch (e: any) {
-      toast({ title: "Couldn't schedule", description: e?.response?.data?.message ?? "Try again", variant: "destructive" });
+      toast.error(e);
     } finally { setBusy(false); }
   };
 
