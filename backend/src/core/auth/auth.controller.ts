@@ -5,9 +5,11 @@ import {
   Req, 
   Get, 
   UseGuards, 
-  HttpCode, 
+  HttpCode,
+  UnauthorizedException, 
   HttpStatus 
 } from '@nestjs/common';
+import { PrismaService } from '@infra/database/prisma.service';
 import { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -38,6 +40,7 @@ interface RequestWithTenant extends Request {
 @UseGuards(JwtGuard)
 export class AuthController {
   constructor(
+	  private readonly prisma: PrismaService,
     private readonly auth: AuthService,
     private readonly passwordReset: PasswordResetService,
   ) {}
@@ -49,12 +52,31 @@ export class AuthController {
   @ApiOperation({ summary: 'Login with email and password' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  async login(
-    @Body() dto: LoginDto, 
-    @Req() req: RequestWithTenant
-  ): Promise<AuthResponseDto> {
-    return this.auth.login(dto, req.tenantId, this.getIp(req), this.getUa(req));
+
+
+async login(
+  @Body() dto: LoginDto,
+  @Req() req: RequestWithTenant
+): Promise<AuthResponseDto> {
+
+  const tenantId =
+    req.tenantId ||
+    (req.headers['x-tenant-id'] as string);
+
+  if (!tenantId) {
+    throw new UnauthorizedException(
+      'Tenant header missing',
+    );
   }
+
+  return this.auth.login(
+    dto,
+    tenantId,
+    this.getIp(req),
+    this.getUa(req),
+  );
+}
+
 
   @Post('refresh')
   @Public()

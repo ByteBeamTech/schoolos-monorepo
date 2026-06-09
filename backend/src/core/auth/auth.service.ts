@@ -3,13 +3,14 @@ import { UsersService }  from '../users/users.service';
 import { TokenService }  from '../identity/token.service';
 import { AuditService }  from '../compliance/audit.service';
 import { LoginDto, AuthResponseDto, RefreshTokenDto } from './dto/auth.dto';
-
+import { PrismaService } from '@infra/database/prisma.service';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
     private readonly users:  UsersService,
+     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
     private readonly audit:  AuditService,
   ) {}
@@ -24,8 +25,29 @@ export class AuthService {
     // The tenant must exist in the DB and the user must belong to that tenant.
     // If the seed has not been run, or ran against a different DB, this returns
     // null and we fall through to the timing-safe fake check + 401.
-    const user = await this.users.findByEmailWithPassword(tenantId, dto.email);
+	  //
+	  const tenant = await this.prisma.tenant.findFirst({
+  where: {
+    OR: [
+      { id: tenantId },
+      { slug: tenantId },
+    ],
+  },
+  select: {
+    id: true,
+  },
+});
 
+if (!tenant) {
+  throw new UnauthorizedException('Tenant not found');
+}
+
+tenantId = tenant.id;
+    const user = await this.users.findByEmailWithPassword(tenantId, dto.email);
+     console.log('LOGIN tenantId=', tenantId);
+console.log('LOGIN email=', dto.email);
+console.log('LOGIN user=', user?.id);
+console.log('LOGIN role=', user?.role);
     if (!user) {
       await this.fakePasswordCheck(dto.password);
       throw new UnauthorizedException('Invalid email or password.');
@@ -43,12 +65,12 @@ export class AuthService {
         'Password login is not enabled for this account. Use SSO to sign in.',
       );
     }
-
+     console.log('PASSWORD HASH EXISTS=', !!user?.passwordHash);
     const isValid = await this.users.validatePassword(
       dto.password,
       user.passwordHash,
     );
-
+      console.log('PASSWORD VALID=', isValid);
     if (!isValid) {
       await this.audit.log({
         tenantId, actorId: user.id, actorRole: user.role as any,

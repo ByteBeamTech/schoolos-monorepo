@@ -61,14 +61,15 @@ export class PlatformNotificationService {
     }
 
 
-    await this.audit.log({
-  tenantId: 'cmpr9a5h80000zruspxyjew1l', // SchoolOS Platform
+await this.audit.log({
+  tenantId: 'cmpr9a5h80000zruspxyjew1l',
   actorId,
   actorRole: 'SUPER_ADMIN',
-  action: 'BROADCAST_NOTIFICATION_SENT' as any,
+  action: 'SYSTEM_ACTION' as any,
   entityType: 'Notification',
-  entityId: null,
+  entityId: `BROADCAST:${Date.now()}`,
   after: {
+    event: 'BROADCAST_NOTIFICATION_SENT',
     channel: dto.channel,
     subject: dto.subject,
     sent,
@@ -76,7 +77,6 @@ export class PlatformNotificationService {
     total: tenants.length,
   },
 });
-
     return {
       sent,
       failed,
@@ -115,10 +115,11 @@ await this.audit.log({
   tenantId: 'cmpr9a5h80000zruspxyjew1l',
   actorId,
   actorRole: 'SUPER_ADMIN',
-  action: 'EMAIL_SENT' as any,
+  action: 'SYSTEM_ACTION' as any,
   entityType: 'Notification',
-  entityId: null,
+  entityId: `EMAIL:${dto.email}`,
   after: {
+    event: 'EMAIL_SENT',
     recipient: dto.email,
     subject: dto.subject,
   },
