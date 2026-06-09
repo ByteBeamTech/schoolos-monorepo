@@ -52,14 +52,14 @@ export class UsersController {
   @Get()
   @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
   @ApiOperation({ summary: 'List all users for the tenant' })
-  findAll(@CurrentUser() user: AuthenticatedUser) {
-    return this.service['prisma'].user.findMany({
-      where:   { tenantId: user.tenantId, deletedAt: null },
-      select:  { id: true, email: true, firstName: true, lastName: true, role: true, isActive: true },
-      orderBy: { firstName: 'asc' },
-    });
-  }
-
+  
+  findAll(
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  return this.service.findAllByTenant(
+    user.tenantId,
+  );
+}
   @Get(':id')
   @ApiOperation({ summary: 'Get user by ID' })
   findOne(

@@ -253,6 +253,36 @@ export default function AcademicCalendarPage() {
         </div>
 
         <div className="flex items-center gap-2 select-none">
+	<button
+  type="button"
+  disabled={loadingData || !activeSessionId}
+  onClick={async () => {
+    try {
+      const result = await apiClient.post(
+        `/academic-calendar/seed?sessionId=${activeSessionId}`
+      );
+
+
+      const seeded = result.data?.seeded ?? 0;
+
+toast.success(
+  seeded > 0
+    ? `${seeded} national holidays seeded`
+    : "National holidays already exist for this session"
+);
+
+      triggerDataLoaderFetch();
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        "Failed to seed national holidays"
+      );
+    }
+  }}
+  className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-semibold"
+>
+  Seed National Holidays
+</button>
           <button
             type="button"
             disabled={loadingData}

@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { NotFoundException, Injectable } from '@nestjs/common';
 import { CreateCalendarEventDto } from '../dto/create-calendar-event.dto';
 import { UpdateCalendarEventDto } from '../dto/update-calendar-event.dto';
 import { CalendarQueryDto } from '../dto/calendar-query.dto';
 import { PrismaService } from '@infra/database/prisma.service';
 
-@Injectable()
+	
+	@Injectable()
 export class AcademicCalendarService {
   constructor(
     private readonly prisma: PrismaService,
@@ -20,7 +21,7 @@ async seedDefaultIndianHolidays(
 {
   const session =
     await this.prisma.academicSession.findUnique({
-      where: { id: sessionId },
+      where: { id: sessionId, tenantId },
     });
 
   if (!session) return;
@@ -136,21 +137,62 @@ async createEvent(
     });
 
   // Save target rows
-  if (
-    dto.targets?.length &&
-    dto.scope !== 'ALL_SCHOOL'
-  ) {
-    await this.prisma.academicCalendarEventTarget.createMany({
-      data: dto.targets.map(target => ({
-        eventId: event.id,
-        classId: target.classId ?? null,
-        sectionId: target.sectionId ?? null,
-      })),
-    });
+
+
+if (
+  dto.targets?.length &&
+  dto.scope !== 'ALL_SCHOOL'
+) {
+
+  for (const target of dto.targets) {
+
+    if (target.classId) {
+
+      const cls =
+        await this.prisma.class.findFirst({
+          where: {
+            id: target.classId,
+            tenantId,
+          },
+        });
+
+      if (!cls) {
+        throw new Error(
+          `Invalid class: ${target.classId}`,
+        );
+      }
+    }
+
+    if (target.sectionId) {
+
+      const section =
+        await this.prisma.section.findFirst({
+          where: {
+            id: target.sectionId,
+            tenantId,
+          },
+        });
+
+      if (!section) {
+        throw new Error(
+          `Invalid section: ${target.sectionId}`,
+        );
+      }
+    }
   }
 
-  return event;
+  await this.prisma.academicCalendarEventTarget.createMany({
+    data: dto.targets.map(target => ({
+      eventId: event.id,
+      classId: target.classId ?? null,
+      sectionId: target.sectionId ?? null,
+    })),
+  });
 }
+ return event;
+}
+
+
 
 
 async listEvents(
@@ -238,10 +280,27 @@ async updateEvent(
     ...updateData
   } = dto;
 
-  return this.prisma.academicCalendarEvent.update({
+
+const event =
+  await this.prisma.academicCalendarEvent.findFirst({
     where: {
       id,
       tenantId,
+    },
+  });
+
+if (!event) {
+  throw new NotFoundException(
+    'Calendar event not found',
+  );
+}
+
+
+
+
+  return this.prisma.academicCalendarEvent.update({
+    where: {
+      id: event.id,
     },
 
     data: {
@@ -264,23 +323,54 @@ async deleteEvent(
   tenantId: string,
   id: string,
 ) {
+  const event =
+    await this.prisma.academicCalendarEvent.findFirst({
+      where: {
+        id,
+        tenantId,
+      },
+    });
+
+  if (!event) {
+    throw new NotFoundException(
+      'Calendar event not found',
+    );
+  }
+
   return this.prisma.academicCalendarEvent.delete({
+    where: {
+      id: event.id,
+    },
+  });
+}
+async publishEvent(
+  tenantId: string,
+  id: string,
+) {
+
+      
+
+
+const event =
+  await this.prisma.academicCalendarEvent.findFirst({
     where: {
       id,
       tenantId,
     },
   });
+
+if (!event) {
+  throw new NotFoundException(
+    'Calendar event not found',
+  );
 }
 
-async publishEvent(
-  tenantId: string,
-  id: string,
-) {
-  return this.prisma.academicCalendarEvent.update({
-    where: {
-      id,
-      tenantId,
-    },
+return this.prisma.academicCalendarEvent.update({
+  where: {
+    id: event.id,
+  },
+
+
 
     data: {
       isPublished: true,
@@ -292,11 +382,28 @@ async unpublishEvent(
   tenantId: string,
   id: string,
 ) {
-  return this.prisma.academicCalendarEvent.update({
+  
+	
+const event =
+  await this.prisma.academicCalendarEvent.findFirst({
     where: {
       id,
       tenantId,
     },
+  });
+
+if (!event) {
+  throw new NotFoundException(
+    'Calendar event not found',
+  );
+}
+
+return this.prisma.academicCalendarEvent.update({
+  where: {
+    id: event.id,
+  },
+
+
     data: {
       isPublished: false,
     },

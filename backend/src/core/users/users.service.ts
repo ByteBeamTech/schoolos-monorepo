@@ -131,6 +131,27 @@ export class UsersService {
     });
   }
 
+  async findAllByTenant(tenantId: string) {
+  return this.prisma.user.findMany({
+    where: {
+      tenantId,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      isActive: true,
+    },
+    orderBy: {
+      firstName: 'asc',
+    },
+  });
+}
+
+
   private safeSelect() {
     return {
       id:              true,
