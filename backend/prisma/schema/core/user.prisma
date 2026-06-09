@@ -66,6 +66,7 @@ model User {
   lateFeesReversed LateFee[] @relation("LateFeeReverser")
 
   studentProfile Student? // Back-relation for Student.user
+  guardianProfile Guardian? @relation("GuardianUser") // Back-relation for Guardian.user
   // 🔥 HIGH-PERFORMANCE CONSTRAINTS & INDEXES
 
   // 🔐 Uniqueness Scoped to Tenant

@@ -632,11 +632,19 @@ enum AdmissionMode {
   OFFLINE
 }
 
+/// MVP canonical values are: DRAFT, SUBMITTED, IN_REVIEW, APPROVED, REJECTED, ENROLLED.
+/// PENDING and REVIEWING are legacy aliases kept only to preserve existing rows.
 enum ApplicationStatus {
-  PENDING
-  REVIEWING
+  // ---- Canonical (MVP) ----
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
   APPROVED
   REJECTED
+  ENROLLED
+  // ---- Legacy (kept to preserve existing data) ----
+  PENDING
+  REVIEWING
 }
 
 enum GuardianRelation {

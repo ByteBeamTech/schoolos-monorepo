@@ -115,6 +115,8 @@ model AdmissionApplication {
   // 🎓 Academic Detail
   applyingClassId String?
   academicYear    String
+  sessionId       String?
+  session         AcademicSession? @relation("AdmissionApplicationSession", fields: [sessionId], references: [id])
   admissionMode   AdmissionMode
   previousSchool  String?
   previousClass   String?

@@ -31,6 +31,8 @@ model Student {
   rollNumber     String?
   rollAssignedAt DateTime?
   academicYear   String
+  sessionId      String?
+  session        AcademicSession? @relation("StudentSession", fields: [sessionId], references: [id])
 
   // ⚙️ Flags
   isActive             Boolean @default(true)

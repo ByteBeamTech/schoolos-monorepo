@@ -13,6 +13,8 @@ model AcademicSession {
   classes              Class[]
   exams                Exam[]
   feePlans             FeePlan[]
+  students             Student[] @relation("StudentSession")
+  admissionApplications AdmissionApplication[] @relation("AdmissionApplicationSession")
   admissionsOpen       Boolean                 @default(true)
   calendarEvents       AcademicCalendarEvent[]
   rollNumbersGenerated Boolean                 @default(false)

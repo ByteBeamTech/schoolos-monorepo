@@ -145,12 +145,21 @@ model ApplicationApproval {
 }
 
 enum LeadStatus {
+  // ---- MVP canonical values (use these) ----
   NEW
   CONTACTED
+  FOLLOW_UP
+  VISIT_SCHEDULED
+  INTERESTED
+  APPLICATION_STARTED
+  APPLICATION_SUBMITTED
+  APPROVED
+  ENROLLED
+  LOST
+  // ---- Legacy values (kept to preserve existing data; not used by code) ----
   TOUR_SCHEDULED
   ASSESSMENT_PENDING
   APPLIED
-  LOST
 }
 
 enum LeadTemperature {
