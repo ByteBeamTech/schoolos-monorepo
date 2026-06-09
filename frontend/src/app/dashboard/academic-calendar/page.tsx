@@ -138,6 +138,37 @@ export default function AcademicCalendarPage() {
     });
   }, [eventsList, searchQuery, selectedTypeFilter]);
 
+  const upcomingEvents = useMemo(() => {
+  return [...eventsList]
+    .filter(
+      e => new Date(e.startDate) >= new Date()
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.startDate).getTime() -
+        new Date(b.startDate).getTime()
+    )
+    .slice(0, 5);
+}, [eventsList]);
+
+const upcomingHolidays = useMemo(() => {
+  return [...eventsList]
+    .filter(
+      e =>
+        (
+          e.type === "NATIONAL_HOLIDAY" ||
+          e.type === "SCHOOL_HOLIDAY"
+        ) &&
+        new Date(e.startDate) >= new Date()
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.startDate).getTime() -
+        new Date(b.startDate).getTime()
+    )
+    .slice(0, 5);
+}, [eventsList]);
+
   // Month navigation
   const handleNavigatePriorMonth = () => {
     if (currentMonth === 1) {
@@ -372,7 +403,8 @@ toast.success(
       </div>
 
       {/* Month workspace renderer */}
-      <div className="relative">
+       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+       <div className="xl:col-span-3 relative">
         {loadingData && (
           <div className="absolute inset-0 bg-white/40 dark:bg-slate-950/20 backdrop-blur-3xs z-30 flex items-center justify-center transition-all pointer-events-none">
             <div className="p-3.5 border rounded-xl bg-white dark:bg-slate-900 shadow-xl flex items-center gap-2 text-xs font-black font-mono">
@@ -419,6 +451,88 @@ toast.success(
           </div>
         )}
       </div>
+
+
+      {/* Sidebar */}
+      <div className="space-y-4">
+
+        <div className="bg-white dark:bg-slate-900 border rounded-2xl p-4">
+          <h3 className="font-bold mb-3">
+            Upcoming Events
+          </h3>
+
+          <div className="space-y-3">
+            {upcomingEvents.map(event => (
+              <div
+                key={event.id}
+                className="flex justify-between text-sm"
+              >
+                <span>{event.title}</span>
+                <span className="text-slate-500">
+                  {new Date(
+                    event.startDate
+                  ).toLocaleDateString("en-IN")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 border rounded-2xl p-4">
+          <h3 className="font-bold mb-3">
+            Upcoming Holidays
+          </h3>
+
+          <div className="space-y-3">
+            {upcomingHolidays.map(event => (
+              <div
+                key={event.id}
+                className="flex justify-between text-sm"
+              >
+                <span>{event.title}</span>
+                <span className="text-slate-500">
+                  {new Date(
+                    event.startDate
+                  ).toLocaleDateString("en-IN")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-slate-900 border rounded-2xl p-4">
+          <h3 className="font-bold mb-3">
+            Statistics
+          </h3>
+
+          <div className="space-y-2 text-sm">
+            <div>
+              Total Events: {eventsList.length}
+            </div>
+
+            <div>
+              Holidays: {
+                eventsList.filter(
+                  e =>
+                    e.type === "NATIONAL_HOLIDAY" ||
+                    e.type === "SCHOOL_HOLIDAY"
+                ).length
+              }
+            </div>
+
+            <div>
+              Published: {
+                eventsList.filter(
+                  e => e.isPublished
+                ).length
+              }
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
 
       <EventModal
         isOpen={isModalOpen}
