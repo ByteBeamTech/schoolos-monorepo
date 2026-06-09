@@ -19,6 +19,7 @@ export * from './endpoints/hr';
 export * from './endpoints/reception';
 export * from './endpoints/payroll';
 export * from './endpoints/admissions';
+export * from './endpoints/crm';
 export * from './endpoints/exams';
 export * from './endpoints/sessions';
 export * from './endpoints/support';

@@ -109,3 +109,7 @@ android-sdk/ -e
 dist/
 .next/
 build/
+.env.*
+credentials.json
+*.key
+.credentials

@@ -25,6 +25,13 @@ export interface AuthenticatedUser {
    * Branch scope — populated from JWT payload when the token was issued
    * with a branch context (school-admin, teacher, etc.).
    * OPTIONAL: super-admins and system workers may not have one.
+   * Can be overridden per-request by BranchContextMiddleware via `x-branch-id`.
    */
-  readonly branchId?: string;
+  branchId?: string;
+  /**
+   * All branch IDs the user has an active mapping to.
+   * Used by BranchContextMiddleware to validate `x-branch-id` and by
+   * services to enumerate visible branches for tenant-wide roles.
+   */
+  readonly branchIds?: string[];
 }

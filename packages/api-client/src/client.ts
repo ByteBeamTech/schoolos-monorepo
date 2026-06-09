@@ -17,8 +17,17 @@ export function initApiClient(baseURL: string) {
     if (typeof window !== 'undefined') {
       const token  = localStorage.getItem('accessToken');
       const tenant = localStorage.getItem('tenantId');
+      const branch = localStorage.getItem('branchId') || (() => {
+        try {
+          const raw = localStorage.getItem('branch-storage');
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          return parsed?.state?.selectedBranchId ?? null;
+        } catch { return null; }
+      })();
       if (token)  config.headers.Authorization   = `Bearer ${token}`;
       if (tenant) config.headers['x-tenant-id'] = tenant;
+      if (branch) config.headers['x-branch-id'] = branch;
     }
     return config;
   });

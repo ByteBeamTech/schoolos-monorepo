@@ -29,7 +29,18 @@ export {
   timetableApi, notificationsApi, transportApi, homeworkApi,
   libraryApi, inventoryApi, certificatesApi, communicationApi,
   hrApi, receptionApi, payrollApi, admissionsApi, examsApi, sessionsApi,
-  bulkApi, behaviorApi, staffApi,
+  bulkApi, behaviorApi, staffApi, crmApi,
+} from '@schoolos/api-client';
+
+export type {
+  Lead, LeadStatus, LeadTemperature, LeadListResponse,
+  FollowUpTask, FollowUpStatus,
+  InteractionLog, InteractionType, InteractionDirection,
+  CrmDashboardSummary,
+  CreateLeadRequest, UpdateLeadRequest,
+  AssignLeadRequest, ChangeLeadStatusRequest,
+  CreateFollowUpRequest, UpdateFollowUpRequest,
+  CreateInteractionRequest, ListLeadsQuery,
 } from '@schoolos/api-client';
 
 export const setTokens   = (t: any)    => { 

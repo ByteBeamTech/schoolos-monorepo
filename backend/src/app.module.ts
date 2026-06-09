@@ -1,4 +1,5 @@
 import { RawBodyMiddleware } from './common/middleware/raw-body.middleware';
+import { BranchContextMiddleware } from './common/middleware/branch-context.middleware';
 import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { EventsModule } from './core/events/events.module';
@@ -174,6 +175,19 @@ export class AppModule implements NestModule {
         'auth/(.*)',
 	'superadmin/(.*)',
         'webhooks/(.*)', // Webhooks tenant-agnostic hote hain, isliye exclude zaroori hai
+      )
+      .forRoutes('*');
+
+    // 3. BRANCH CONTEXT MIDDLEWARE
+    // Reads `x-branch-id` after JwtAuth has populated req.user and overrides
+    // user.branchId when the caller has access to the requested branch.
+    consumer
+      .apply(BranchContextMiddleware)
+      .exclude(
+        { path: 'health', method: RequestMethod.GET },
+        'auth/(.*)',
+        'superadmin/(.*)',
+        'webhooks/(.*)',
       )
       .forRoutes('*');
   }

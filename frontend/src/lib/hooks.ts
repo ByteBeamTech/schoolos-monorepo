@@ -583,3 +583,119 @@ export function useTimetableFull(sectionId?: string) {
     }>;
   }>(sectionId ? `/timetable/section/${sectionId}/full` : "", [sectionId]);
 }
+
+
+// ───────────────────────────────────────────────────────────────────────────
+// CRM hooks (Phase 1)
+// ───────────────────────────────────────────────────────────────────────────
+import { crmApi } from "./api";
+import type {
+  Lead,
+  LeadListResponse,
+  ListLeadsQuery,
+  FollowUpTask,
+  InteractionLog,
+  CrmDashboardSummary,
+  CreateLeadRequest,
+  UpdateLeadRequest,
+  AssignLeadRequest,
+  ChangeLeadStatusRequest,
+  CreateFollowUpRequest,
+  UpdateFollowUpRequest,
+  CreateInteractionRequest,
+} from "@schoolos/api-client";
+
+export function useCrmDashboard(branchId?: string) {
+  const [data, setData] = useState<CrmDashboardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const r = await crmApi.dashboard.summary(branchId ? { branchId } : undefined);
+      setData(r);
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? "Failed to load dashboard");
+    } finally { setLoading(false); }
+  }, [branchId]);
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, error, refetch: load };
+}
+
+export function useLeads(query?: ListLeadsQuery) {
+  const [data, setData] = useState<LeadListResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const key = JSON.stringify(query || {});
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const r = await crmApi.leads.list(query);
+      setData(r);
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? "Failed to load leads");
+    } finally { setLoading(false); }
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, error, refetch: load };
+}
+
+export function useLead(id: string | undefined) {
+  const [data, setData] = useState<Lead | null>(null);
+  const [loading, setLoading] = useState(!!id);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    if (!id) { setLoading(false); return; }
+    setLoading(true); setError(null);
+    try {
+      const r = await crmApi.leads.get(id);
+      setData(r);
+    } catch (e: any) {
+      setError(e?.response?.data?.message ?? "Failed to load lead");
+    } finally { setLoading(false); }
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, error, refetch: load };
+}
+
+export function useFollowUpsForLead(leadId: string | undefined) {
+  const [data, setData] = useState<FollowUpTask[]>([]);
+  const [loading, setLoading] = useState(!!leadId);
+  const load = useCallback(async () => {
+    if (!leadId) return;
+    setLoading(true);
+    try {
+      const r = await crmApi.followUps.listByLead(leadId);
+      setData(r);
+    } finally { setLoading(false); }
+  }, [leadId]);
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, refetch: load };
+}
+
+export function useInteractionsForLead(leadId: string | undefined) {
+  const [data, setData] = useState<InteractionLog[]>([]);
+  const [loading, setLoading] = useState(!!leadId);
+  const load = useCallback(async () => {
+    if (!leadId) return;
+    setLoading(true);
+    try {
+      const r = await crmApi.interactions.listByLead(leadId);
+      setData(r);
+    } finally { setLoading(false); }
+  }, [leadId]);
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, refetch: load };
+}
+
+export function useCrmActions() {
+  return {
+    createLead:        (data: CreateLeadRequest)            => crmApi.leads.create(data),
+    updateLead:        (id: string, data: UpdateLeadRequest)=> crmApi.leads.update(id, data),
+    assignLead:        (id: string, data: AssignLeadRequest)=> crmApi.leads.assign(id, data),
+    changeLeadStatus:  (id: string, data: ChangeLeadStatusRequest) => crmApi.leads.changeStatus(id, data),
+    createFollowUp:    (leadId: string, data: CreateFollowUpRequest) => crmApi.followUps.create(leadId, data),
+    updateFollowUp:    (id: string, data: UpdateFollowUpRequest) => crmApi.followUps.update(id, data),
+    logInteraction:    (leadId: string, data: CreateInteractionRequest) => crmApi.interactions.create(leadId, data),
+  };
+}
