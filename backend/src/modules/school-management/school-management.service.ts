@@ -1,6 +1,6 @@
 // /apps/schoolos/backend/src/modules/school-management/school-management.service.ts
 // /apps/schoolos/backend/src/modules/school-management/school-management.service.ts
-
+import * as bcrypt from 'bcryptjs';
 import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 
@@ -148,18 +148,82 @@ export class SchoolManagementService {
     });
   }
 
-  async inviteUser(tenantId: string, dto: InviteUserDto, actorId: string) {
-    const existing = await this.prisma.user.findFirst({ where: { tenantId, email: dto.email } });
-    if (existing) throw new ConflictException(`User "${dto.email}" already exists.`);
-    
-    const user = await this.prisma.user.create({
-      data: { tenantId, email: dto.email, firstName: dto.firstName, lastName: dto.lastName, role: dto.role, isActive: true },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true },
-    });
-    await this.audit.logCreate({ tenantId, actorId, entityType: 'User', entityId: user.id, after: { email: user.email, role: user.role } });
-    this.logger.log(`User invited: ${dto.email} as ${dto.role} | tenant: ${tenantId}`);
-    return user;
+  async inviteUser(
+  tenantId: string,
+  dto: InviteUserDto,
+  actorId: string,
+) {
+  const email = dto.email.trim().toLowerCase();
+
+  const existing = await this.prisma.user.findFirst({
+    where: {
+      tenantId,
+      email,
+    },
+  });
+
+  if (existing) {
+    throw new ConflictException(`User "${email}" already exists.`);
   }
+
+  const tempPassword =
+    Math.random().toString(36).slice(2, 6) +
+    Math.random().toString(36).slice(2, 6).toUpperCase();
+
+  const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+  const user = await this.prisma.user.create({
+    data: {
+      tenantId,
+      email,
+      firstName: dto.firstName.trim(),
+      lastName: dto.lastName.trim(),
+      role: dto.role,
+      passwordHash,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+    },
+  });
+
+  // Create UserBranch mapping
+  if (dto.branchId) {
+    await this.prisma.userBranch.create({
+      data: {
+        tenantId,
+        userId: user.id,
+        branchId: dto.branchId,
+        isDefault: true,
+        isActive: true,
+      },
+    });
+  }
+
+  await this.audit.logCreate({
+    tenantId,
+    actorId,
+    entityType: 'User',
+    entityId: user.id,
+    after: {
+      email: user.email,
+      role: user.role,
+    },
+  });
+
+  this.logger.log(
+    `User invited: ${email} as ${dto.role}`,
+  );
+
+  return {
+    ...user,
+    temporaryPassword: tempPassword,
+  };
+}
 
   async updateUserRole(tenantId: string, userId: string, dto: UpdateUserRoleDto, actorId: string) {
     const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });

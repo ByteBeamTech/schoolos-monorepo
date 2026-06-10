@@ -4,7 +4,7 @@ import { PrismaService } from '@infra/database/prisma.service';
 
 export interface DiscountRule {
   category:    string;
-  type:        'PERCENTAGE' | 'FLAT';
+  type:        'PERCENTAGE' | 'FIXED';
   value:       number;
   maxAmount?:  number;
   autoApply:   boolean;

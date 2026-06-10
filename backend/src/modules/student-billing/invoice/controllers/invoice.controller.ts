@@ -1,3 +1,7 @@
+// backend/src/modules/student-billing/invoice/controllers/invoice.controller.ts
+// FULL REPLACEMENT
+// NEW ROUTES: cancel, defaulters, pagination on findAll
+
 import {
   Body, Controller, Get, HttpCode,
   HttpStatus, Param, Patch, Post,
@@ -11,6 +15,12 @@ import { RolesGuard }        from '../../../../core/roles/roles.guard';
 import { Roles }             from '../../../../core/roles/roles.decorator';
 import { CurrentUser }       from '../../../../core/auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../../../core/auth/guards/jwt.strategy';
+import { IsString, IsNotEmpty } from 'class-validator';
+import { ApiProperty }       from '@nestjs/swagger';
+
+class CancelInvoiceDto {
+  @ApiProperty() @IsString() @IsNotEmpty() reason!: string;
+}
 
 @ApiTags('invoices')
 @ApiBearerAuth('access-token')
@@ -20,42 +30,70 @@ export class InvoiceController {
   constructor(private readonly service: InvoiceService) {}
 
   @Post('generate')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Generate invoice for a student' })
   generate(@Body() dto: GenerateInvoiceDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.generate(user.tenantId, dto, user.id);
   }
 
   @Post('bulk-generate')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Bulk generate invoices for all students on fee plan' })
   bulkGenerate(@Body() dto: BulkGenerateInvoicesDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.bulkGenerate(user.tenantId, dto, user.id);
   }
 
   @Get()
-  @ApiOperation({ summary: 'List invoices' })
+  @ApiOperation({ summary: 'List invoices (paginated)' })
   @ApiQuery({ name: 'studentId',    required: false })
   @ApiQuery({ name: 'status',       required: false })
   @ApiQuery({ name: 'academicYear', required: false })
+  @ApiQuery({ name: 'page',         required: false })
+  @ApiQuery({ name: 'limit',        required: false })
   findAll(
     @CurrentUser() user: AuthenticatedUser,
     @Query('studentId')    studentId?:    string,
     @Query('status')       status?:       string,
     @Query('academicYear') academicYear?: string,
+    @Query('page')         page?:         string,
+    @Query('limit')        limit?:        string,
   ) {
-    return this.service.findAll(user.tenantId, { studentId, status, academicYear });
+    return this.service.findAll(
+      user.tenantId,
+      { studentId, status, academicYear },
+      page  ? parseInt(page)  : 1,
+      limit ? parseInt(limit) : 20,
+    );
   }
 
   @Get('overdue')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'List overdue invoices' })
   findOverdue(@CurrentUser() user: AuthenticatedUser) {
     return this.service.findOverdue(user.tenantId);
   }
 
+  @Get('defaulters')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Defaulters list aggregated by student' })
+  @ApiQuery({ name: 'branchId',       required: false })
+  @ApiQuery({ name: 'classId',        required: false })
+  @ApiQuery({ name: 'minDaysOverdue', required: false })
+  getDefaulters(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('branchId')       branchId?:       string,
+    @Query('classId')        classId?:        string,
+    @Query('minDaysOverdue') minDaysOverdue?: string,
+  ) {
+    return this.service.getDefaulters(user.tenantId, {
+      branchId,
+      classId,
+      minDaysOverdue: minDaysOverdue ? parseInt(minDaysOverdue) : undefined,
+    });
+  }
+
   @Get('stats')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Billing stats' })
   @ApiQuery({ name: 'academicYear', required: false })
   getStats(
@@ -66,16 +104,28 @@ export class InvoiceController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get invoice by ID' })
+  @ApiOperation({ summary: 'Get invoice by ID (full detail)' })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findById(user.tenantId, id);
   }
 
   @Patch(':id/send')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send invoice (DRAFT → SENT)' })
   send(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.send(user.tenantId, id, user.id);
+  }
+
+  @Patch(':id/cancel')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancel invoice (reason required, cannot cancel paid)' })
+  cancel(
+    @Param('id')   id:   string,
+    @Body()        dto:  CancelInvoiceDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.cancel(user.tenantId, id, dto.reason, user.id);
   }
 }

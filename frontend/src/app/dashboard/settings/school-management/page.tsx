@@ -279,9 +279,9 @@ function UsersTab() {
   const { data, loading, refetch } = useFetch<any[]>("/school-management/users");
   const [show,   setShow]   = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ firstName:"", lastName:"", email:"", role:"TEACHER" });
+  const [form, setForm] = useState({ firstName:"", lastName:"", email:"", role:"TEACHER", branchId:"", });
   const f = (k: string) => (v: string) => setForm(p => ({ ...p, [k]: v }));
-
+  const { data: branches } =  useFetch<any[]>("/school-management/branches");
   const invite = async () => {
     const ok = await apiCall(
       () => apiClient.post("/school-management/users/invite", form),
@@ -317,7 +317,8 @@ function UsersTab() {
             <Field label="Email *"      value={form.email}     onChange={f("email")} type="email" required />
             <Sel label="Role" value={form.role} onChange={f("role")}
               options={ROLES.map(r => ({ value: r, label: r.replace(/_/g," ") }))} />
-          </div>
+          <Sel  label="Branch"  value={form.branchId}  onChange={f("branchId")}   options={(branches ?? []).map((b:any) => ({     value: b.id,    label: b.name,  }))}/>
+	      </div>
           <div className="flex gap-2">
             <SaveBtn saving={saving} onClick={invite} />
             <button onClick={() => setShow(false)} className="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg">Cancel</button>

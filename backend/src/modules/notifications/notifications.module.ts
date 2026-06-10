@@ -50,7 +50,7 @@ import { ProviderTestController } from './settings/controllers/provider-test.con
     ProviderTestService,
   ],
   controllers: [ NotificationController, NotificationSettingsController, NotificationPreferencesController, NotificationHistoryController, ProviderTestController,],
-  exports:     [NotificationService, 
+  exports:     [NotificationService, EmailChannel,
 NotificationEventService, NotificationDispatcherService, TemplateService,
 ],
 })

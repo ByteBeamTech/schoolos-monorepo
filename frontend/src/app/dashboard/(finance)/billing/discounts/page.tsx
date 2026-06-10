@@ -11,7 +11,7 @@ import { useToast } from '@/lib/use-toast';
 
 
 const CATEGORIES = ["SIBLING","MERIT","STAFF_CHILD","FINANCIAL_HARDSHIP","SCHOLARSHIP","CUSTOM"];
-const TYPES      = ["PERCENTAGE","FLAT"];
+const TYPES      = ["PERCENTAGE","FIXED"];
 
 function approvalVariant(s: string) {
   if (s === "APPROVED") return "success" as const;

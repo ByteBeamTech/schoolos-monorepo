@@ -1,3 +1,7 @@
+// backend/src/modules/student-billing/discounts/services/discount.service.ts
+// FULL REPLACEMENT
+// P0 FIX: branchId was undefined in DiscountApproval.create() — derived from student now
+
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }  from '../../../../core/compliance/audit.service';
@@ -13,27 +17,52 @@ export class DiscountService {
   ) {}
 
   async create(tenantId: string, dto: CreateDiscountDto, actorId: string) {
-    const student = await this.prisma.student.findFirst({ where: { id: dto.studentId, tenantId } });
+    // P0 FIX: derive branchId from the student record
+    const student = await this.prisma.student.findFirst({
+      where: { id: dto.studentId, tenantId },
+      select: { id: true, branchId: true },
+    });
     if (!student) throw new NotFoundException(`Student not found: ${dto.studentId}`);
+
     if (dto.type === 'PERCENTAGE' && (dto.value < 0 || dto.value > 100)) {
       throw new BadRequestException('Percentage must be 0-100.');
     }
+
+    const currentSession = await this.prisma.academicSession.findFirst({
+      where: { tenantId, isCurrent: true },
+      select: { id: true },
+    });
+
     const discount = await (this.prisma as any).discount.create({
       data: {
         tenantId,
+        branchId:       student.branchId,           // P0 FIX: was undefined
         studentId:      dto.studentId,
-        category:       dto.category  as any,
+        academicYearId: currentSession?.id ?? 'default',
+        categoryId:     dto.category as any,        // maps to DiscountCategory enum value
         type:           dto.type      as any,
         value:          dto.value,
+        appliedAmount:  dto.value,                  // snapshot — will be recalculated on invoice generate
+        source:         'USER',
+        reason:         dto.reason    ?? null,
         validFrom:      new Date(dto.validFrom),
         validUntil:     dto.validUntil ? new Date(dto.validUntil) : null,
-        reason:         dto.reason    ?? null,
         approvalStatus: 'PENDING',
+        createdById:    actorId,
       },
     });
+
+    // P0 FIX: branchId now correctly populated
     await (this.prisma as any).discountApproval.create({
-      data: { discountId: discount.id, tenantId: discount.tenantId, branchId: discount.branchId, requesterId: actorId, status: 'PENDING' },
+      data: {
+        discountId:  discount.id,
+        tenantId,
+        branchId:    student.branchId,              // P0 FIX: was undefined → Prisma error
+        requesterId: actorId,
+        status:      'PENDING',
+      },
     });
+
     await this.audit.logCreate({
       tenantId, actorId,
       entityType: 'Discount', entityId: discount.id,
@@ -77,9 +106,8 @@ export class DiscountService {
 
   async approve(tenantId: string, id: string, dto: ApproveDiscountDto, actorId: string) {
     const d = await this.findById(tenantId, id);
-    if (d.approvalStatus !== 'PENDING') {
-      throw new BadRequestException(`Discount is already ${d.approvalStatus}.`);
-    }
+    if (d.approvalStatus !== 'PENDING') throw new BadRequestException(`Discount is already ${d.approvalStatus}.`);
+
     await this.prisma.discount.update({ where: { id }, data: { approvalStatus: 'APPROVED' } });
     await this.prisma.discountApproval.updateMany({
       where: { discountId: id, status: 'PENDING' },
@@ -95,9 +123,8 @@ export class DiscountService {
 
   async reject(tenantId: string, id: string, dto: RejectDiscountDto, actorId: string) {
     const d = await this.findById(tenantId, id);
-    if (d.approvalStatus !== 'PENDING') {
-      throw new BadRequestException(`Discount is already ${d.approvalStatus}.`);
-    }
+    if (d.approvalStatus !== 'PENDING') throw new BadRequestException(`Discount is already ${d.approvalStatus}.`);
+
     await this.prisma.discount.update({ where: { id }, data: { approvalStatus: 'REJECTED' } });
     await this.prisma.discountApproval.updateMany({
       where: { discountId: id, status: 'PENDING' },

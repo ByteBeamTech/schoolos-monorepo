@@ -86,7 +86,7 @@ export enum DiscountCategory {
 
 export enum DiscountType {
   PERCENTAGE = 'PERCENTAGE',
-  FLAT       = 'FLAT',
+  FIXED      = 'FIXED',
 }
 
 export class CreateDiscountDto {
