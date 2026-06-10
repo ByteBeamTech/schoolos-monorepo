@@ -220,7 +220,7 @@ export class ApplicationService {
         referredById: dto.referredById,
         status: ApplicationStatus.DRAFT,
         stepStatus: AdmissionStepStatus.UNDER_REVIEW,
-        formDetails: dto.guardians ? ({ guardians: dto.guardians } as Prisma.InputJsonValue) : Prisma.JsonNull,
+        formDetails: dto.guardians ? JSON.parse(JSON.stringify({ guardians: dto.guardians })): Prisma.JsonNull,
         notes: dto.initialNote
           ? ([{ at: new Date().toISOString(), by: user.id, text: dto.initialNote }] as Prisma.InputJsonValue)
           : Prisma.JsonNull,
@@ -283,7 +283,7 @@ export class ApplicationService {
       const currentDetails = (app.formDetails && typeof app.formDetails === 'object'
         ? (app.formDetails as Record<string, unknown>)
         : {});
-      data.formDetails = { ...currentDetails, guardians: dto.guardians } as Prisma.InputJsonValue;
+     data.formDetails = JSON.parse( JSON.stringify({...currentDetails, guardians: dto.guardians,}),);
     }
     data.updatedBy = { connect: { id: user.id } };
 
@@ -774,7 +774,7 @@ export class ApplicationService {
       // Ensure branch mapping; do NOT downgrade existing user's role.
       await tx.userBranch.upsert({
         where: { userId_branchId: { userId: existing.id, branchId: input.branchId } },
-        create: { userId: existing.id, branchId: input.branchId },
+	create: {  tenant: { connect: { id: input.tenantId },  },  user: { connect: { id: existing.id },  },  branch: { connect: { id: input.branchId },  }, },
         update: {},
       }).catch(() => null);
       return existing;
@@ -793,8 +793,8 @@ export class ApplicationService {
       },
     });
     await tx.userBranch.create({
-      data: { userId: user.id, branchId: input.branchId },
-    }).catch(() => null);
+    data: {  tenant: { connect: { id: input.tenantId },  },  user: {    connect: { id: user.id },  },  branch: { connect: { id: input.branchId },  },},
+    }    ).catch(() => null);
     return user;
   }
 
