@@ -1,0 +1,21 @@
+model SubjectMapping {
+  id String @id @default(cuid())
+
+  tenantId       String
+  academicYearId String
+
+  classId   String
+  subjectId String
+
+  weeklyPeriods Int @default(5)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  class        Class           @relation(fields: [classId], references: [id])
+  subject      Subject         @relation(fields: [subjectId], references: [id])
+  academicYear AcademicSession @relation(fields: [academicYearId], references: [id])
+
+  @@unique([tenantId, academicYearId, classId, subjectId])
+  @@index([academicYearId])
+}

@@ -15,11 +15,12 @@ model Subject {
 
   // 🔗 Relations (Pro Version with Explicit Naming)
   teacherPreferences TeacherSubjectPreference[] @relation("SubjectTeachers")
-
-  tenant            Tenant              @relation(fields: [tenantId], references: [id])
-  branch            Branch?             @relation(fields: [branchId], references: [id])
-  TeacherAssignment TeacherAssignment[]
-  TimetableSlot     TimetableSlot[]
+  isElective         Boolean                    @default(false)
+  tenant             Tenant                     @relation(fields: [tenantId], references: [id])
+  branch             Branch?                    @relation(fields: [branchId], references: [id])
+  TeacherAssignment  TeacherAssignment[]
+  TimetableSlot      TimetableSlot[]
+  subjectMappings    SubjectMapping[]
 
   // 🔒 Constraints & Performance
   @@unique([tenantId, code])

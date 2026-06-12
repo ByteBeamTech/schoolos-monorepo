@@ -214,16 +214,31 @@ export default function AcademicsPage() {
     finally { setSavingTeacher(false); }
   };
 
-  const appointClassTeacher = async (sectionId: string, teacherId: string | null) => {
-    setSavingAppointment(sectionId);
-    try {
-      await apiClient.post("/academics/class-teacher-appointments", {
-        sectionId, teacherId, sessionId: activeSession,
-      });
-      refetchAppointments();
-    } catch { toast.error("Failed to appoint teacher"); }
-    finally { setSavingAppointment(null); }
-  };
+
+
+  const appointClassTeacher = async (
+  sectionId: string,
+  staffId: string | null
+) => {
+  setSavingAppointment(sectionId);
+
+  try {
+    await apiClient.post(
+      `/academics/sections/${sectionId}/assign-class-teacher`,
+      {
+        staffId,
+      }
+    );
+
+    refetchAppointments();
+    toast.success("Class teacher assigned");
+  } catch (err) {
+    console.error(err);
+    toast.error("Failed to appoint teacher");
+  } finally {
+    setSavingAppointment(null);
+  }
+};
 
   // ── Helper: get mappings for a specific classId ─────────────────────────────
   const getMappingsForClass = (classId: string) =>
@@ -367,14 +382,78 @@ export default function AcademicsPage() {
                     ) : (
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                         {cls.sections.map((sec: any) => (
-                          <div key={sec.id} className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm flex justify-between items-center">
-                            <span className="text-sm font-medium text-slate-800">Section {sec.name}</span>
-                            <button
-                              onClick={() => setShowTeacherForm(showTeacherForm === sec.id ? null : sec.id)}
-                              className="text-xs text-blue-600 font-medium hover:text-blue-800"
-                            >
-                              Assign Teacher
-                            </button>
+                         
+			       <div key={sec.id}>
+  <div className="bg-white p-3 rounded-lg border border-slate-100 shadow-sm flex justify-between items-center">
+    <span className="text-sm font-medium text-slate-800">
+      Section {sec.name}
+    </span>
+
+    <button
+      onClick={() =>
+        setShowTeacherForm(
+          showTeacherForm === sec.id ? null : sec.id
+        )
+      }
+      className="text-xs text-blue-600 font-medium hover:text-blue-800"
+    >
+      Assign Teacher
+    </button>
+  </div>
+  {showTeacherForm === sec.id && (
+    <div className="mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+      <div className="grid grid-cols-2 gap-3">
+        <select
+          value={teacherForm.subjectId}
+          onChange={(e) =>
+            setTeacherForm((p) => ({
+              ...p,
+              subjectId: e.target.value,
+            }))
+          }
+          className="px-3 py-2 border rounded-lg"
+        >
+          <option value="">Select Subject</option>
+
+          {getMappingsForClass(cls.id).map((m: any) => (
+            <option
+              key={m.subjectId}
+              value={m.subjectId}
+            >
+              {m.subject?.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={teacherForm.teacherId}
+          onChange={(e) =>
+            setTeacherForm((p) => ({
+              ...p,
+              teacherId: e.target.value,
+            }))
+          }
+          className="px-3 py-2 border rounded-lg"
+        >
+          <option value="">Select Teacher</option>
+
+          {(staff ?? []).map((t: any) => (
+            <option key={t.id} value={t.id}>
+              {t.user?.firstName} {t.user?.lastName}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <button
+        onClick={() => saveTeacherMapping(sec.id)}
+        disabled={savingTeacher}
+        className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg"
+      >
+        {savingTeacher ? "Saving..." : "Assign"}
+      </button>
+    </div>
+  )}
                           </div>
                         ))}
                       </div>

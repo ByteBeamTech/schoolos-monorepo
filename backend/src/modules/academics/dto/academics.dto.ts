@@ -68,16 +68,21 @@ export class CreateSubjectDto {
   @IsString() @IsOptional()
   description?: string;
 
+
+
   @ApiPropertyOptional({ default: false })
-  @IsBoolean() @IsOptional()
-  isElective?: boolean;
+@IsBoolean()
+@IsOptional()
+isElective?: boolean;
 }
+
+  
+  
 
 export class UpdateSubjectDto {
   @ApiPropertyOptional() @IsString()  @IsOptional() name?:        string;
   @ApiPropertyOptional() @IsString()  @IsOptional() code?:        string;
   @ApiPropertyOptional() @IsString()  @IsOptional() description?: string;
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() isElective?:  boolean;
 }
 
 // ── Teacher Mapping ───────────────────────────────────────────────────────────
@@ -111,6 +116,12 @@ export class CreateSubjectMappingDto {
   @IsString() @IsNotEmpty()
   subjectId!: string;
 
+  
+  @ApiProperty({ description: 'Academic Session ID' })
+@IsString()
+@IsNotEmpty()
+sessionId!: string;
+  
   @ApiPropertyOptional({ example: 5 })
   @IsInt() @Min(1) @Max(10) @IsOptional()
   weeklyPeriods?: number;

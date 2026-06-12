@@ -408,31 +408,32 @@ async findSessions(tenantId: string) {
 
       return updated;
     }
+const section = await this.prisma.section.findFirst({
+  where: {
+    id: dto.sectionId,
+    tenantId,
+  },
+});
 
-    const mapping = await this.prisma.teacherAssignment.create({
-      data: {
-        tenantId,
+if (!section) {
+  throw new NotFoundException('Section not found');
+}
 
-        section: {
-          connect: {
-            id: dto.sectionId,
-          },
-        },
 
-        subject: {
-          connect: {
-            id: dto.subjectId,
-          },
-        },
+const mapping = await this.prisma.teacherAssignment.create({
+  data: {
+    tenantId,
+    branchId: section.branchId,
 
-        teacher: {
-          connect: {
-            id: dto.teacherId,
-          },
-        },
-      } as any,
-    });
+    teacherId: dto.teacherId,
+    subjectId: dto.subjectId,
 
+    classId: section.classId,
+    sectionId: dto.sectionId,
+
+    academicYearId: dto.sessionId,
+  },
+});
     await this.audit.logCreate({
       tenantId,
       actorId,
@@ -466,6 +467,7 @@ async findSessions(tenantId: string) {
     });
   }
 
+
   // ── Subject Mappings ──────────────────────────────────────────────────────
 
   async createSubjectMapping(
@@ -473,9 +475,10 @@ async findSessions(tenantId: string) {
     dto: any,
     actorId: string,
   ) {
-    const existing = await (this.prisma as any).subjectMapping.findFirst({
+    const existing = await this.prisma.subjectMapping.findFirst({
       where: {
         tenantId,
+	academicYearId: dto.sessionId,
         classId: dto.classId,
         subjectId: dto.subjectId,
       },
@@ -485,9 +488,10 @@ async findSessions(tenantId: string) {
       return existing;
     }
 
-    const mapping = await (this.prisma as any).subjectMapping.create({
+    const mapping = await this.prisma.subjectMapping.create({
       data: {
         tenantId,
+	academicYearId: dto.sessionId,
         classId: dto.classId,
         subjectId: dto.subjectId,
         weeklyPeriods: dto.weeklyPeriods ?? 5,
@@ -532,7 +536,7 @@ async findSessions(tenantId: string) {
       };
     }
 
-    return (this.prisma as any).subjectMapping.findMany({
+    return this.prisma.subjectMapping.findMany({
       where,
       include: {
         subject: {
@@ -540,7 +544,6 @@ async findSessions(tenantId: string) {
             id: true,
             name: true,
             code: true,
-            isElective: true,
           },
         },
       },
@@ -737,6 +740,130 @@ async generateRollNumbers(
     class: section.class.name,
     section: section.name,
     message: 'Roll numbers generated successfully',
+  };
+}
+
+async getTeacherAssignmentGrid(
+  tenantId: string,
+  sectionId: string,
+  academicYearId: string,
+) {
+  const section = await this.prisma.section.findFirst({
+    where: {
+      id: sectionId,
+      tenantId,
+    },
+    select: {
+      id: true,
+      classId: true,
+      name: true,
+    },
+  });
+
+  if (!section) {
+    throw new NotFoundException('Section not found');
+  }
+
+  const mappings = await this.prisma.subjectMapping.findMany({
+    where: {
+      tenantId,
+      classId: section.classId,
+      academicYearId,
+    },
+    include: {
+      subject: true,
+    },
+  });
+
+  const result: any[] = [];
+
+  for (const mapping of mappings) {
+    const teachers =
+      await this.prisma.teacherSubjectPreference.findMany({
+        where: {
+          tenantId,
+          subjectId: mapping.subjectId,
+        },
+        include: {
+          staff: {
+            include: {
+              user: true,
+            },
+          },
+        },
+      });
+
+    const assignment =
+      await this.prisma.teacherAssignment.findFirst({
+        where: {
+          tenantId,
+          sectionId,
+          subjectId: mapping.subjectId,
+          academicYearId,
+        },
+      });
+
+    result.push({
+      subjectId: mapping.subjectId,
+      subjectName: mapping.subject.name,
+      assignedTeacherId: assignment?.teacherId ?? null,
+
+      teachers: teachers.map((t) => ({
+        id: t.staff.id,
+        name: `${t.staff.user.firstName} ${t.staff.user.lastName}`,
+      })),
+    });
+  }
+
+  return result;
+}
+
+async saveTeacherAssignmentGrid(
+  tenantId: string,
+  sectionId: string,
+  academicYearId: string,
+  assignments: {
+    subjectId: string;
+    teacherId: string;
+  }[],
+) {
+  const section = await this.prisma.section.findFirst({  where: {    id: sectionId,
+    tenantId,  },  select: {
+    classId: true,
+    branchId: true,
+  },
+});
+	
+  if (!section) {
+    throw new NotFoundException('Section not found');
+  }
+
+  await this.prisma.teacherAssignment.deleteMany({
+    where: {
+      tenantId,
+      sectionId,
+      academicYearId,
+    },
+  });
+
+  if (assignments.length) {
+    await this.prisma.teacherAssignment.createMany({
+      data: assignments.map((a) => ({
+        tenantId,
+	branchId: section.branchId,
+        teacherId: a.teacherId,
+        subjectId: a.subjectId,
+        classId: section.classId,
+        sectionId,
+        academicYearId,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  return {
+    success: true,
+    assignments: assignments.length,
   };
 }
 

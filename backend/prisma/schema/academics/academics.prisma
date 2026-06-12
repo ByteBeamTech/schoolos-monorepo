@@ -13,6 +13,7 @@ model Class {
   TeacherAssignment    TeacherAssignment[]
   students             Student[]
   calendarEventTargets AcademicCalendarEventTarget[]
+  subjectMappings      SubjectMapping[]
 
   @@unique([tenantId, branchId, sessionId, name])
   @@index([tenantId])

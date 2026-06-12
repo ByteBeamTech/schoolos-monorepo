@@ -57,6 +57,22 @@ export class StaffService {
       },
     });
 
+    await this.prisma.staffProfile.create({
+  data: {
+    tenantId,
+    branchId: dto.branchId ?? null,
+
+    staffId: staff.id,
+    userId: user.id,
+
+    firstName: user.firstName,
+    lastName: user.lastName,
+
+    qualification: dto.qualification ?? null,
+    experience: dto.experience ?? null,
+  },
+});
+
     await this.audit.logCreate({
       tenantId, actorId,
       entityType: 'Staff', entityId: staff.id,

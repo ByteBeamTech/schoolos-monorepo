@@ -1,3 +1,4 @@
+import { SaveTeacherGridDto } from '../dto/teacher-grid.dto';
 import {
   Controller, Get, Post, Patch, Param,
   Body, Query, UseGuards,
@@ -237,4 +238,47 @@ findSessions(@CurrentUser() user: AuthenticatedUser) {
   return this.service.findSessions(user.tenantId);
 }
 
+@Get('sections/:sectionId/teacher-grid')
+@Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+@ApiOperation({
+  summary: 'Get teacher assignment grid for a section',
+})
+getTeacherGrid(
+  @Param('sectionId') sectionId: string,
+  @Query('academicYearId') academicYearId: string,
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  return this.service.getTeacherAssignmentGrid(
+    user.tenantId,
+    sectionId,
+    academicYearId,
+  );
+}
+
+@Post('sections/:sectionId/teacher-grid')
+@Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+@ApiOperation({
+  summary: 'Save teacher assignments for a section',
+})
+saveTeacherGrid(
+  @Param('sectionId') sectionId: string,
+
+  @Body()
+  body: {
+    academicYearId: string;
+    assignments: {
+      subjectId: string;
+      teacherId: string;
+    }[];
+  },
+
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  return this.service.saveTeacherAssignmentGrid(
+    user.tenantId,
+    sectionId,
+    body.academicYearId,
+    body.assignments,
+  );
+}
 }

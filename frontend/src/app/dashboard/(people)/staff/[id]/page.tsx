@@ -1,7 +1,7 @@
 "use client";
-import { use, useState }  from "react";
+import { use, useState, useEffect }  from "react";
 import { useRouter }       from "next/navigation";
-import { ArrowLeft, Edit2, Save, X, Mail, Phone, Briefcase } from "lucide-react";
+import { ArrowLeft, Edit2, BookOpen, Check, Save, X, Mail, Phone, Briefcase } from "lucide-react";
 import { Badge }   from "@/components/ui/badge";
 import { useApi }  from "@/lib/hooks";
 import { apiClient } from "@/lib/api";
@@ -19,11 +19,54 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
   const router  = useRouter();
 
   const { data: staff, loading, refetch } = useApi<any>(`/staff/${id}`);
+  const { data: subjects } =
+  useApi<any[]>("/academics/subjects");
+
+const {
+  data: teacherSubjects,
+  refetch: refetchTeacherSubjects,
+} = useApi<any[]>(
+  `/staff/${id}/subject-preferences`
+);
   const { toast } = useToast();
 
   const [editing, setEditing] = useState(false);
   const [saving,  setSaving]  = useState(false);
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [savingSubjects, setSavingSubjects] = useState(false);
   const [form, setForm] = useState({ designation: "", department: "", qualification: "", experience: "" });
+  useEffect(() => {
+  if (teacherSubjects) {
+    setSelectedSubjects(
+      teacherSubjects.map((s: any) => s.id)
+    );
+  }
+}, [teacherSubjects]);
+
+  const saveSubjectPreferences = async () => {
+  setSavingSubjects(true);
+
+  try {
+    await apiClient.post(
+      `/staff/${id}/subject-preferences`,
+      {
+        subjectIds: selectedSubjects,
+      }
+    );
+
+    toast.success("Subject preferences updated");
+    refetchTeacherSubjects();
+  } catch (err: any) {
+    toast.error(
+      err?.response?.data?.message ||
+      "Failed to save subject preferences"
+    );
+  } finally {
+    setSavingSubjects(false);
+  }
+}; 
+
+
 
   const startEdit = () => {
     setForm({
@@ -163,6 +206,53 @@ export default function StaffDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           )}
         </div>
+{/* Subject Preferences */}
+<div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 md:col-span-2">
+  <div className="flex items-center gap-2 mb-4">
+    <BookOpen className="w-4 h-4 text-blue-600" />
+    <h2 className="font-semibold text-slate-900">
+      Subject Preferences
+    </h2>
+  </div>
+
+  <p className="text-sm text-slate-500 mb-4">
+    Select the subjects this teacher can teach.
+  </p>
+
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    {(subjects ?? []).map((subject: any) => (
+      <label
+        key={subject.id}
+        className="flex items-center gap-2 p-3 border rounded-lg hover:bg-slate-50 cursor-pointer"
+      >
+        <input
+          type="checkbox"
+          checked={selectedSubjects.includes(subject.id)}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setSelectedSubjects((prev) => [...prev, subject.id]);
+            } else {
+              setSelectedSubjects((prev) =>
+                prev.filter((id) => id !== subject.id)
+              );
+            }
+          }}
+        />
+
+        <span className="text-sm">{subject.name}</span>
+      </label>
+    ))}
+  </div>
+
+  <button
+    onClick={saveSubjectPreferences}
+    disabled={savingSubjects}
+    className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg"
+  >
+    {savingSubjects ? "Saving..." : "Save Subject Preferences"}
+  </button>
+</div>
+
       </div>
     </div>
   );

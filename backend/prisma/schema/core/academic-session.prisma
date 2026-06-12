@@ -1,23 +1,24 @@
 model AcademicSession {
-  id                   String                  @id @default(cuid())
-  tenantId             String
-  name                 String
-  startDate            DateTime
-  endDate              DateTime
-  isCurrent            Boolean                 @default(false)
-  isLocked             Boolean                 @default(false)
-  createdAt            DateTime                @default(now())
-  updatedAt            DateTime                @updatedAt
-  tenant               Tenant                  @relation(fields: [tenantId], references: [id])
-  attendances          Attendance[]
-  classes              Class[]
-  exams                Exam[]
-  feePlans             FeePlan[]
-  students             Student[] @relation("StudentSession")
-  admissionApplications AdmissionApplication[] @relation("AdmissionApplicationSession")
-  admissionsOpen       Boolean                 @default(true)
-  calendarEvents       AcademicCalendarEvent[]
-  rollNumbersGenerated Boolean                 @default(false)
+  id                    String                  @id @default(cuid())
+  tenantId              String
+  name                  String
+  startDate             DateTime
+  endDate               DateTime
+  isCurrent             Boolean                 @default(false)
+  isLocked              Boolean                 @default(false)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  tenant                Tenant                  @relation(fields: [tenantId], references: [id])
+  attendances           Attendance[]
+  classes               Class[]
+  exams                 Exam[]
+  feePlans              FeePlan[]
+  students              Student[]               @relation("StudentSession")
+  admissionApplications AdmissionApplication[]  @relation("AdmissionApplicationSession")
+  admissionsOpen        Boolean                 @default(true)
+  calendarEvents        AcademicCalendarEvent[]
+  rollNumbersGenerated  Boolean                 @default(false)
+  SubjectMapping        SubjectMapping[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isCurrent])

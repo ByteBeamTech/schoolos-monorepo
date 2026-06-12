@@ -65,7 +65,7 @@ model User {
   lateFeesApplied  LateFee[] @relation("LateFeeApplier")
   lateFeesReversed LateFee[] @relation("LateFeeReverser")
 
-  studentProfile Student? // Back-relation for Student.user
+  studentProfile  Student? // Back-relation for Student.user
   guardianProfile Guardian? @relation("GuardianUser") // Back-relation for Guardian.user
   // 🔥 HIGH-PERFORMANCE CONSTRAINTS & INDEXES
 

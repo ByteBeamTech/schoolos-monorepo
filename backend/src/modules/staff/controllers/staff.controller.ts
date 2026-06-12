@@ -92,7 +92,7 @@ export class StaffController {
   ) {
     const prefs = await (this.service as any).prisma.teacherSubjectPreference.findMany({
       where:   { tenantId: user.tenantId, staffId },
-      include: { subject: { select: { id: true, name: true, code: true, isElective: true } } },
+      include: { subject: { select: { id: true, name: true, code: true,  } } },
     });
     return prefs.map((p: any) => p.subject);
   }
