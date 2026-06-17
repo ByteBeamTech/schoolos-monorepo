@@ -149,22 +149,31 @@ const studentFilterSchema = {
       const studentId = (res as any).id ?? (res as any).data?.id;
 
       // Create guardian if name provided
-      if (form.guardianFirstName && studentId) {
-        await apiClient.post("/students/guardians", {
-          firstName: form.guardianFirstName,
-          lastName:  form.guardianLastName,
-          phone:     form.guardianPhone    || undefined,
-          email:     form.guardianEmail    || undefined,
-        }).then((g: any) => {
-          const gId = g.id ?? g.data?.id;
-          if (gId) return apiClient.post(`/students/${studentId}/guardians/link`, {
-            guardianId: gId, relation: form.guardianRelation, isPrimary: true,
-          });
-        }).catch(() => {}); // Non-fatal
-      }
+      // Create guardian if name provided
+if (form.guardianFirstName && studentId) {
+  await apiClient
+    .post("/students/guardians", {
+      firstName: form.guardianFirstName,
+      lastName: form.guardianLastName,
+      phone: form.guardianPhone || undefined,
+      email: form.guardianEmail || undefined,
+    })
+    .then((g: any) => {
+      const gId = g.id ?? g.data?.id;
 
-      setShowForm(false);
-      
+      if (gId) {
+        return apiClient.post(`/students/${studentId}/guardians`, {
+          guardianId: gId,
+          relation: form.guardianRelation,
+          isPrimary: true,
+        });
+      }
+    })
+    .catch((err) => {
+      console.error("Guardian creation/linking failed", err);
+      toast.error("Guardian could not be linked");
+    });
+}
 setForm({ 
   firstName:"", lastName:"",  dateOfBirth:"", gender:"MALE",
   sectionId:"", academicYear: currentSession?.id ?? "",

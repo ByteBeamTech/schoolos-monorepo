@@ -1,6 +1,7 @@
 "use client";
-import { use, useState, useEffect }  from "react";
-import { useRouter }       from "next/navigation";
+import { use, useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+
 import { ArrowLeft, Edit2, BookOpen, Check, Save, X, Mail, Phone, Briefcase } from "lucide-react";
 import { Badge }   from "@/components/ui/badge";
 import { useApi }  from "@/lib/hooks";
@@ -14,8 +15,9 @@ function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-export default function StaffDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id }  = use(params);
+export default function StaffDetailPage() {
+  const params = useParams();
+  const id = params.id as string;
   const router  = useRouter();
 
   const { data: staff, loading, refetch } = useApi<any>(`/staff/${id}`);
@@ -35,14 +37,13 @@ const {
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
   const [savingSubjects, setSavingSubjects] = useState(false);
   const [form, setForm] = useState({ designation: "", department: "", qualification: "", experience: "" });
-  useEffect(() => {
-  if (teacherSubjects) {
+useEffect(() => {
+  if (Array.isArray(teacherSubjects)) {
     setSelectedSubjects(
       teacherSubjects.map((s: any) => s.id)
     );
   }
 }, [teacherSubjects]);
-
   const saveSubjectPreferences = async () => {
   setSavingSubjects(true);
 

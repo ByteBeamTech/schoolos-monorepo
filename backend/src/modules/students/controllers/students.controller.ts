@@ -2,8 +2,12 @@
 
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { StudentsService } from '../services/students.service';
-import { CreateStudentDto, UpdateStudentDto, LinkGuardianDto } from '../dto/student.dto';
-
+import {
+  CreateStudentDto,
+  UpdateStudentDto,
+  LinkGuardianDto,
+  CreateGuardianDto,
+} from '../dto/student.dto';
 import { JwtGuard } from '@core/auth/guards/jwt.guard';
 import { RolesGuard } from '@core/roles/roles.guard';
 import { Roles } from '@core/roles/roles.decorator';
@@ -88,6 +92,31 @@ export class StudentsController {
     if (!user.branchId) throw new Error('Branch checkpoint failed.');
     return this.service.linkGuardian(user.tenantId, user.branchId, id, dto, user.id);
   }
+
+  @Post('guardians')
+@Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+async createGuardian(
+  @Body() dto: CreateGuardianDto,
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  return this.service.createGuardian(
+    user.tenantId,
+    dto,
+    user.id,
+  );
+}
+
+@Get('guardians/search')
+@Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+async searchGuardians(
+  @Query('q') q: string,
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  return this.service.searchGuardians(
+    user.tenantId,
+    q,
+  );
+}
 
   @Get(':id/guardians')
   @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT')

@@ -54,6 +54,49 @@ export class TimetableService {
       },
     });
   }
+    
+  async replaceSectionTimetable(
+  tenantId: string,
+  sectionId: string,
+  slots: any[],
+) {
+  return this.prisma.$transaction(async (tx) => {
+
+    await tx.timetableSlot.deleteMany({
+      where: {
+        tenantId,
+        sectionId,
+      },
+    });
+
+    if (slots.length === 0) {
+      return {
+        success: true,
+        slotsReplaced: 0,
+      };
+    }
+
+    const inserted = await tx.timetableSlot.createMany({
+      data: slots.map((slot) => ({
+        tenantId,
+        sectionId,
+        subjectId: slot.subjectId,
+        teacherId: slot.teacherId,
+        dayOfWeek: slot.dayOfWeek,
+        periodNumber: slot.periodNumber,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+      })),
+    });
+
+    return {
+      success: true,
+      slotsReplaced: inserted.count,
+    };
+  });
+}  
+
+
 
   async bulkCreate(tenantId: string, dto: BulkCreateTimetableDto) {
     const results = {

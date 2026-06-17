@@ -114,34 +114,7 @@ export class CreateSubjectDto {
   @ApiPropertyOptional() @IsString() @IsOptional() code?: string;
 }
 
-export class CreateFeeTypeDto {
-  @ApiProperty() @IsString() @IsNotEmpty() name!: string;
-  @ApiPropertyOptional() @IsString() @IsOptional() code?: string;
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() isMandatory?: boolean;
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() isRecurring?: boolean;
-}
 
-export class CreateFeeStructureDto {
-  @ApiProperty({ example: 'Tuition Fee Q1' })
-  @IsString() @IsNotEmpty()
-  name!: string;
-
-  @ApiProperty({ example: 'cls_abc123' })
-  @IsString() @IsNotEmpty()
-  classId!: string;
-
-  @ApiProperty({ example: 'MONTHLY', description: 'FeeFrequency enum value' })
-  @IsString() @IsNotEmpty()
-  frequency!: string;
-
-  @ApiProperty({ example: 5000 })
-  @IsNumber() @IsNotEmpty()
-  amount!: number;
-
-  @ApiPropertyOptional({ example: 'ft_abc123' })
-  @IsString() @IsOptional()
-  feeTypeId?: string;
-}
 
 export class CreateRouteDto {
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
@@ -204,11 +177,27 @@ export class InviteUserDto {
 
 export class UpdateUserRoleDto {
   @ApiProperty({ enum: UserRole })
-  @IsEnum(UserRole) @IsNotEmpty()
+  @IsEnum(UserRole)
+  @IsNotEmpty()
   role!: UserRole;
 
-  @ApiPropertyOptional() @IsBoolean() @IsOptional() isActive?: boolean;
+  @ApiPropertyOptional()
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+  })
+  @IsOptional()
+  branchIds?: string[];
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  defaultBranchId?: string;
 }
+
 
 export class GetUsersFilterDto {
   @ApiPropertyOptional({ enum: UserRole }) @IsEnum(UserRole) @IsOptional() role?: UserRole;

@@ -1,14 +1,15 @@
 "use client";
-import { useState, useEffect }  from "react";
+import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import {
   Building2, Users, BookOpen, Banknote, Bus,
-  Palette, Shield, ChevronRight, Plus, Trash2, Check,
+  Palette, Shield, ChevronRight, Plus, Trash2, Check, Edit2
 } from "lucide-react";
-import { PageHeader }  from "@/components/ui/page-header";
-import { apiClient }   from "@/lib/api";
-import { toast }       from "sonner";
+import { PageHeader } from "@/components/ui/page-header";
+import { apiClient } from "@/lib/api";
+import { toast } from "sonner";
 
-type Tab = "profile"|"branches"|"users"|"academics"|"fees"|"transport"|"branding"|"security";
+type Tab = "profile" | "branches" | "users" | "academics" | "fees" | "transport" | "branding" | "security";
 
 const TABS: { id: Tab; label: string; icon: any }[] = [
   { id: "profile",   label: "School Profile", icon: Building2 },
@@ -257,7 +258,7 @@ function BranchesTab() {
                         <td className="px-5 py-3 text-slate-600">{b.principal ?? "—"}</td>
                         <td className="px-5 py-3 text-slate-600">{b.phone ?? "—"}</td>
                         <td className="px-5 py-3 text-right">
-                          <button onClick={() => remove(b.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded">
+                          <button onClick={() => remove(b.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded transition-colors">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </td>
@@ -277,18 +278,35 @@ const ROLES = ["SCHOOL_ADMIN","PRINCIPAL","VICE_PRINCIPAL","TEACHER","ACCOUNTANT
 
 function UsersTab() {
   const { data, loading, refetch } = useFetch<any[]>("/school-management/users");
+  const { data: branches } =  useFetch<any[]>("/school-management/branches");
+  
   const [show,   setShow]   = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ firstName:"", lastName:"", email:"", role:"TEACHER", branchId:"", });
+  const [editForm, setEditForm] = useState({ role: "TEACHER", isActive: true, branchIds: [] as string[],  defaultBranchId: "" });
+  
   const f = (k: string) => (v: string) => setForm(p => ({ ...p, [k]: v }));
-  const { data: branches } =  useFetch<any[]>("/school-management/branches");
+
   const invite = async () => {
     const ok = await apiCall(
       () => apiClient.post("/school-management/users/invite", form),
       "Invitation sent",
       setSaving,
     );
-    if (ok) { setShow(false); setForm({ firstName:"",lastName:"",email:"",role:"TEACHER" }); refetch(); }
+    if (ok) { setShow(false); setForm({ firstName:"",lastName:"",email:"",role:"TEACHER", branchId:"" }); refetch(); }
+  };
+
+  const updateUser = async () => {
+    if (!editingUser) return;
+    const ok = await apiCall(
+      () => apiClient.put(`/school-management/users/${editingUser.id}/role`, editForm),
+      "User updated",
+      setSaving
+    );
+    if (ok) { setShowEdit(false); refetch(); }
   };
 
   const remove = async (id: string) => {
@@ -309,6 +327,8 @@ function UsersTab() {
   return (
     <div className="space-y-4">
       <Hdr title="Users & Roles" action={<AddBtn label="Invite User" onClick={() => setShow(p => !p)} />} />
+      
+      {/* Invite Modal */}
       {show && (
         <Card>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
@@ -317,14 +337,86 @@ function UsersTab() {
             <Field label="Email *"      value={form.email}     onChange={f("email")} type="email" required />
             <Sel label="Role" value={form.role} onChange={f("role")}
               options={ROLES.map(r => ({ value: r, label: r.replace(/_/g," ") }))} />
-          <Sel  label="Branch"  value={form.branchId}  onChange={f("branchId")}   options={(branches ?? []).map((b:any) => ({     value: b.id,    label: b.name,  }))}/>
-	      </div>
+            <Sel  label="Branch"  value={form.branchId}  onChange={f("branchId")}  options={[{value: "", label: "All / Main"}, ...(branches ?? []).map((b:any) => ({  value: b.id,  label: b.name,  }))]}/>
+          </div>
           <div className="flex gap-2">
             <SaveBtn saving={saving} onClick={invite} />
             <button onClick={() => setShow(false)} className="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg">Cancel</button>
           </div>
         </Card>
       )}
+
+      {/* Edit User Modal */}
+      {showEdit && editingUser && (
+        <Card>
+          <Hdr title={`Edit ${editingUser.firstName}`} />
+          <div className="grid grid-cols-2 gap-4 mb-4">
+             <Sel label="Role" value={editForm.role} onChange={(v) => setEditForm(p => ({ ...p, role: v }))}
+              options={ROLES.map(r => ({ value: r, label: r.replace(/_/g," ") }))} />
+             <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>
+                <select value={editForm.isActive ? "true" : "false"} onChange={e => setEditForm(p => ({ ...p, isActive: e.target.value === "true" }))}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="true">Active</option>
+                  <option value="false">Inactive</option>
+                </select>
+             </div>
+          </div>
+	  <div className="mb-4">
+   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+     Branch Access
+   </label>
+   <div className="grid grid-cols-2 gap-2">
+     {(branches ?? []).map((b:any) => (
+       <label
+         key={b.id}
+         className="flex items-center gap-2 text-sm"
+       >
+         <input
+           type="checkbox"
+           checked={editForm.branchIds.includes(b.id)}
+           onChange={(e) => {
+             if (e.target.checked) {
+               setEditForm(p => ({
+                 ...p,
+                 branchIds: [...p.branchIds, b.id],
+               }));
+             } else {
+               setEditForm(p => ({
+                 ...p,
+                 branchIds: p.branchIds.filter(
+                   x => x !== b.id
+                 ),
+               }));
+             }
+           }}
+         />
+         {b.name}
+       </label>
+     ))}
+   </div>
+ </div>
+ <Sel
+   label="Default Branch"
+   value={editForm.defaultBranchId}
+   onChange={(v:string)=>
+     setEditForm(p => ({
+       ...p,
+       defaultBranchId: v,
+     }))
+   }
+   options={(branches ?? []).map((b:any) => ({
+     value: b.id,
+     label: b.name,
+   }))}
+ />
+          <div className="flex gap-2 mt-4">
+            <SaveBtn saving={saving} onClick={updateUser} />
+            <button onClick={() => setShowEdit(false)} className="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg">Cancel</button>
+          </div>
+        </Card>
+      )}
+
       {loading
         ? <div className="h-40 bg-slate-100 rounded-xl animate-pulse" />
         : (
@@ -332,7 +424,7 @@ function UsersTab() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  {["User","Email","Role","Status",""].map(h => (
+                {["User","Email","Role","Branch","Status",""].map(h => (
                     <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -343,26 +435,63 @@ function UsersTab() {
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2.5">
                         <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-bold">
-                          {u.firstName?.[0]}{u.lastName?.[0]}
+                          {u.firstName?.charAt(0)}{u.lastName?.charAt(0)}
                         </div>
                         <span className="font-medium">{u.firstName} {u.lastName}</span>
                       </div>
                     </td>
+
                     <td className="px-5 py-3 text-slate-500">{u.email}</td>
                     <td className="px-5 py-3">
                       <span className={`text-xs font-medium px-2 py-1 rounded-full ${roleColor(u.role)}`}>
                         {u.role.replace(/_/g," ")}
                       </span>
                     </td>
+                    <td className="px-5 py-3 text-slate-600">
+                    {u.branchMappings?.length
+                      ? u.branchMappings.map((b:any) => b.branch?.name).filter(Boolean).join(", ")
+                      : "—"}
+                    </td>
+
                     <td className="px-5 py-3">
                       <span className={`text-xs font-medium px-2 py-1 rounded-full ${u.isActive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
                         {u.isActive ? "Active" : "Inactive"}
                       </span>
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <button onClick={() => remove(u.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <button
+
+
+			onClick={() => {
+  setEditingUser(u);
+  const branchIds =
+    u.branchMappings?.map(
+      (b:any) => b.branchId
+    ) ?? [];
+  const defaultBranch =
+    u.branchMappings?.find(
+      (b:any) => b.isDefault
+    );
+  setEditForm({
+    role: u.role,
+    isActive: u.isActive,
+    branchIds,
+    defaultBranchId:
+      defaultBranch?.branchId ?? "",
+  });
+  setShowEdit(true);
+}}
+                          
+
+                          className="p-1.5 text-slate-400 hover:text-blue-600 rounded transition-colors"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => remove(u.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -481,120 +610,68 @@ function AcademicsTab() {
 const FREQS = ["MONTHLY","QUARTERLY","HALF_YEARLY","ANNUAL","ONE_TIME"];
 
 function FeeSetupTab() {
-  const { data, loading, refetch } = useFetch<any>("/school-management/fees");
-  const { data: ac } = useFetch<any>("/school-management/academics");
-  const [showT, setShowT] = useState(false);
-  const [showS, setShowS] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [tf, setTf] = useState({ name: "", description: "", isMandatory: false, isRecurring: true });
-  const [sf, setSf] = useState({ name: "", classId: "", frequency: "MONTHLY", amount: "", feeTypeId: "" });
-
-  const post = async (url: string, body: any, onSuccess: () => void) => {
-    const ok = await apiCall(() => apiClient.post(url, body), "Saved", setSaving);
-    if (ok) { onSuccess(); refetch(); }
-  };
-
-  const del = async (id: string) => {
-    if (!confirm("Delete this fee structure?")) return;
-    await apiCall(() => apiClient.delete(`/school-management/fees/structures/${id}`), "Deleted", setSaving);
-    refetch();
-  };
+  const router = useRouter();
 
   return (
     <div className="space-y-5">
-      <Card>
-        <Hdr title="Fee Types" action={<AddBtn label="Add Type" onClick={() => setShowT(p => !p)} />} />
-        {showT && (
-          <div className="grid grid-cols-2 gap-3 mb-4 pb-4 border-b border-slate-100">
-            <Field label="Name *"      value={tf.name}        onChange={(v: string) => setTf(p => ({ ...p, name: v }))}        required />
-            <Field label="Description" value={tf.description} onChange={(v: string) => setTf(p => ({ ...p, description: v }))} />
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                <input type="checkbox" checked={tf.isMandatory} onChange={e => setTf(p => ({ ...p, isMandatory: e.target.checked }))} className="rounded" />
-                Mandatory
-              </label>
-              <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                <input type="checkbox" checked={tf.isRecurring} onChange={e => setTf(p => ({ ...p, isRecurring: e.target.checked }))} className="rounded" />
-                Recurring
-              </label>
-            </div>
-            <div className="flex items-end gap-2">
-              <SaveBtn saving={saving} onClick={() => post(
-                "/school-management/fees/types", tf,
-                () => { setShowT(false); setTf({ name:"",description:"",isMandatory:false,isRecurring:true }); }
-              )} />
-              <button onClick={() => setShowT(false)} className="px-3 py-2 text-sm bg-slate-100 rounded-lg">Cancel</button>
-            </div>
-          </div>
-        )}
-        <div className="flex flex-wrap gap-2">
-          {(data?.feeTypes ?? []).map((t: any) => (
-            <span key={t.id} className="text-sm bg-green-50 text-green-800 px-3 py-1.5 rounded-full border border-green-100">
-              {t.name}{t.isMandatory && <span className="text-xs ml-1 text-green-600">(mandatory)</span>}
-            </span>
-          ))}
-          {!loading && !data?.feeTypes?.length && <p className="text-sm text-slate-400">No fee types yet.</p>}
-        </div>
-      </Card>
 
       <Card>
-        <Hdr title="Fee Structures" action={<AddBtn label="Add Structure" onClick={() => setShowS(p => !p)} />} />
-        {showS && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 pb-4 border-b border-slate-100">
-            <Field label="Name *"        value={sf.name}   onChange={(v: string) => setSf(p => ({ ...p, name: v }))}   required />
-            <Sel   label="Class *"       value={sf.classId} onChange={(v: string) => setSf(p => ({ ...p, classId: v }))}
-              options={[{ value: "", label: "Select class" }, ...(ac?.classes ?? []).map((c: any) => ({ value: c.id, label: c.name }))]} />
-            <Sel   label="Frequency"     value={sf.frequency} onChange={(v: string) => setSf(p => ({ ...p, frequency: v }))}
-              options={FREQS.map(f => ({ value: f, label: f.replace(/_/g," ") }))} />
-            <Field label="Amount (₹) *"  value={sf.amount} onChange={(v: string) => setSf(p => ({ ...p, amount: v }))} type="number" required />
-            <Sel   label="Fee Type"      value={sf.feeTypeId} onChange={(v: string) => setSf(p => ({ ...p, feeTypeId: v }))}
-              options={[{ value: "", label: "None" }, ...(data?.feeTypes ?? []).map((t: any) => ({ value: t.id, label: t.name }))]} />
-            <div className="flex items-end gap-2">
-              <SaveBtn saving={saving} onClick={() => post(
-                "/school-management/fees/structures",
-                { ...sf, amount: Number(sf.amount), feeTypeId: sf.feeTypeId || undefined },
-                () => { setShowS(false); setSf({ name:"",classId:"",frequency:"MONTHLY",amount:"",feeTypeId:"" }); }
-              )} />
-              <button onClick={() => setShowS(false)} className="px-3 py-2 text-sm bg-slate-100 rounded-lg">Cancel</button>
+        <Hdr title="Student Billing" />
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+
+          <button
+            onClick={() =>
+              router.push("/dashboard/billing")
+            }
+            className="p-4 border rounded-xl hover:bg-slate-50 text-left"
+          >
+            <div className="font-semibold">
+              Fee Plans
             </div>
-          </div>
-        )}
-        {loading
-          ? <div className="h-24 bg-slate-100 rounded-lg animate-pulse" />
-          : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50">
-                  {["Name","Class","Frequency","Amount",""].map(h => (
-                    <th key={h} className="text-left px-4 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {(data?.feeStructures ?? []).map((s: any) => (
-                  <tr key={s.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium">{s.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{s.class?.name ?? "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{s.frequency}</td>
-                    <td className="px-4 py-3 font-mono">₹{Number(s.amount).toLocaleString("en-IN")}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button onClick={() => del(s.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {!data?.feeStructures?.length && (
-                  <tr><td colSpan={5} className="px-4 py-4 text-center text-slate-400 text-sm">No fee structures yet.</td></tr>
-                )}
-              </tbody>
-            </table>
-          )}
+
+            <div className="text-sm text-slate-500">
+              Create and manage fee plans
+            </div>
+          </button>
+
+          <button
+            onClick={() =>
+              router.push("/dashboard/billing")
+            }
+            className="p-4 border rounded-xl hover:bg-slate-50 text-left"
+          >
+            <div className="font-semibold">
+              Student Billing
+            </div>
+
+            <div className="text-sm text-slate-500">
+              Generate invoices and assign plans
+            </div>
+          </button>
+
+          <button
+            onClick={() =>
+              router.push("/dashboard/billing/analytics")
+            }
+            className="p-4 border rounded-xl hover:bg-slate-50 text-left"
+          >
+            <div className="font-semibold">
+              Billing Analytics
+            </div>
+
+            <div className="text-sm text-slate-500">
+              Revenue reports and collections
+            </div>
+          </button>
+
+        </div>
+
       </Card>
+
     </div>
   );
 }
-
 // ── Transport Tab ─────────────────────────────────────────────────────────────
 function TransportTab() {
   const { data, loading, refetch } = useFetch<any>("/school-management/transport");
@@ -796,6 +873,7 @@ export default function SchoolManagementPage() {
   const [tab, setTab] = useState<Tab>("profile");
   const { data: ov }  = useFetch<any>("/school-management/overview");
 
+  // SYNTAX FIX: Removed the improperly placed updateUser function from inside the object declaration
   const PANELS: Record<Tab, React.ReactNode> = {
     profile:   <ProfileTab />,
     branches:  <BranchesTab />,

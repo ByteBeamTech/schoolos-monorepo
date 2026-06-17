@@ -284,6 +284,61 @@ const generatedAdmissionNumber =
           ...(dto.sectionId   !== undefined && { sectionId:   dto.sectionId ?? null }),
           ...(dto.rollNumber  !== undefined && { rollNumber:  dto.rollNumber ?? null }),
           ...(dto.isActive    !== undefined && { isActive:    dto.isActive }),
+	  ...(dto.religion    !== undefined && { religion:    dto.religion ?? null }),
+          ...(dto.category    !== undefined && { category:    dto.category ?? null }),
+          ...(dto.status      !== undefined && { status:      dto.status }),
+	  ...(dto.email !== undefined && {   email: dto.email || null,}), ...(dto.phone !== undefined && {  phone: dto.phone || null,}),
+          ...(dto.address !== undefined && {  address: dto.address || null,}),
+          ...(dto.apaarId !== undefined && {  apaarId: dto.apaarId || null,}),
+
+          ...(dto.boardRegistrationNumber !== undefined && {  boardRegistrationNumber:    dto.boardRegistrationNumber || null,}),
+          ...(dto.heightCm !== undefined && {  heightCm: dto.heightCm,}),
+          ...(dto.weightKg !== undefined && {  weightKg: dto.weightKg,}),
+         ...(dto.lastHealthCheck !== undefined && {  lastHealthCheck: dto.lastHealthCheck    ? new Date(dto.lastHealthCheck)    : null,}),
+	 ...(dto.photoUrl !== undefined && {
+  photoUrl: dto.photoUrl || null,
+}),
+
+...(dto.admissionDate !== undefined && {
+  admissionDate: dto.admissionDate
+    ? new Date(dto.admissionDate)
+    : null,
+}),
+
+...(dto.admissionType !== undefined && {
+  admissionType: dto.admissionType,
+}),
+
+...(dto.houseId !== undefined && {
+  houseId: dto.houseId || null,
+}),
+
+...(dto.previousSchool !== undefined && {
+  previousSchool: dto.previousSchool || null,
+}),
+
+...(dto.previousClass !== undefined && {
+  previousClass: dto.previousClass || null,
+}),
+
+...(dto.previousSchoolTcNumber !== undefined && {
+  previousSchoolTcNumber:
+    dto.previousSchoolTcNumber || null,
+}),
+
+...(dto.isRte !== undefined && {
+  isRte: dto.isRte,
+}),
+
+...(dto.rteRegNumber !== undefined && {
+  rteRegNumber: dto.rteRegNumber || null,
+}),
+
+...(dto.rteApplicationId !== undefined && {
+  rteApplicationId:
+    dto.rteApplicationId || null,
+}),
+
         },
         include: { section: { include: { class: true } } },
       });
@@ -299,6 +354,53 @@ const generatedAdmissionNumber =
       return sanitizeStudent(updated);
     });
   }
+
+
+async searchGuardians(
+  tenantId: string,
+  query: string,
+) {
+  if (!query?.trim()) {
+    return [];
+  }
+
+  return this.prisma.guardian.findMany({
+    where: {
+      tenantId,
+      OR: [
+        {
+          firstName: {
+            contains: query,
+            mode: 'insensitive',
+          },
+        },
+        {
+          lastName: {
+            contains: query,
+            mode: 'insensitive',
+          },
+        },
+        {
+          phone: {
+            contains: query,
+          },
+        },
+        {
+          email: {
+            contains: query,
+            mode: 'insensitive',
+          },
+        },
+      ],
+    },
+
+    take: 20,
+
+    orderBy: {
+      firstName: 'asc',
+    },
+  });
+}
 
   /**
    * 📊 TRUTHFUL DEMOGRAPHICS CALCULATOR

@@ -1,5 +1,5 @@
 "use client";
-
+import Link from "next/link";
 import { use, useState } from "react";
 import { useRouter, useParams  } from "next/navigation";
 import {
@@ -16,7 +16,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useApi } from "@/lib/hooks";
+import { useApi, useClasses, useAcademicSessions } from "@/lib/hooks";
 import { apiClient, behaviorApi } from "@/lib/api";
 import type { BehaviorRecord, CreateBehaviorRecordRequest } from "@schoolos/api-contracts";
 import { useToast } from '@/lib/use-toast';
@@ -36,13 +36,29 @@ export default function StudentDetailPage() {
   const router = useRouter();
 
   const { data: student, loading, refetch } = useApi<any>(`/students/${id}`);
-  const { data: invoices } = useApi<any[]>(`/billing/invoices?studentId=${id}`, [id]);
+ const { data: invoiceResponse } = useApi<any>(
+  `/billing/invoices?studentId=${id}`,
+  [id],
+);
+const { data: sessions } = useAcademicSessions();
+
+const currentSession =
+  sessions?.find((s: any) => s.isCurrent) ??
+  sessions?.[0];
+
+const { data: classes } =
+  useClasses(currentSession?.id ?? "");
+
+
+
+
+const invoices = invoiceResponse?.data ?? [];
   const { data: attendance } = useApi<any>(
     `/attendance/student/${id}?fromDate=${new Date(new Date().getFullYear(), 0, 1).toISOString().split("T")[0]}&toDate=${new Date().toISOString().split("T")[0]}`,
     [id],
   );
   const { data: behaviorRecords, refetch: refetchBehavior } = useApi<BehaviorRecord[]>(`/behavior/student/${id}`, [id]);
-
+  const { data: guardians, refetch: refetchGuardians } =  useApi<any[]>(`/students/${id}/guardians`, [id]);
 
   const { toast } = useToast();
 
@@ -50,7 +66,50 @@ export default function StudentDetailPage() {
   const [saving, setSaving] = useState(false);
   const [showBehaviorForm, setShowBehaviorForm] = useState(false);
   const [savingBehavior, setSavingBehavior] = useState(false);
-  const [editForm, setEditForm] = useState({ rollNumber: "",  status: "ENROLLED", });
+  const [editForm, setEditForm] = useState({
+  firstName: "",
+  lastName: "",
+
+  dateOfBirth: "",
+  gender: "MALE",
+  bloodGroup: "",
+
+  classId: "",
+  sectionId: "",
+
+  rollNumber: "",
+  isActive: true,
+
+  religion: "",
+  category: "",
+  status: "ACTIVE",
+
+  email: "",
+  phone: "",
+  address: "",
+
+  apaarId: "",
+  boardRegistrationNumber: "",
+
+  heightCm: "",
+  weightKg: "",
+  lastHealthCheck: "",
+
+  admissionDate: "",
+  admissionType: "REGULAR",
+
+  previousSchool: "",
+  previousClass: "",
+  previousSchoolTcNumber: "",
+
+  houseId: "",
+
+  isRte: false,
+  rteRegNumber: "",
+  rteApplicationId: "",
+
+  photoUrl: "",
+});
   const [behaviorForm, setBehaviorForm] = useState<CreateBehaviorRecordRequest>({
     type:             "NEGATIVE",                            // Required in contract
   title:            "",
@@ -65,15 +124,169 @@ export default function StudentDetailPage() {
   });
 
   const startEdit = () => {
-    setEditForm({ rollNumber: student?.rollNumber ?? "", status: student.status ?? "ENROLLED", });
-    setEditing(true);
-  };
+  setEditForm({
+    firstName: student?.firstName ?? "",
+    lastName: student?.lastName ?? "",
+
+    dateOfBirth: student?.dateOfBirth
+      ? student.dateOfBirth.split("T")[0]
+      : "",
+
+    gender: student?.gender ?? "MALE",
+    bloodGroup:
+  ({
+    A_POS: "A+",
+    A_NEG: "A-",
+    B_POS: "B+",
+    B_NEG: "B-",
+    AB_POS: "AB+",
+    AB_NEG: "AB-",
+    O_POS: "O+",
+    O_NEG: "O-",
+  } as any)[student?.bloodGroup] ?? "",
+    classId: student?.classId ?? "",
+    sectionId: student?.sectionId ?? "",
+
+    rollNumber: student?.rollNumber ?? "",
+    isActive: student?.isActive ?? true,
+
+    religion: student?.religion ?? "",
+category: student?.category ?? "",
+status: student?.status ?? "ACTIVE",
+ email: student?.email ?? "",
+phone: student?.phone ?? "",
+
+address:
+  typeof student?.address === "string"
+    ? student.address
+    : "",
+
+apaarId: student?.apaarId ?? "",
+
+boardRegistrationNumber:
+  student?.boardRegistrationNumber ?? "",
+
+heightCm: student?.heightCm?.toString() ?? "",
+
+weightKg: student?.weightKg?.toString() ?? "",
+
+lastHealthCheck:
+  student?.lastHealthCheck
+    ? student.lastHealthCheck.split("T")[0]
+    : "",
+
+admissionDate:
+  student?.admissionDate
+    ? student.admissionDate.split("T")[0]
+    : "",
+
+admissionType:
+  student?.admissionType ?? "REGULAR",
+
+previousSchool:
+  student?.previousSchool ?? "",
+
+previousClass:
+  student?.previousClass ?? "",
+
+previousSchoolTcNumber:
+  student?.previousSchoolTcNumber ?? "",
+
+houseId:
+  student?.houseId ?? "",
+
+isRte:
+  student?.isRte ?? false,
+
+rteRegNumber:
+  student?.rteRegNumber ?? "",
+
+rteApplicationId:
+  student?.rteApplicationId ?? "",
+
+photoUrl:
+  student?.photoUrl ?? "",
+ 
+  });
+
+  setEditing(true);
+};
+
 
   const saveEdit = async () => {
     setSaving(true);
     try {
-      await apiClient.patch(`/students/${id}`, editForm);
-      setEditing(false);
+await apiClient.patch(`/students/${id}`, {
+  firstName: editForm.firstName,
+  lastName: editForm.lastName,
+
+  dateOfBirth: editForm.dateOfBirth || undefined,
+  gender: editForm.gender,
+  bloodGroup: editForm.bloodGroup || undefined,
+
+  classId: editForm.classId,
+  sectionId: editForm.sectionId,
+
+  rollNumber: editForm.rollNumber,
+  isActive: editForm.isActive,
+
+  religion: editForm.religion || undefined,
+  category: editForm.category || undefined,
+  status: editForm.status,
+
+  email: editForm.email || undefined,
+  phone: editForm.phone || undefined,
+  address: editForm.address || undefined,
+
+  apaarId: editForm.apaarId || undefined,
+
+  boardRegistrationNumber:
+    editForm.boardRegistrationNumber || undefined,
+
+  heightCm:
+    editForm.heightCm !== ""
+      ? Number(editForm.heightCm)
+      : undefined,
+
+  weightKg:
+    editForm.weightKg !== ""
+      ? Number(editForm.weightKg)
+      : undefined,
+
+  lastHealthCheck:
+    editForm.lastHealthCheck || undefined,
+
+  admissionDate:
+    editForm.admissionDate || undefined,
+
+  admissionType:
+    editForm.admissionType || undefined,
+
+  previousSchool:
+    editForm.previousSchool || undefined,
+
+  previousClass:
+    editForm.previousClass || undefined,
+
+  previousSchoolTcNumber:
+    editForm.previousSchoolTcNumber || undefined,
+
+  houseId:
+    editForm.houseId || undefined,
+
+  isRte:
+    editForm.isRte,
+
+  rteRegNumber:
+    editForm.rteRegNumber || undefined,
+
+  rteApplicationId:
+    editForm.rteApplicationId || undefined,
+
+  photoUrl:
+    editForm.photoUrl || undefined,
+});
+setEditing(false);
       refetch();
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Failed to update");
@@ -123,8 +336,7 @@ setBehaviorForm({
     return <div className="text-center py-24 text-slate-400">Student not found</div>;
   }
 
-  const guardianLink = student.guardianLinks?.[0];
-  const guardian = guardianLink?.guardian;
+  const guardianList = guardians ?? [];
   const cls = student.section ? `${student.section.class?.name} - ${student.section.name}` : "-";
   const totalFees = (invoices ?? []).reduce((sum: number, invoice: any) => sum + Number(invoice.totalAmount), 0);
   const totalPaid = (invoices ?? []).reduce((sum: number, invoice: any) => sum + Number(invoice.paidAmount), 0);
@@ -188,34 +400,364 @@ setBehaviorForm({
             )}
           </div>
         </div>
+	</div>
+{editing && (
+<div className="mt-5 pt-5 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
 
-        {editing && (
-          <div className="mt-5 pt-5 border-t border-slate-100 grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Roll Number</label>
-              <input
-                type="text"
-                value={editForm.rollNumber}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, rollNumber: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Status</label>
-              <select
-                value={editForm.status}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, status: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {["ACTIVE", "INACTIVE", "TRANSFERRED", "GRADUATED", "DROPPED"].map((status) => (
-                  <option key={status}>{status}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-      </div>
+  <div>
+    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+      First Name
+    </label>
+    <input
+      type="text"
+      value={editForm.firstName}
+      onChange={(e) =>
+        setEditForm((prev) => ({
+          ...prev,
+          firstName: e.target.value,
+        }))
+      }
+      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+    />
+  </div>
 
+  <div>
+    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+      Last Name
+    </label>
+    <input
+      type="text"
+      value={editForm.lastName}
+      onChange={(e) =>
+        setEditForm((prev) => ({
+          ...prev,
+          lastName: e.target.value,
+        }))
+      }
+      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+    />
+  </div>
+
+  <div>
+    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+      Date Of Birth
+    </label>
+    <input
+      type="date"
+      value={editForm.dateOfBirth}
+      onChange={(e) =>
+        setEditForm((prev) => ({
+          ...prev,
+          dateOfBirth: e.target.value,
+        }))
+      }
+      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+    />
+  </div>
+
+  <div>
+    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+      Gender
+    </label>
+    <select
+      value={editForm.gender}
+      onChange={(e) =>
+        setEditForm((prev) => ({
+          ...prev,
+          gender: e.target.value,
+        }))
+      }
+      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+    >
+      <option value="MALE">Male</option>
+      <option value="FEMALE">Female</option>
+      <option value="OTHER">Other</option>
+    </select>
+</div>
+    <div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    Blood Group
+  </label>
+
+  <select
+    value={editForm.bloodGroup}
+    onChange={(e) =>
+      setEditForm((prev) => ({
+        ...prev,
+        bloodGroup: e.target.value,
+      }))
+    }
+    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+  >
+    <option value="">Select Blood Group</option>
+
+    {[
+      "A+",
+      "A-",
+      "B+",
+      "B-",
+      "AB+",
+      "AB-",
+      "O+",
+      "O-",
+    ].map((bg) => (
+      <option key={bg} value={bg}>
+        {bg}
+      </option>
+    ))}
+  </select>
+</div>
+  <div>
+    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+      Roll Number
+    </label>
+    <input
+      type="text"
+      value={editForm.rollNumber}
+      onChange={(e) =>
+        setEditForm((prev) => ({
+          ...prev,
+          rollNumber: e.target.value,
+        }))
+      }
+      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+    />
+  </div>
+<div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    Religion
+  </label>
+
+  <select
+    value={editForm.religion}
+    onChange={(e) =>
+      setEditForm((prev) => ({
+        ...prev,
+        religion: e.target.value,
+      }))
+    }
+    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+  >
+    <option value="">Select Religion</option>
+
+    {[
+      "HINDU",
+      "MUSLIM",
+      "SIKH",
+      "CHRISTIAN",
+      "JAIN",
+      "BUDDHIST",
+      "OTHER",
+      "UNKNOWN",
+    ].map((r) => (
+      <option key={r} value={r}>
+        {r}
+      </option>
+    ))}
+  </select>
+</div>
+
+<div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    Category
+  </label>
+
+  <select
+    value={editForm.category}
+    onChange={(e) =>
+      setEditForm((prev) => ({
+        ...prev,
+        category: e.target.value,
+      }))
+    }
+    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+  >
+    <option value="">Select Category</option>
+
+    {["GENERAL", "OBC", "SC", "ST"].map((c) => (
+      <option key={c} value={c}>
+        {c}
+      </option>
+    ))}
+  </select>
+</div>
+
+
+
+  <div>
+    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+      Class
+    </label>
+    <select
+      value={editForm.classId}
+      onChange={(e) =>
+        setEditForm((prev) => ({
+          ...prev,
+          classId: e.target.value,
+          sectionId: "",
+        }))
+      }
+      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+    >
+      <option value="">Select Class</option>
+
+      {classes?.map((c: any) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <div>
+    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+      Section
+    </label>
+    <select
+      value={editForm.sectionId}
+      onChange={(e) =>
+        setEditForm((prev) => ({
+          ...prev,
+          sectionId: e.target.value,
+        }))
+      }
+      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+    >
+      <option value="">Select Section</option>
+
+      {classes
+        ?.find(
+          (c: any) =>
+            c.id === editForm.classId,
+        )
+        ?.sections?.map((s: any) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+          </option>
+        ))}
+    </select>
+  </div>
+
+
+<div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    Status
+  </label>
+
+  <select
+    value={editForm.status}
+    onChange={(e) =>
+      setEditForm((prev) => ({
+        ...prev,
+        status: e.target.value,
+      }))
+    }
+    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+  >
+    {[
+      "ENROLLED",
+      "ACTIVE",
+      "INACTIVE",
+      "ALUMNI",
+      "DROPPED",
+      "TRANSFERRED",
+      "ARCHIVED",
+    ].map((status) => (
+      <option key={status} value={status}>
+        {status}
+      </option>
+    ))}
+  </select>
+</div>
+<div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    Email
+  </label>
+  <input
+    type="email"
+    value={editForm.email}
+    onChange={(e) =>
+      setEditForm((prev) => ({
+        ...prev,
+        email: e.target.value,
+      }))
+    }
+    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+  />
+</div>
+
+<div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    Phone
+  </label>
+  <input
+    type="text"
+    value={editForm.phone}
+    onChange={(e) =>
+      setEditForm((prev) => ({
+        ...prev,
+        phone: e.target.value,
+      }))
+    }
+    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+  />
+</div>
+
+<div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    Address
+  </label>
+  <textarea
+    value={editForm.address}
+    onChange={(e) =>
+      setEditForm((prev) => ({
+        ...prev,
+        address: e.target.value,
+      }))
+    }
+    rows={3}
+    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+  />
+</div>
+<div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    APAAR ID
+  </label>
+  <input
+    type="text"
+    value={editForm.apaarId}
+    onChange={(e) =>
+      setEditForm((prev) => ({
+        ...prev,
+        apaarId: e.target.value,
+      }))
+    }
+    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+  />
+</div>
+
+<div>
+  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+    Board Registration Number
+  </label>
+  <input
+    type="text"
+    value={editForm.boardRegistrationNumber}
+    onChange={(e) =>
+      setEditForm((prev) => ({
+        ...prev,
+        boardRegistrationNumber: e.target.value,
+      }))
+    }
+    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+  />
+</div>
+
+
+
+
+</div>
+)}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="space-y-5">
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
@@ -245,32 +787,58 @@ setBehaviorForm({
               <User className="w-4 h-4 text-slate-400" />
               <h2 className="font-semibold text-slate-900 text-sm">Guardian</h2>
             </div>
-            {guardian ? (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 text-sm font-bold">
-                    {guardian.firstName[0]}
-                  </div>
-                  <div>
-                    <p className="font-medium text-slate-900 text-sm">{guardian.firstName} {guardian.lastName}</p>
-                    <p className="text-xs text-slate-400">{guardianLink?.relation?.replace("_", " ") ?? "Guardian"}</p>
-                  </div>
-                </div>
-                {guardian.phone && (
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <Phone className="w-3.5 h-3.5 text-slate-400" /> {guardian.phone}
-                  </div>
-                )}
-                {guardian.email && (
-                  <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" /> {guardian.email}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-slate-400 text-sm">No guardian linked</p>
-            )}
+            
+    {guardianList.length > 0 ? (
+  <div className="space-y-3">
+    {guardianList.map((link: any) => (
+      <div
+        key={link.id}
+        className="border border-slate-100 rounded-lg p-3"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 text-sm font-bold">
+              {link.guardian?.firstName?.[0] ?? "G"}
+            </div>
+
+            <div>
+              <p className="font-medium text-slate-900 text-sm">
+                {link.guardian?.firstName} {link.guardian?.lastName}
+              </p>
+
+              <p className="text-xs text-slate-400">
+                {link.relation?.replaceAll("_", " ")}
+              </p>
+            </div>
           </div>
+
+          {link.isPrimary && (
+            <Badge>Primary</Badge>
+          )}
+        </div>
+
+        {link.guardian?.phone && (
+          <div className="flex items-center gap-2 text-sm text-slate-600 mt-2">
+            <Phone className="w-3.5 h-3.5 text-slate-400" />
+            {link.guardian.phone}
+          </div>
+        )}
+
+        {link.guardian?.email && (
+          <div className="flex items-center gap-2 text-sm text-slate-600 mt-2">
+            <Mail className="w-3.5 h-3.5 text-slate-400" />
+            {link.guardian.email}
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
+) : (
+  <p className="text-slate-400 text-sm">
+    No guardian linked
+  </p>
+)}
+      	    </div>
         </div>
 
         <div className="lg:col-span-2 space-y-5">
@@ -319,7 +887,13 @@ setBehaviorForm({
                 <CreditCard className="w-4 h-4 text-slate-400" />
                 <h2 className="font-semibold text-slate-900 text-sm">Fee History</h2>
               </div>
-              <a href="/dashboard/billing" className="text-xs text-blue-600 hover:text-blue-800">View all</a>
+              <Link
+  href={`/dashboard/billing/students/${id}`}
+  className="text-xs text-blue-600 hover:text-blue-800"
+>
+  Open Ledger →
+</Link>
+	      
             </div>
 
             <div className="grid grid-cols-3 gap-3 mb-4">
@@ -582,6 +1156,86 @@ setBehaviorForm({
               ))}
             </div>
           </div>
+             
+	  {/* Admission Information */}
+<div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
+  <h2 className="font-semibold text-slate-900 text-sm mb-4">
+    Admission Information
+  </h2>
+
+  <div className="grid grid-cols-2 gap-3">
+    {[
+      { label: "Admission Number", value: student.admissionNumber ?? "-" },
+      {
+        label: "Admission Date",
+        value: student.admissionDate
+          ? fmtDate(student.admissionDate)
+          : "-",
+      },
+      {
+        label: "Admission Type",
+        value: student.admissionType ?? "-",
+      },
+      {
+        label: "Academic Year",
+        value: student.academicYear ?? "-",
+      },
+      {
+        label: "Status",
+        value: student.status ?? "-",
+      },
+      {
+        label: "Roll Number",
+        value: student.rollNumber ?? "-",
+      },
+    ].map(({ label, value }) => (
+      <div key={label} className="bg-slate-50 rounded-lg p-3">
+        <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">
+          {label}
+        </p>
+        <p className="text-sm font-semibold text-slate-900 mt-0.5">
+          {value}
+        </p>
+      </div>
+    ))}
+  </div>
+</div>
+
+{/* Previous School Information */}
+<div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
+  <h2 className="font-semibold text-slate-900 text-sm mb-4">
+    Previous School Information
+  </h2>
+
+  <div className="grid grid-cols-2 gap-3">
+    {[
+      {
+        label: "Previous School",
+        value: student.previousSchool ?? "-",
+      },
+      {
+        label: "Previous Class",
+        value: student.previousClass ?? "-",
+      },
+      {
+        label: "TC Number",
+        value: student.previousSchoolTcNumber ?? "-",
+      },
+    ].map(({ label, value }) => (
+      <div key={label} className="bg-slate-50 rounded-lg p-3">
+        <p className="text-xs text-slate-500 uppercase tracking-wide font-semibold">
+          {label}
+        </p>
+        <p className="text-sm font-semibold text-slate-900 mt-0.5">
+          {value}
+        </p>
+      </div>
+    ))}
+  </div>
+</div>
+
+
+
 
           {/* Government Records */}
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
@@ -591,14 +1245,31 @@ setBehaviorForm({
 
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: "APAAR ID", value: student.apaarId ?? "-" },
-                {
-                  label: "Board Registration",
-                  value: student.boardRegistrationNumber ?? "-",
-                },
-                {
-                  label: "Aadhaar Last 4",
-                  value: student.aadharLast4 ?? "-",
+		      { label: "APAAR ID", value: student.apaarId ?? "-" },
+
+{
+  label: "Board Registration",
+  value: student.boardRegistrationNumber ?? "-",
+},
+
+{
+  label: "Aadhaar Last 4",
+  value: student.aadharLast4 ?? "-",
+},
+
+{
+  label: "RTE Eligible",
+  value: student.isRte ? "Yes" : "No",
+},
+
+{
+  label: "RTE Registration No",
+  value: student.rteRegNumber ?? "-",
+},
+
+{
+  label: "RTE Application No",
+  value: student.rteApplicationId ?? "-",
                 },
               ].map(({ label, value }) => (
                 <div key={label} className="bg-slate-50 rounded-lg p-3">

@@ -27,9 +27,16 @@ export default function StudentDrawerPage() {
   const { data: student, loading } = useApi<any>(`/students/${id}`);
   
   // Phase 3 Accounts & Financials
-  const { data: invoices } = useApi<any[]>(`/billing/invoices?studentId=${id}`, [id]);
-  const totalDue = (invoices ?? []).reduce(
-    (sum, inv) =>
+
+const { data: invoiceResponse } = useApi<any>(
+  `/billing/invoices?studentId=${id}`,
+  [id]
+);
+
+const invoices = invoiceResponse?.data ?? [];
+
+const totalDue = invoices.reduce(
+  (sum, inv) =>
       sum + (Number(inv.totalAmount || 0) - Number(inv.paidAmount || 0)),
     0
   );

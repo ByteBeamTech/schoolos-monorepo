@@ -14,8 +14,6 @@ import {
   CreateSectionDto,
   UpdateSectionDto,
   CreateSubjectDto,
-  CreateFeeTypeDto,
-  CreateFeeStructureDto,
   CreateRouteDto,
   CreateVehicleDto,
   UpdateBrandingDto,
@@ -141,12 +139,39 @@ export class SchoolManagementService {
         { email:     { contains: filters.search, mode: 'insensitive' } },
       ];
     }
-    return this.prisma.user.findMany({
-      where,
-      select: { id: true, firstName: true, lastName: true, email: true, role: true, isActive: true, createdAt: true },
-      orderBy: [{ role: 'asc' }, { firstName: 'asc' }],
-    });
+    
+return this.prisma.user.findMany({
+  where,
+
+select: {
+  id: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  role: true,
+  isActive: true,
+  createdAt: true,
+
+  branchMappings: {
+    where: {
+      isActive: true,
+    },
+    include: {
+      branch: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  },
+},
+  orderBy: [{ role: 'asc' }, { firstName: 'asc' }],
+});    
+
   }
+
+
 
   async inviteUser(
   tenantId: string,
@@ -225,18 +250,97 @@ export class SchoolManagementService {
   };
 }
 
-  async updateUserRole(tenantId: string, userId: string, dto: UpdateUserRoleDto, actorId: string) {
-    const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId } });
-    if (!user) throw new NotFoundException(`User not found: ${userId}`);
-    
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: { role: dto.role, ...(dto.isActive !== undefined && { isActive: dto.isActive }) },
-      select: { id: true, email: true, role: true, isActive: true },
-    });
-    await this.audit.logUpdate({ tenantId, actorId, entityType: 'User', entityId: userId, before: { role: user.role }, after: { role: dto.role } });
-    return updated;
+async updateUserRole(
+  tenantId: string,
+  userId: string,
+  dto: UpdateUserRoleDto,
+  actorId: string,
+) {
+  const user = await this.prisma.user.findFirst({
+    where: {
+      id: userId,
+      tenantId,
+    },
+  });
+
+  if (!user) {
+    throw new NotFoundException(`User not found: ${userId}`);
   }
+
+  const updated = await this.prisma.user.update({
+    where: { id: userId },
+    data: {
+      role: dto.role,
+      ...(dto.isActive !== undefined && {
+        isActive: dto.isActive,
+      }),
+    },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      isActive: true,
+    },
+  });
+  // Multi-branch assignment
+  if (dto.branchIds) {
+
+    if (
+      dto.defaultBranchId &&
+      !dto.branchIds.includes(
+        dto.defaultBranchId,
+      )
+    ) {
+      throw new BadRequestException(
+        'Default branch must be one of assigned branches',
+      );
+    }
+
+    let defaultBranchId =
+      dto.defaultBranchId;
+
+    if (dto.branchIds.length === 1) {
+      defaultBranchId =
+        dto.branchIds[0];
+    }
+
+    await this.prisma.userBranch.deleteMany({
+      where: {
+        userId,
+      },
+    });
+
+    await this.prisma.userBranch.createMany({
+      data: dto.branchIds.map((branchId) => ({
+        tenantId,
+        userId,
+        branchId,
+        isDefault:
+          defaultBranchId === branchId,
+        isActive: true,
+      })),
+    });
+  }
+
+  await this.audit.logUpdate({
+    tenantId,
+    actorId,
+    entityType: 'User',
+    entityId: userId,
+    before: {
+      role: user.role,
+    },
+    after: {
+      role: dto.role,
+      isActive: dto.isActive,
+      branchIds: dto.branchIds,
+      defaultBranchId: dto.defaultBranchId,
+    },
+  });
+
+  return updated;
+}
+
 
   async removeUser(tenantId: string, userId: string, actorId: string) {
     if (userId === actorId) throw new ConflictException('You cannot remove yourself.');
@@ -354,37 +458,6 @@ export class SchoolManagementService {
     return { feeTypes, feeStructures };
   }
 
-  async createFeeType(tenantId: string, dto: CreateFeeTypeDto, actorId: string) {
-    const existing = await this.prisma.feeType.findFirst({ where: { tenantId, name: dto.name } });
-    if (existing) throw new ConflictException(`Fee type "${dto.name}" already exists.`);
-    
-    const feeType = await this.prisma.feeType.create({
-      data: { tenantId, name: dto.name, isMandatory: dto.isMandatory ?? false, isRecurring: dto.isRecurring ?? true },
-    });
-    await this.audit.logCreate({ tenantId, actorId, entityType: 'FeeType', entityId: feeType.id, after: { name: feeType.name } });
-    return feeType;
-  }
-
-  async createFeeStructure(tenantId: string, branchId: string, dto: CreateFeeStructureDto, actorId: string) {
-    const cls = await this.prisma.class.findFirst({ where: { id: dto.classId, tenantId } });
-    if (!cls) throw new NotFoundException(`Class not found: ${dto.classId}`);
-    
-    const structure = await this.prisma.feeStructure.create({
-      data: { tenantId, name: dto.name, classId: dto.classId, frequency: dto.frequency, amount: dto.amount, feeTypeId: dto.feeTypeId ?? null },
-      include: { class: true, feeType: true },
-    });
-    await this.audit.logCreate({ tenantId, actorId, entityType: 'FeeStructure', entityId: structure.id, after: { name: structure.name, amount: structure.amount } });
-    return structure;
-  }
-
-  async deleteFeeStructure(tenantId: string, id: string, actorId: string) {
-    const s = await this.prisma.feeStructure.findFirst({ where: { id, tenantId } });
-    if (!s) throw new NotFoundException(`Fee structure not found: ${id}`);
-    
-    await this.prisma.feeStructure.delete({ where: { id } });
-    await this.audit.logUpdate({ tenantId, actorId, entityType: 'FeeStructure', entityId: id, before: { name: s.name }, after: { deleted: true } });
-    return { success: true };
-  }
 
   // ── 6. Transport ────────────────────────────────────────────────────────────
 

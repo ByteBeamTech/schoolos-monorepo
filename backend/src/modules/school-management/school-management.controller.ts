@@ -21,8 +21,6 @@ import {
   CreateSectionDto,
   UpdateSectionDto,
   CreateSubjectDto,
-  CreateFeeTypeDto,
-  CreateFeeStructureDto,
   CreateRouteDto,
   CreateVehicleDto,
   UpdateBrandingDto,
@@ -242,33 +240,6 @@ getAcademicStructure(@CurrentUser() u: AuthenticatedUser) {
     return this.service.getFeeSetup(u.tenantId);
   }
 
-  @Post('fee-types')
-  @Roles(UserRole.SCHOOL_ADMIN, UserRole.ACCOUNTANT, UserRole.SCHOOL_OWNER)
-  createFeeType(
-    @Body() dto: CreateFeeTypeDto,
-    @CurrentUser() u: AuthenticatedUser,
-  ) {
-    return this.service.createFeeType(u.tenantId, dto, u.id);
-  }
-
-  @Post('fee-structures')
-  @Roles(UserRole.SCHOOL_ADMIN, UserRole.ACCOUNTANT, UserRole.SCHOOL_OWNER)
-  createFeeStructure(
-    @Body() dto: CreateFeeStructureDto,
-    @CurrentUser() u: AuthenticatedUser,
-  ) {
-	 const branchId = requireBranch(u);
-    return this.service.createFeeStructure(u.tenantId, branchId, dto, u.id);
-  }
-
-  @Delete('fee-structures/:id')
-  @Roles(UserRole.SCHOOL_ADMIN, UserRole.ACCOUNTANT, UserRole.SCHOOL_OWNER)
-  deleteFeeStructure(
-    @Param('id') id: string,
-    @CurrentUser() u: AuthenticatedUser,
-  ) {
-    return this.service.deleteFeeStructure(u.tenantId, id, u.id);
-  }
 
   // ── 6. Transport ────────────────────────────────────────────────────────────
 

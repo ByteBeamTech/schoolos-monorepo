@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards }  from '@nestjs/common';
+import { Put, Controller, Get, Post, Patch, Delete, Body, Param, UseGuards }  from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { TimetableService }        from '../services/timetable.service';
 import { CreateTimetableSlotDto, UpdateTimetableSlotDto, BulkCreateTimetableDto } from '../dto/timetable.dto';
@@ -16,14 +16,14 @@ export class TimetableController {
   constructor(private readonly service: TimetableService) {}
 
   @Post()
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL')
   @ApiOperation({ summary: 'Create a single timetable slot' })
   create(@Body() dto: CreateTimetableSlotDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.createSlot(user.tenantId, dto);
   }
 
   @Post('bulk')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL')
   @ApiOperation({ summary: 'Bulk create timetable for a section' })
   bulkCreate(@Body() dto: BulkCreateTimetableDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.bulkCreate(user.tenantId, dto);
@@ -42,28 +42,45 @@ export class TimetableController {
   }
 
   @Patch(':id')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL')
   @ApiOperation({ summary: 'Update a timetable slot' })
   update(@Param('id') id: string, @Body() dto: UpdateTimetableSlotDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.updateSlot(user.tenantId, id, dto);
   }
 
   @Delete(':id')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL')
   @ApiOperation({ summary: 'Remove a timetable slot' })
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.deleteSlot(user.tenantId, id);
   }
 
   @Delete('section/:sectionId/clear')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL')
   @ApiOperation({ summary: 'Clear entire section timetable' })
   clearSection(@Param('sectionId') sectionId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.clearSection(user.tenantId, sectionId);
   }
 
+  @Put('section/:sectionId')
+@Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL')
+@ApiOperation({
+  summary: 'Replace entire timetable for a section',
+})
+replaceSectionTimetable(
+  @Param('sectionId') sectionId: string,
+  @Body() dto: { slots: any[] },
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  return this.service.replaceSectionTimetable(
+    user.tenantId,
+    sectionId,
+    dto.slots,
+  );
+}
+
   @Get("section/:sectionId/full")
-  @Roles("SCHOOL_ADMIN", "PRINCIPAL", "TEACHER", "CLASS_TEACHER", "PARENT")
+  @Roles("SUPER_ADMIN", "SCHOOL_ADMIN", "PRINCIPAL", "TEACHER", "CLASS_TEACHER", "PARENT")
   @ApiOperation({ summary: "Weekly timetable with subject and teacher names" })
   getFullTimetable(
     @Param("sectionId") sectionId: string,

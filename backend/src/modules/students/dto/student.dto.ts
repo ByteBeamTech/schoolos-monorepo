@@ -3,11 +3,11 @@
 import {
   IsString, IsEmail, IsOptional, IsBoolean,
   IsDateString, IsNotEmpty, IsEnum,
-  MaxLength, IsNumberString,
+  MaxLength, IsNumberString, IsNumber,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 // 🟢 CRITICAL ARCHITECTURAL FIX: Direct contract binding to eliminate dual-source drift forever
-import { Gender, GuardianRelation } from '@prisma/client';
+import { AdmissionType, Gender, GuardianRelation, Religion,  Category,  StudentStatus, } from '@prisma/client';
 
 export class CreateStudentDto {
   @ApiProperty({ description: 'Branch ID the student belongs to' })
@@ -42,6 +42,17 @@ export class CreateStudentDto {
   @IsEnum(Gender) @IsOptional()
   gender?: Gender;
 
+  @ApiPropertyOptional({ enum: Religion })
+@IsEnum(Religion)
+@IsOptional()
+religion?: Religion;
+
+@ApiPropertyOptional({ enum: Category })
+@IsEnum(Category)
+@IsOptional()
+category?: Category;
+
+
   @ApiPropertyOptional({ example: 'O+' })
   @IsString() @IsOptional()
   bloodGroup?: string;
@@ -69,6 +80,112 @@ export class UpdateStudentDto {
   @ApiPropertyOptional() @IsString()      @IsOptional() sectionId?:   string;
   @ApiPropertyOptional() @IsString()      @IsOptional() rollNumber?:  string;
   @ApiPropertyOptional() @IsBoolean()     @IsOptional() isActive?:    boolean;
+
+  @ApiPropertyOptional({ enum: Religion })
+@IsEnum(Religion)
+@IsOptional()
+religion?: Religion;
+
+@ApiPropertyOptional({ enum: Category })
+@IsEnum(Category)
+@IsOptional()
+category?: Category;
+
+@ApiPropertyOptional({ enum: StudentStatus })
+@IsEnum(StudentStatus)
+@IsOptional()
+status?: StudentStatus;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+email?: string;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+phone?: string;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+address?: string;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+apaarId?: string;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+boardRegistrationNumber?: string;
+
+@ApiPropertyOptional()
+@IsNumber()
+@IsOptional()
+heightCm?: number;
+
+@ApiPropertyOptional()
+@IsNumber()
+@IsOptional()
+weightKg?: number;
+
+@ApiPropertyOptional()
+@IsDateString()
+@IsOptional()
+lastHealthCheck?: string;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+photoUrl?: string;
+
+@ApiPropertyOptional()
+@IsDateString()
+@IsOptional()
+admissionDate?: string;
+
+@ApiPropertyOptional({ enum: AdmissionType })
+@IsEnum(AdmissionType)
+@IsOptional()
+admissionType?: AdmissionType;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+houseId?: string;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+previousSchool?: string;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+previousClass?: string;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+previousSchoolTcNumber?: string;
+
+@ApiPropertyOptional()
+@IsBoolean()
+@IsOptional()
+isRte?: boolean;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+rteRegNumber?: string;
+
+@ApiPropertyOptional()
+@IsString()
+@IsOptional()
+rteApplicationId?: string;
+
 }
 
 export class CreateGuardianDto {
