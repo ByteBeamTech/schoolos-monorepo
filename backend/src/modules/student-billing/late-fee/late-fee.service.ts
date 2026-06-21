@@ -64,7 +64,17 @@ export class LateFeeService {
         status:  { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
         dueDate: { lt: new Date() },
       },
-      include: { lateFees: { orderBy: { appliedAt: 'desc' }, take: 1 } },
+      include: {
+  lateFees: {
+    orderBy: { appliedAt: 'desc' },
+    take: 1,
+  },
+  student: {
+    select: {
+      branchId: true,
+    },
+  },
+},
       take: 1000,
     });
 
@@ -76,6 +86,16 @@ export class LateFeeService {
         const dueAmount = Number(invoice.dueAmount);
         const config    = await this.getTenantConfig(invoice.tenantId);
         const { lateFee, daysOverdue } = this.calculateLateFee(dueAmount, dueDate, new Date(), config);
+	const currentSession =
+  await this.prisma.academicSession.findFirst({
+    where: {
+      tenantId: invoice.tenantId,
+      isCurrent: true,
+    },
+    select: {
+      id: true,
+    },
+  });
 
         if (lateFee <= 0) continue;
 
@@ -86,15 +106,30 @@ export class LateFeeService {
         if (lastFee && new Date(lastFee.appliedAt) >= today) continue;
 
         // Invoice has no lateFeeAmount field — use LateFee relation model
-        await (this.prisma as any).lateFee.create({
-          data: {
-            tenantId: invoice.tenantId,
-            invoiceId:   invoice.id,
-            amount:      lateFee,
-            daysOverdue,
-          },
-        });
+await this.prisma.lateFee.create({
+  data: {
+    tenantId: invoice.tenantId,
 
+    branchId: invoice.student.branchId,
+
+    invoiceId: invoice.id,
+
+    studentId: invoice.studentId,
+
+    academicYearId:
+      currentSession?.id ?? 'default',
+
+    dueDate: invoice.dueDate,
+
+    baseAmount: dueAmount,
+
+    graceDays: config.gracePeriodDays,
+
+    amount: lateFee,
+
+    daysOverdue,
+  },
+});
         // Update invoice dueAmount and totalAmount
         await this.prisma.invoice.update({
           where: { id: invoice.id },
