@@ -12,15 +12,16 @@ export class FeePlansService {
     private readonly audit:  AuditService,
   ) {}
 
-  async create(tenantId: string, dto: CreateFeePlanDto, actorId: string) {
+  async create(tenantId: string, branchId: string, dto: CreateFeePlanDto, actorId: string) {
     const existing = await this.prisma.feePlan.findFirst({
-      where: { tenantId, name: dto.name, academicYear: dto.academicYear },
+      where: { tenantId, branchId, name: dto.name, academicYear: dto.academicYear },
     });
     if (existing) throw new ConflictException(`Fee plan "${dto.name}" already exists.`);
 
     const plan = await this.prisma.feePlan.create({
       data: {
         tenantId,
+	branchId,
         sessionId:    dto.sessionId,
         name:         dto.name,
         academicYear: dto.academicYear,
@@ -48,17 +49,17 @@ export class FeePlansService {
     return plan;
   }
 
-  async findAll(tenantId: string, academicYear?: string) {
+  async findAll(tenantId: string, branchId: string, academicYear?: string) {
     return this.prisma.feePlan.findMany({
-      where:   { tenantId, ...(academicYear && { academicYear }), isActive: true },
+      where:   { tenantId, branchId, ...(academicYear && { academicYear }), isActive: true },
       include: { feeItems: { orderBy: { sortOrder: 'asc' } } },
       orderBy: { name: 'asc' },
     });
   }
 
-  async findById(tenantId: string, id: string) {
+  async findById(tenantId: string, branchId: string, id: string) {
     const plan = await this.prisma.feePlan.findFirst({
-      where:   { id, tenantId },
+      where:   { id, tenantId, branchId },
       include: {
         feeItems:    { orderBy: { sortOrder: 'asc' } },
         assignments: { include: { student: { select: { id: true, firstName: true, lastName: true, admissionNumber: true } } } },
@@ -69,13 +70,26 @@ export class FeePlansService {
   }
 
   async assign(tenantId: string, dto: AssignFeePlanDto, actorId: string) {
+	  const student = await this.prisma.student.findFirst({
+  where: {
+    id: dto.studentId,
+    tenantId,
+  },
+  select: {
+    branchId: true,
+  },
+});
+
+if (!student) {
+  throw new NotFoundException('Student not found');
+}
     const existing = await this.prisma.feeAssignment.findFirst({
-      where: { studentId: dto.studentId, feePlanId: dto.feePlanId, academicYear: dto.academicYear },
+      where: { tenantId, branchId: student.branchId, studentId: dto.studentId, feePlanId: dto.feePlanId, academicYear: dto.academicYear },
     });
     if (existing) throw new ConflictException('Fee plan already assigned to this student.');
 
     const assignment = await this.prisma.feeAssignment.create({
-      data: { tenantId, studentId: dto.studentId, feePlanId: dto.feePlanId, academicYear: dto.academicYear, assignedBy: actorId },
+      data: { tenantId, branchId: student.branchId, studentId: dto.studentId, feePlanId: dto.feePlanId, academicYear: dto.academicYear, assignedBy: actorId },
       include: {
         student: { select: { firstName: true, lastName: true, admissionNumber: true } },
         feePlan: { select: { name: true } },
@@ -87,16 +101,45 @@ export class FeePlansService {
   }
 
   async getStudentFeePlans(tenantId: string, studentId: string) {
-    return this.prisma.feeAssignment.findMany({
-      where:   { tenantId, studentId },
+   
+	  const student = await this.prisma.student.findFirst({
+  where: {
+    id: studentId,
+    tenantId,
+  },
+  select: {
+    branchId: true,
+  },
+});
+
+if (!student) {
+  throw new NotFoundException('Student not found');
+}
+	  return this.prisma.feeAssignment.findMany({
+      where:   { tenantId, branchId: student.branchId, studentId },
       include: { feePlan: { include: { feeItems: { orderBy: { sortOrder: 'asc' } } } } },
       orderBy: { assignedAt: 'desc' },
     });
   }
 
   async getStudentFeeSummary(tenantId: string, studentId: string, academicYear: string) {
-    const assignments = await this.prisma.feeAssignment.findMany({
-      where:   { tenantId, studentId, academicYear },
+ 
+	  const student = await this.prisma.student.findFirst({
+  where: {
+    id: studentId,
+    tenantId,
+  },
+  select: {
+    branchId: true,
+  },
+});
+
+if (!student) {
+  throw new NotFoundException('Student not found');
+}
+      
+	  const assignments = await this.prisma.feeAssignment.findMany({
+      where:   { tenantId, branchId: student.branchId, studentId, academicYear },
       include: { feePlan: { include: { feeItems: true } } },
     });
     let totalFees = 0;

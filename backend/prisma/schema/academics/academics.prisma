@@ -11,6 +11,9 @@ model Class {
   sections             Section[]
   TeacherAssignment    TeacherAssignment[]
   students             Student[]
+  
+  feeStructures FeeStructure[]
+
   calendarEventTargets AcademicCalendarEventTarget[]
   subjectMappings      SubjectMapping[]
 

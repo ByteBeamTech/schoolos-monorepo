@@ -44,6 +44,7 @@ export class RefundService {
     const refund = await this.prisma.refund.create({
       data: {
         tenantId,
+	branchId: payment.branchId,
         paymentId:   dto.paymentId,
         amount:      dto.amount,
         reason:      dto.reason,

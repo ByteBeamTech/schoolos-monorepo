@@ -65,10 +65,11 @@ export class ReceiptService {
       });
       return pdfUrl;
     }
-
+    
     await this.prisma.receipt.create({
       data: {
         tenantId,
+	branchId: invoice!.branchId,
         invoiceId,
         paymentId,
         receiptNumber,

@@ -1,6 +1,7 @@
 model Invoice {
   id             String        @id @default(cuid())
   tenantId       String
+  branchId       String
   studentId      String
   invoiceNumber  String
   academicYear   String
@@ -20,12 +21,14 @@ model Invoice {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   student        Student       @relation(fields: [studentId], references: [id])
+  branch         Branch        @relation(fields: [branchId], references: [id])
   items          InvoiceItem[]
   lateFees       LateFee[]
   payments       Payment[]
   receipt        Receipt?
-
-  @@unique([tenantId, invoiceNumber])
+  
+  @@index([tenantId, branchId])
+  @@unique([tenantId, branchId, invoiceNumber])
   @@index([tenantId])
   @@index([studentId])
   @@index([status])

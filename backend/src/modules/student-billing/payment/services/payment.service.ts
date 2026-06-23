@@ -53,7 +53,7 @@ export class PaymentService {
 
     const payment = await this.prisma.payment.create({
       data: {
-        tenantId, invoiceId: dto.invoiceId, gateway: 'RAZORPAY',
+        tenantId, branchId: invoice.branchId, invoiceId: dto.invoiceId, gateway: 'RAZORPAY',
         gatewayOrderId: razorpayOrder.id, amount: dto.amount, currency: invoice.currency,
         status: 'PENDING', payerName: dto.payerName ?? null,
         payerEmail: dto.payerEmail ?? null, payerPhone: dto.payerPhone ?? null,
@@ -125,6 +125,7 @@ export class PaymentService {
     const payment = await this.prisma.payment.create({
       data: {
         tenantId, invoiceId: dto.invoiceId,
+	branchId: invoice.branchId,
         // P0 FIX: was hardcoded 'RAZORPAY' — now correctly 'OFFLINE'
         gateway: 'OFFLINE' as any,
         amount: dto.amount, currency: invoice.currency, status: 'SUCCESS',
@@ -175,10 +176,15 @@ export class PaymentService {
     // P0 FIX: delegate number generation to InvoiceService which uses advisory lock
     const receiptNumber = await this.invoiceService.generateReceiptNumber(tenantId);
     const payment       = await this.prisma.payment.findUnique({ where: { id: paymentId } });
+    
+    const invoice = await this.prisma.invoice.findUnique({
+  where: { id: invoiceId },
+});   
+   
 
     return this.prisma.receipt.create({
       data: {
-        tenantId, invoiceId, paymentId, receiptNumber,
+        tenantId, branchId: invoice!.branchId,  invoiceId, paymentId, receiptNumber,
         amount:   payment?.amount ?? 0,
         currency: payment?.currency ?? 'INR',
       },

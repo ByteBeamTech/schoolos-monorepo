@@ -125,7 +125,7 @@ export class InvoiceService {
 
     const invoice = await this.prisma.invoice.create({
       data: {
-        tenantId, studentId: dto.studentId, invoiceNumber,
+        tenantId, branchId: student.branchId,  studentId: dto.studentId, invoiceNumber,
         academicYear: plan.academicYear,
         status: 'DRAFT', currency: plan.currency,
         subtotal, discountAmount: totalDiscount, gstAmount: gstTotal,

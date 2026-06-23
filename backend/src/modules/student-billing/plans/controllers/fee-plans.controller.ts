@@ -19,14 +19,14 @@ export class FeePlansController {
   @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Create fee plan with items' })
   create(@Body() dto: CreateFeePlanDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.create(user.tenantId, dto, user.id);
+    return this.service.create(  user.tenantId,  user.branchId,  dto,  user.id,); 
   }
 
   @Get()
   @ApiOperation({ summary: 'List all fee plans' })
   @ApiQuery({ name: 'academicYear', required: false })
   findAll(@CurrentUser() user: AuthenticatedUser, @Query('academicYear') academicYear?: string) {
-    return this.service.findAll(user.tenantId, academicYear);
+    return this.service.findAll(user.tenantId, user.branchId, academicYear);
   }
 
   @Get('student/:studentId')
@@ -49,7 +49,7 @@ export class FeePlansController {
   @Get(':id')
   @ApiOperation({ summary: 'Get fee plan by ID' })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.findById(user.tenantId, id);
+  return this.service.findById(  user.tenantId,  user.branchId,  id,);
   }
 
   @Post('assign')

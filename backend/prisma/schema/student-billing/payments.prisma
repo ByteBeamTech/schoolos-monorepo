@@ -1,6 +1,7 @@
 model Payment {
   id               String                 @id @default(cuid())
   tenantId         String
+  branchId         String
   invoiceId        String
   gateway          PaymentGatewayProvider
   gatewayOrderId   String?
@@ -19,10 +20,12 @@ model Payment {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   invoice          Invoice                @relation(fields: [invoiceId], references: [id])
+  branch           Branch @relation(fields: [branchId], references: [id])
   receipt          Receipt?
   refunds          Refund[]
-
-  @@index([tenantId])
+  
+  @@index([tenantId]) 
+  @@index([tenantId, branchId])
   @@index([invoiceId])
   @@index([status])
   @@index([gatewayPaymentId])
@@ -31,9 +34,10 @@ model Payment {
 model Receipt {
   id             String    @id @default(cuid())
   tenantId       String
+  branchId       String
   invoiceId      String    @unique
   paymentId      String    @unique
-  receiptNumber  String    @unique
+  receiptNumber  String    
   amount         Decimal   @db.Decimal(12, 2)
   currency       Currency  @default(INR)
   pdfUrl         String?
@@ -42,13 +46,17 @@ model Receipt {
   createdAt      DateTime  @default(now())
   invoice        Invoice   @relation(fields: [invoiceId], references: [id])
   payment        Payment   @relation(fields: [paymentId], references: [id])
-
+  branch         Branch    @relation(fields: [branchId], references: [id])
+  
+  @@unique([tenantId, branchId, receiptNumber])
   @@index([tenantId])
+  @@index([tenantId, branchId])
 }
 
 model Refund {
   id              String                 @id @default(cuid())
   tenantId        String
+  branchId        String
   paymentId       String
   amount          Decimal                @db.Decimal(12, 2)
   reason          String
@@ -60,7 +68,10 @@ model Refund {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   payment         Payment                @relation(fields: [paymentId], references: [id])
+  
+  branch          Branch                 @relation(fields: [branchId], references: [id])
 
+  @@index([tenantId, branchId])
   @@index([tenantId])
   @@index([paymentId])
 }
