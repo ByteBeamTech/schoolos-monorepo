@@ -29,7 +29,7 @@ export class AttendanceController {
   ) {}
 
   @Post('daily')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
   @ApiOperation({ summary: 'Mark daily attendance for a section' })
   markDaily(@Body() dto: BulkMarkAttendanceDto, @CurrentUser() user: AuthenticatedUser) {
     return this.attendance.bulkMarkDaily(user.tenantId, dto, user.id, user.role);
@@ -48,7 +48,7 @@ export class AttendanceController {
   }
 
   @Post('period')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
   @ApiOperation({ summary: 'Mark period-wise attendance' })
   markPeriod(@Body() dto: MarkPeriodAttendanceDto, @CurrentUser() user: AuthenticatedUser) {
     return this.attendance.markPeriodWise(user.tenantId, dto, user.id, user.role);
@@ -82,7 +82,7 @@ export class AttendanceController {
   }
 
   @Patch(':id')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
   @ApiOperation({ summary: 'Update a single attendance record' })
   update(
     @CurrentUser() user: AuthenticatedUser,
@@ -93,7 +93,7 @@ export class AttendanceController {
   }
 
   @Get('absentees')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
   @ApiOperation({ summary: 'Get absentees for a date' })
   @ApiQuery({ name: 'date',      required: true })
   @ApiQuery({ name: 'sectionId', required: false })
@@ -106,7 +106,7 @@ export class AttendanceController {
   }
 
   @Get('report/monthly')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
   @ApiOperation({ summary: 'Monthly attendance report for a section' })
   @ApiQuery({ name: 'sectionId', required: true })
   @ApiQuery({ name: 'year',      required: true })
@@ -121,7 +121,7 @@ export class AttendanceController {
   }
 
   @Get('register/monthly')
-@Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+@Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
 @ApiOperation({ summary: 'Monthly attendance register' })
 @ApiQuery({ name: 'sectionId', required: true })
 @ApiQuery({ name: 'year', required: true })
@@ -141,7 +141,7 @@ getMonthlyRegister(
 }
 
   @Get('stats')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL')
   @ApiOperation({ summary: 'Attendance dashboard stats' })
   @ApiQuery({ name: 'date', required: true })
   getStats(@CurrentUser() user: AuthenticatedUser, @Query('date') date: string) {
@@ -149,7 +149,7 @@ getMonthlyRegister(
   }
 
   @Post('leave')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER', 'PARENT')
   @ApiOperation({ summary: 'Submit leave request for student' })
   createLeave(@Body() dto: CreateLeaveRequestDto, @CurrentUser() user: AuthenticatedUser) {
     return this.leave.create(user.tenantId, dto, user.id);
@@ -168,7 +168,7 @@ getMonthlyRegister(
   }
 
   @Get('leave/pending')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
   @ApiOperation({ summary: 'List pending leave requests' })
   getPendingLeaves(@CurrentUser() user: AuthenticatedUser) {
     return this.leave.getPending(user.tenantId);
@@ -181,7 +181,7 @@ getMonthlyRegister(
   }
 
   @Post('leave/:id/approve')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
   @ApiOperation({ summary: 'Approve leave — auto-marks attendance as LEAVE' })
   approveLeave(
     @CurrentUser() user: AuthenticatedUser,
@@ -192,7 +192,7 @@ getMonthlyRegister(
   }
 
   @Post('leave/:id/reject')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
   @ApiOperation({ summary: 'Reject leave request' })
   rejectLeave(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.leave.reject(user.tenantId, id, user.id);

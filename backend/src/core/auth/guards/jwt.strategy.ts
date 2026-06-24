@@ -24,7 +24,7 @@ export interface AuthenticatedUser {
  *   - from the `x-branch-id` header (validated against branchIds), or
  *   - left undefined (services then filter only by tenantId).
  */
-const TENANT_WIDE_ROLES = new Set(['SCHOOL_ADMIN', 'SUPER_ADMIN']);
+const TENANT_WIDE_ROLES = new Set(['SCHOOL_ADMIN', 'SCHOOL_OWNER', 'SUPER_ADMIN']);
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {

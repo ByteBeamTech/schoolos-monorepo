@@ -12,7 +12,7 @@ export class CrmDashboardController {
   constructor(private readonly service: CrmDashboardService) {}
 
   @Get('summary')
-  @Roles('RECEPTIONIST', 'SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('RECEPTIONIST', 'SCHOOL_OWNER','SCHOOL_ADMIN', 'PRINCIPAL')
   summary(
     @CurrentUser() user: AuthenticatedUser,
     @Query('branchId') branchId?: string,

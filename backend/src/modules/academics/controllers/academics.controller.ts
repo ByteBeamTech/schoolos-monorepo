@@ -43,7 +43,7 @@ export class AcademicsController {
     @Query('sessionId') sessionId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.findAllClasses(user.tenantId, sessionId);
+    return this.service.findAllClasses(user.tenantId, user.branchId!, sessionId);
   }
 
   @Get('classes/:id')
@@ -170,7 +170,7 @@ findSections(
     @Query('sectionId') sectionId: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.getTeacherMappings(user.tenantId, sessionId, sectionId);
+    return this.service.getTeacherMappings(user.tenantId, user.branchId!, sessionId, sectionId);
   }
 
   // ── Subject Mappings ──────────────────────────────────────────────────────
@@ -217,7 +217,7 @@ findSections(
     @Query('sessionId') sessionId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.getClassTeacherAppointments(user.tenantId, sessionId);
+    return this.service.getClassTeacherAppointments(user.tenantId, user.branchId!, sessionId);
   }
 @Post('roll-numbers/generate')
 @Roles('SCHOOL_ADMIN', 'PRINCIPAL')

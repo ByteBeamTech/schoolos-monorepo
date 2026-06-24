@@ -30,14 +30,14 @@ export class InvoiceController {
   constructor(private readonly service: InvoiceService) {}
 
   @Post('generate')
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Generate invoice for a student' })
   generate(@Body() dto: GenerateInvoiceDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.generate(user.tenantId, dto, user.id);
   }
 
   @Post('bulk-generate')
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN','SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Bulk generate invoices for all students on fee plan' })
   bulkGenerate(@Body() dto: BulkGenerateInvoicesDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.bulkGenerate(user.tenantId, dto, user.id);
@@ -67,14 +67,14 @@ export class InvoiceController {
   }
 
   @Get('overdue')
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN','SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'List overdue invoices' })
   findOverdue(@CurrentUser() user: AuthenticatedUser) {
     return this.service.findOverdue(user.tenantId);
   }
 
   @Get('defaulters')
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Defaulters list aggregated by student' })
   @ApiQuery({ name: 'branchId',       required: false })
   @ApiQuery({ name: 'classId',        required: false })
@@ -93,7 +93,7 @@ export class InvoiceController {
   }
 
   @Get('stats')
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Billing stats' })
   @ApiQuery({ name: 'academicYear', required: false })
   getStats(
@@ -110,7 +110,7 @@ export class InvoiceController {
   }
 
   @Patch(':id/send')
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN','SCHOOL_OWNER',  'PRINCIPAL', 'ACCOUNTANT')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send invoice (DRAFT → SENT)' })
   send(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
@@ -118,7 +118,7 @@ export class InvoiceController {
   }
 
   @Patch(':id/cancel')
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancel invoice (reason required, cannot cancel paid)' })
   cancel(

@@ -47,7 +47,8 @@ async findSessions(tenantId: string) {
   ) {
     const existing = await this.prisma.class.findFirst({
       where: {
-        tenantId,
+        tenantId, branchId,
+    sessionId: dto.sessionId,
         name: dto.name,
       },
     });
@@ -84,12 +85,12 @@ async findSessions(tenantId: string) {
   }
 
   async findAllClasses(
-    tenantId: string,
+    tenantId: string,  branchId: string,
     sessionId: string,
   ) {
     return this.prisma.class.findMany({
       where: {
-        tenantId,
+        tenantId, branchId,
         sessionId,
       },
       include: {
@@ -446,13 +447,13 @@ const mapping = await this.prisma.teacherAssignment.create({
   }
 
   async getTeacherMappings(
-    tenantId: string,
+    tenantId: string, branchId: string,
     sessionId: string,
     sectionId?: string,
   ) {
     return this.prisma.teacherAssignment.findMany({
       where: {
-        tenantId,
+        tenantId, branchId,
         academicYearId: sessionId,
         ...(sectionId && { sectionId }),
       },
@@ -608,12 +609,12 @@ const mapping = await this.prisma.teacherAssignment.create({
   }
 
   async getClassTeacherAppointments(
-    tenantId: string,
+    tenantId: string, branchId: string,
     sessionId: string,
   ) {
     const classes = await this.prisma.class.findMany({
       where: {
-        tenantId,
+        tenantId, branchId,
         sessionId,
       },
       include: {

@@ -20,14 +20,14 @@ export class StudentsController {
   constructor(private readonly service: StudentsService) {}
 
   @Post()
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL')
   async create(@Body() dto: CreateStudentDto, @CurrentUser() user: AuthenticatedUser) {
     if (!user.branchId) throw new Error('Branch context is mandatory for student creation.');
     return this.service.create(user.tenantId, user.branchId, dto, user.id);
   }
 
   @Get()
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
   async findAll(
 	  @Query('page') page: string,
           @Query('limit') limit: string,
@@ -65,21 +65,21 @@ export class StudentsController {
 }
 
   @Get('stats')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'SUPER_ADMIN', 'PRINCIPAL', 'TEACHER')
   async getStats(@Query('academicYear') academicYear: string, @CurrentUser() user: AuthenticatedUser) {
     if (!user.branchId) throw new Error('Branch context mapping required for statistics computation.');
     return this.service.getStats(user.tenantId, user.branchId, academicYear);
   }
 
   @Get(':id')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER', 'PARENT')
   async findById(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     if (!user.branchId) throw new Error('Branch context constraint verified missing.');
     return this.service.findById(user.tenantId, user.branchId, id);
   }
 
   @Patch(':id') 
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL')
   async update(@Param('id') id: string, @Body() dto: UpdateStudentDto, @CurrentUser() user: AuthenticatedUser) {
     if (!user.branchId) throw new Error('Branch validation ownership verification failed.');
     // 🟢 FIX #1: Aligned strictly to convention guidelines order: tenantId, branchId, resourceId
@@ -87,14 +87,14 @@ export class StudentsController {
   }
 
   @Post(':id/guardians')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL')
   async linkGuardian(@Param('id') id: string, @Body() dto: LinkGuardianDto, @CurrentUser() user: AuthenticatedUser) {
     if (!user.branchId) throw new Error('Branch checkpoint failed.');
     return this.service.linkGuardian(user.tenantId, user.branchId, id, dto, user.id);
   }
 
   @Post('guardians')
-@Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+@Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL')
 async createGuardian(
   @Body() dto: CreateGuardianDto,
   @CurrentUser() user: AuthenticatedUser,
@@ -107,7 +107,7 @@ async createGuardian(
 }
 
 @Get('guardians/search')
-@Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER')
+@Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'SUPER_ADMIN',  'PRINCIPAL', 'TEACHER')
 async searchGuardians(
   @Query('q') q: string,
   @CurrentUser() user: AuthenticatedUser,
@@ -119,14 +119,14 @@ async searchGuardians(
 }
 
   @Get(':id/guardians')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT')
+  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER', 'PARENT')
   async getGuardians(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     if (!user.branchId) throw new Error('Branch check aborted.');
     return this.service.getGuardians(user.tenantId, user.branchId, id);
   }
 
 @Post('sections/:sectionId/generate-roll-numbers')
-@Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+@Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL')
 async generateRollNumbers(
   @Param('sectionId') sectionId: string,
   @CurrentUser() user: AuthenticatedUser,

@@ -13,7 +13,7 @@ import type { AuthenticatedUser } from '@core/auth/interfaces/authenticated-user
  * Returns a Prisma `where` fragment to merge into a query, plus the effective
  * branchId (if any) for write paths.
  */
-export const TENANT_WIDE_ROLES = new Set(['SCHOOL_ADMIN', 'SUPER_ADMIN']);
+export const TENANT_WIDE_ROLES = new Set(['SCHOOL_ADMIN', 'SCHOOL_OWNER', 'SUPER_ADMIN']);
 
 export interface BranchScope {
   /** Prisma `where` filter — always at least { tenantId } */
