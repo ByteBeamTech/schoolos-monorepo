@@ -27,10 +27,30 @@ enum Language {
   UNKNOWN
 }
 
-enum SubscriptionTier {
-  STARTER
-  PRO
-  ENTERPRISE
+enum PlanCategory {
+  SCHOOL
+  CHAIN
+  GOVERNMENT
+  NGO
+  CUSTOM
+}
+
+enum AddonCategory {
+  SETUP
+  MIGRATION
+  TRAINING
+  SUPPORT
+  STORAGE
+  SMS
+  WHATSAPP
+  BRANCH
+  CUSTOM
+}
+
+enum AddonStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
 }
 
 enum PricingModel {
@@ -142,6 +162,32 @@ enum BranchStatus {
 }
 
 // ================== 💳 SAAS BILLING, LICENSING & ORDERS ==================
+enum SubscriptionEventType {
+  CREATED
+  TRIAL_STARTED
+  TRIAL_EXTENDED
+  ACTIVATED
+  PLAN_CHANGED
+  PRICE_OVERRIDDEN
+  PAYMENT_FAILED
+  PAYMENT_RECEIVED
+  RENEWED
+  SUSPENDED
+  RESUMED
+  CANCELLED
+  EXPIRED
+}
+
+enum BillingType {
+  ONE_TIME
+  RECURRING
+}
+
+enum SubscriptionTier {
+  STARTER
+  PRO
+  ENTERPRISE
+}
 
 enum SubscriptionStatus {
   TRIAL

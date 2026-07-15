@@ -164,10 +164,14 @@ export class GatewayFactory {
   ) {}
 
   async forTenant(tenantId: string): Promise<GatewayAdapter> {
-    const subscription = await this.prisma.tenantSubscription.findUnique({
-      where: { tenantId },
-    });
-
+  const subscription = await this.prisma.tenantSubscription.findUnique({
+  where: {
+    tenantId_isCurrent: {
+      tenantId,
+      isCurrent: true,
+    },
+  },
+});
     const gateway = subscription?.gateway ?? 'RAZORPAY';
     return this.forGateway(gateway as string);
   }

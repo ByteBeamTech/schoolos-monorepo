@@ -20,11 +20,11 @@ model Payment {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   invoice          Invoice                @relation(fields: [invoiceId], references: [id])
-  branch           Branch @relation(fields: [branchId], references: [id])
+  branch           Branch                 @relation(fields: [branchId], references: [id])
   receipt          Receipt?
   refunds          Refund[]
-  
-  @@index([tenantId]) 
+
+  @@index([tenantId])
   @@index([tenantId, branchId])
   @@index([invoiceId])
   @@index([status])
@@ -37,7 +37,7 @@ model Receipt {
   branchId       String
   invoiceId      String    @unique
   paymentId      String    @unique
-  receiptNumber  String    
+  receiptNumber  String
   amount         Decimal   @db.Decimal(12, 2)
   currency       Currency  @default(INR)
   pdfUrl         String?
@@ -47,7 +47,7 @@ model Receipt {
   invoice        Invoice   @relation(fields: [invoiceId], references: [id])
   payment        Payment   @relation(fields: [paymentId], references: [id])
   branch         Branch    @relation(fields: [branchId], references: [id])
-  
+
   @@unique([tenantId, branchId, receiptNumber])
   @@index([tenantId])
   @@index([tenantId, branchId])
@@ -68,8 +68,8 @@ model Refund {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   payment         Payment                @relation(fields: [paymentId], references: [id])
-  
-  branch          Branch                 @relation(fields: [branchId], references: [id])
+
+  branch Branch @relation(fields: [branchId], references: [id])
 
   @@index([tenantId, branchId])
   @@index([tenantId])

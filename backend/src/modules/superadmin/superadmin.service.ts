@@ -112,9 +112,9 @@ export class SuperadminService {
     const tenants = await this.prisma.tenant.findMany({
       where:   { status: { in: ['ACTIVE', 'TRIAL'] }, slug: { not: 'schoolos-platform' }, },
       include: {
-        subscription: { include: { plan: true } },
-        _count:       { select: { students: true, users: true, auditLogs: true } },
-      },
+  subscriptions: {    where: {      isCurrent: true,    },    take: 1,    include: {      plan: true,    },  },
+  _count: {    select: {      students: true,      users: true,      auditLogs: true,    },  },
+  },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -238,7 +238,7 @@ export class SuperadminService {
     const tenants = await this.prisma.tenant.findMany({ where: {
     slug: { not: 'schoolos-platform' },
   },
-      include: { subscription: true },
+      include: {  subscriptions: {    where: {      isCurrent: true,    },    take: 1,  },},
       orderBy: { createdAt: 'asc' },
     });
 
@@ -248,7 +248,8 @@ export class SuperadminService {
       const month = new Date(t.createdAt).toISOString().slice(0, 7);
       if (!cohorts[month]) cohorts[month] = { total: 0, active: 0, churned: 0, trial: 0 };
       cohorts[month].total++;
-      const status = t.subscription?.status ?? t.status;
+      const currentSubscription = t.subscriptions[0];
+const status = currentSubscription?.status ?? t.status;
       if (status === 'ACTIVE')                                      cohorts[month].active++;
       else if (status === 'CANCELLED' || status === 'SUSPENDED') cohorts[month].churned++;
       else                                                          cohorts[month].trial++;
@@ -316,9 +317,7 @@ export class SuperadminService {
       where: {
         slug: { not: 'schoolos-platform' },
       },
-      include: {
-        subscription: true,
-      },
+      include: {  subscriptions: {    where: {      isCurrent: true,    },    take: 1,  },},
       skip,
       take: limit,
       orderBy: {
@@ -407,12 +406,12 @@ export class SuperadminService {
     const where: any = {};
     if (filters.status) where.status = filters.status;
     if (filters.region) where.region = filters.region;
-    if (filters.tier)   where.featureTier = filters.tier;
-
+    if (filters.tier) {
+  where.subscriptions = {    some: {      isCurrent: true,      plan: {        tier: filters.tier,      },    },  };}
     const tenants = await this.prisma.tenant.findMany({
       where,
       include: {
-        subscription: { include: { plan: true, saasInvoices: { where: { status: { in: ['OVERDUE', 'SENT'] as any[] } }, take: 1 } } },
+	      subscriptions: {  where: {    isCurrent: true,  },  take: 1,  include: {    plan: true,    saasInvoices: { where: {  status: {  in: ['OVERDUE', 'SENT'] as any[],   },   },   take: 1,  },  },},
         fraudAlerts:  { where: { status: 'OPEN' }, take: 1 },
         _count:       { select: { students: true } },
       },

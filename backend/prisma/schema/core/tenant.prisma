@@ -34,12 +34,10 @@ model Tenant {
   address          Json?
   gstNumber        String?
   panNumber        String?
-  licenseKey       String?          @unique
+  licenseKey       String?   @unique
   licenseExpiresAt DateTime?
-  featureTier      SubscriptionTier @default(STARTER)
-
-  settings Json? @default("{}")
-  metadata Json? @default("{}")
+  settings         Json?     @default("{}")
+  metadata         Json?     @default("{}")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -65,7 +63,6 @@ model Tenant {
   rolePermissions      RolePermission[]
   students             Student[]
   supportTickets       SupportTicket[]
-  subscription         TenantSubscription?
   users                User[]
   visitors             Visitor[]
   behaviorRecords      BehaviorRecord[]
@@ -85,6 +82,10 @@ model Tenant {
   jobSchedules         TenantJobSchedule[]
   calendarEvents       AcademicCalendarEvent[]
   NotificationSetting  NotificationSetting?
+
+  subscriptions      TenantSubscription[]
+  subscriptionEvents SubscriptionEvent[]
+  tenantAddons       TenantAddon[]
 
   // --- ⚡ Speed Indices ---
   @@index([slug])

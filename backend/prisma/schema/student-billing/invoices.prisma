@@ -26,9 +26,9 @@ model Invoice {
   lateFees       LateFee[]
   payments       Payment[]
   receipt        Receipt?
-  
-  @@index([tenantId, branchId])
+
   @@unique([tenantId, branchId, invoiceNumber])
+  @@index([tenantId, branchId])
   @@index([tenantId])
   @@index([studentId])
   @@index([status])

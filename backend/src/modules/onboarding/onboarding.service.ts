@@ -215,9 +215,8 @@ await tx.userBranch.create({
       this.prisma.tenant.findMany({
         where,
         include: {
-          subscription: { include: { plan: { select: { name: true, tier: true } } } },
-          _count:       { select: { students: true, users: true } },
-        },
+		subscriptions: {  where: {   isCurrent: true,   },   take: 1,  include: { plan: { select: {  name: true,   tier: true,  },   },  },  },
+  _count: {    select: {      students: true,      users: true,    },  }, },
         orderBy: { createdAt: 'desc' },
         skip:  (page - 1) * limit,
         take:  limit,
@@ -235,11 +234,10 @@ await tx.userBranch.create({
   async getTenant(id: string) {
     return this.prisma.tenant.findUnique({
       where:   { id },
-      include: {
-        subscription: { include: { plan: true } },
-        users:        { where: { role: 'SCHOOL_ADMIN', isActive: true }, select: { email: true, firstName: true, lastName: true, lastLoginAt: true } },
-        _count:       { select: { students: true, users: true, auditLogs: true } },
-      },
+     include: {
+  subscriptions: {    where: {      isCurrent: true,    },    take: 1,    include: {      plan: true,    },  },
+  users: {    where: {      role: 'SCHOOL_ADMIN',      isActive: true,    },    select: {      email: true,      firstName: true,      lastName: true,      lastLoginAt: true,    },  },
+  _count: {    select: {      students: true,      users: true,      auditLogs: true,    },  },},
     });
   }
 

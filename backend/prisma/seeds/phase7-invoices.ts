@@ -2,8 +2,8 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-const TENANT_ID = 'cmqqjpii80003yy8zhr2gm9uu';
-
+//const TENANT_ID = 'cmqqjpii80003yy8zhr2gm9uu';
+const TENANT_ID = 'cmqw13rux0003dyi3wzpf7vob';
 async function main() {
   console.log('\n💰 PHASE 7 INVOICES STARTED\n');
 

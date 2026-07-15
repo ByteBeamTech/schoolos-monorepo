@@ -37,21 +37,19 @@ model Branch {
   discounts           Discount[]
   lateFees            LateFee[]
   calendarEvents      AcademicCalendarEvent[]
-   
+
   // Student Billing
-feePlans            FeePlan[]
-feeAssignments      FeeAssignment[]
+  feePlans       FeePlan[]
+  feeAssignments FeeAssignment[]
 
-invoices            Invoice[]
-payments            Payment[]
-receipts            Receipt[]
-refunds             Refund[]
+  invoices Invoice[]
+  payments Payment[]
+  receipts Receipt[]
+  refunds  Refund[]
 
-// Number Sequences
-invoiceSequences    InvoiceSequence[]
-receiptSequences    ReceiptSequence[]   
-
-
+  // Number Sequences
+  invoiceSequences InvoiceSequence[]
+  receiptSequences ReceiptSequence[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, branchCode])

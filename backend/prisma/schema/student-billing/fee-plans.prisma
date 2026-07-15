@@ -13,14 +13,13 @@ model FeePlan {
   updatedAt    DateTime        @updatedAt
   assignments  FeeAssignment[]
   feeItems     FeeItem[]
-  
-  session      AcademicSession @relation(fields: [sessionId], references: [id])
-  branch       Branch          @relation(fields: [branchId], references: [id])
+
+  session AcademicSession @relation(fields: [sessionId], references: [id])
+  branch  Branch          @relation(fields: [branchId], references: [id])
+
   @@unique([tenantId, branchId, name, academicYear])
   @@index([tenantId])
   @@index([tenantId, branchId])
-
-
 }
 
 model FeeItem {
@@ -49,7 +48,7 @@ model FeeAssignment {
   assignedBy   String
   feePlan      FeePlan  @relation(fields: [feePlanId], references: [id])
   student      Student  @relation(fields: [studentId], references: [id])
-  branch       Branch   @relation(fields: [branchId], references: [id]) 
+  branch       Branch   @relation(fields: [branchId], references: [id])
 
   @@unique([studentId, feePlanId, academicYear])
   @@index([tenantId])

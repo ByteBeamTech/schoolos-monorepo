@@ -1,28 +1,28 @@
 model InvoiceSequence {
-  id         String @id @default(cuid())
+  id String @id @default(cuid())
 
-  tenantId   String
-  branchId   String
+  tenantId String
+  branchId String
 
   year       Int
   lastNumber Int @default(0)
 
-  branch      Branch @relation(fields: [branchId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
 
   @@unique([tenantId, branchId, year])
   @@index([tenantId, branchId])
 }
 
 model ReceiptSequence {
-  id         String @id @default(cuid())
+  id String @id @default(cuid())
 
-  tenantId   String
-  branchId   String
+  tenantId String
+  branchId String
 
   year       Int
   lastNumber Int @default(0)
 
-  branch      Branch @relation(fields: [branchId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
 
   @@unique([tenantId, branchId, year])
   @@index([tenantId, branchId])
