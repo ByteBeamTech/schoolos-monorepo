@@ -63,7 +63,7 @@ import { HRModule } from './modules/hr/hr.module';
 import { ReceptionModule } from './modules/reception/reception.module';
 import { SupportModule } from './modules/support/support.module';
 import { BehaviorModule } from './modules/behavior/behavior.module';
-
+import { LicenseModule } from './core/license/license.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -140,6 +140,7 @@ import { BehaviorModule } from './modules/behavior/behavior.module';
     SupportModule,
     BehaviorModule,
     AcademicCalendarModule,
+    LicenseModule,
   ],
 
   providers: [

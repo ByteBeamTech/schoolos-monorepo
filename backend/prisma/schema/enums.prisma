@@ -207,11 +207,37 @@ enum LicenseType {
 }
 
 enum LicenseStatus {
+  TRIAL
   UNUSED
   ACTIVE
+  GRACE_PERIOD        // PR-4: reserved for ADR COMM-014 (read-only suspension
+                       // lifecycle). Not yet produced by any code path --
+                       // license-expiry.job.ts still collapses to EXPIRED
+                       // (see its PR-1 note). Wiring GRACE_PERIOD/SUSPENDED
+                       // transitions is PR-5+ scope, alongside the actual
+                       // SuspendedTenantGuard the ADR requires.
+  SUSPENDED            // PR-4: reserved, same as above -- not yet produced.
   EXPIRED
   REVOKED
   PENDING_ACTIVATION
+}
+
+// PR-4: why this License row exists / was regenerated. LicenseHistory
+// stores which reason produced each snapshot. Deliberately includes a
+// couple of reasons not yet wired to any producer (PLAN_CHANGED, RENEWAL,
+// OVERRIDE_APPLIED, MANUAL_ADMIN) -- reserving enum values now is cheap;
+// this is the same reasoning as reserving GRACE_PERIOD/SUSPENDED above.
+// Only ONBOARDING_TRIAL and SUBSCRIPTION_ACTIVATED are actually produced
+// as of PR-4.
+enum LicenseGenerationReason {
+  ONBOARDING_TRIAL
+  SUBSCRIPTION_ACTIVATED
+  PLAN_CHANGED
+  RENEWAL
+  OVERRIDE_APPLIED
+  OVERRIDE_EXPIRED
+  MANUAL_ADMIN
+  BACKFILL
 }
 
 enum OrderStatus {
@@ -793,3 +819,4 @@ enum CommercialTier {
   ASSISTED
   ENTERPRISE
 }
+

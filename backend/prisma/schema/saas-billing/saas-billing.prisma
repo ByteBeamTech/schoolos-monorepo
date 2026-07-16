@@ -169,6 +169,12 @@ model License {
   type             LicenseType
   status           LicenseStatus @default(UNUSED)
   version          Int           @default(1)
+  // PR-4: increments on every LicenseBuilder.regenerateForTenant() call.
+  // Distinct from `version` above (LicenseType/schema version, pre-existing,
+  // unrelated) -- generationVersion tracks "which regeneration is this,"
+  // making LicenseHistory rows unambiguously orderable without relying on
+  // timestamps alone. See LicenseHistory.generationVersion.
+  generationVersion Int          @default(1)
   maxStudents      Int?
   maxStaff         Int?
   maxBranches      Int?
@@ -187,12 +193,54 @@ model License {
   updatedAt        DateTime      @updatedAt
   branch           Branch?       @relation(fields: [branchId], references: [id])
   tenant           Tenant?       @relation(fields: [tenantId], references: [id])
+  history          LicenseHistory[]
 
   @@index([tenantId])
   @@index([branchId])
   @@index([subscriptionId])
   @@index([orderId])
   @@index([key, status, expiresAt])
+}
+
+// PR-4 (ADR COMM-002 gap fill): immutable audit trail for every License
+// regeneration. Insert-only -- never updated, never deleted. This is what
+// makes "what access did this tenant have on date X" answerable, which is
+// the whole reason COMM-002 requires License to be a persisted, versioned
+// entity rather than a pure runtime computation.
+model LicenseHistory {
+  id                String                  @id @default(cuid())
+  licenseId         String
+  tenantId          String
+  generationVersion Int
+  reason            LicenseGenerationReason
+  triggeredBy       String                  // event name, or a user/admin id for manual actions
+  // PR-4 review feedback: explicit, queryable columns rather than only
+  // burying these inside planSnapshot's JSON -- ad-hoc audits ("find every
+  // history row generated under plan version 3") shouldn't require JSON
+  // path queries.
+  planId            String?
+  planVersion       Int?
+  subscriptionId    String?
+  subscriptionStatus String?
+  // Idempotency key for event-driven callers (e.g. SUBSCRIPTION_ACTIVATED's
+  // listener) -- deliberately the SAME string as the EventOutbox row's
+  // uniqueKey that produced this regeneration. Null for synchronous
+  // callers (onboarding, manual admin) that have no originating event.
+  // Nullable+unique is fine in Postgres (multiple NULLs allowed) since only
+  // event-driven rows populate it.
+  sourceEventKey    String?                 @unique
+  effectiveFrom     DateTime                @default(now())
+  effectiveTo       DateTime?               // set when a later regeneration supersedes this snapshot
+  planSnapshot      Json?
+  featuresSnapshot  Json?
+  limitsSnapshot    Json?
+  generatedAt       DateTime                @default(now())
+
+  license           License                 @relation(fields: [licenseId], references: [id])
+
+  @@index([licenseId])
+  @@index([tenantId])
+  @@index([licenseId, generationVersion])
 }
 
 model LicenseOrder {

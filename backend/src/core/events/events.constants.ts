@@ -15,6 +15,12 @@ export const EVENTS = {
   //    consumers, kept as separate event names deliberately) ─────────────────
   SAAS_INVOICE_PAID:             'saas.invoice.paid',
   SAAS_PAYMENT_FAILED:           'saas.payment.failed',
+  // PR-4: fired only on a real subscription-status transition INTO active
+  // (TRIAL/PAST_DUE/SUSPENDED -> ACTIVE), never on a routine renewal
+  // payment of an already-active subscription. LicenseBuilder listens to
+  // this, never to SAAS_INVOICE_PAID directly -- payment domain knowledge
+  // shouldn't leak into the license domain. See PR-4 scoping discussion.
+  SUBSCRIPTION_ACTIVATED:        'saas.subscription.activated',
 
   // ── Attendance ────────────────────────────────────────────────────────────
   ATTENDANCE_MARKED:             'attendance.marked',
