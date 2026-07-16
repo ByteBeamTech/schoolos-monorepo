@@ -57,14 +57,14 @@ export class WebhookHmacGuard implements CanActivate {
 
   // ─── Razorpay ────────────────────────────────────────────────────────────────
   // Header: x-razorpay-signature
-  // HMAC-SHA256(rawBody, RAZORPAY_WEBHOOK_SECRET)
+  // HMAC-SHA256(rawBody, RAZORPAY_SAAS_WEBHOOK_SECRET)
 
   private verifyRazorpay(req: Request, rawBody: Buffer): boolean {
     const signature = req.headers['x-razorpay-signature'] as string;
     if (!signature) throw new UnauthorizedException('Missing x-razorpay-signature header');
 
-    const secret = this.config.get<string>('RAZORPAY_WEBHOOK_SECRET');
-    if (!secret) throw new UnauthorizedException('RAZORPAY_WEBHOOK_SECRET not configured');
+    const secret = this.config.get<string>('RAZORPAY_SAAS_WEBHOOK_SECRET');
+    if (!secret) throw new UnauthorizedException('RAZORPAY_SAAS_WEBHOOK_SECRET not configured');
 
     const expected = createHmac('sha256', secret)
       .update(rawBody)

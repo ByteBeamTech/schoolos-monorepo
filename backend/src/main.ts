@@ -3,6 +3,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import compression from 'compression';
+import { json } from 'express';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
@@ -10,12 +11,23 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
     bufferLogs: true,
+    // PR-3: disable Nest's automatic body parser so we can apply json()
+    // ourselves with a `verify` callback -- this is what makes
+    // WebhookHmacGuard possible (it needs the exact raw bytes Razorpay/
+    // Stripe/PayPal signed, not Nest's re-serialized JSON, which can differ
+    // in whitespace/key-order and would make every signature check fail).
+    bodyParser: false,
   });
 
   const configService = app.get(ConfigService);
 
   app.use(helmet());
   app.use(compression());
+  app.use(json({
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  }));
 
   const allowedOrigins = configService
     .get<string>('CORS_ORIGINS', '')

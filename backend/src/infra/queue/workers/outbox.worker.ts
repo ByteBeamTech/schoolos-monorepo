@@ -32,7 +32,7 @@ export class OutboxWorker {
        * 🛡️ DECOUPLED FETCH
        * Minimal DB lock duration for high scalability.
        */
-      const events = await (this.prisma as any).eventOutbox.findMany({
+      const events = await this.prisma.eventOutbox.findMany({
         where: {
           status: 'PENDING',
           OR: [{ nextRetryAt: null }, { nextRetryAt: { lte: now } }]
@@ -73,7 +73,7 @@ export class OutboxWorker {
      * 🔥 TRUE ATOMIC CLAIM
      * Deterministic claiming using the batch 'now' timestamp.
      */
-    const claimed = await (this.prisma as any).eventOutbox.updateMany({
+    const claimed = await this.prisma.eventOutbox.updateMany({
       where: {
         id: event.id,
         status: 'PENDING',
@@ -100,7 +100,7 @@ export class OutboxWorker {
     if (currentTenantLoad >= 40) {
       this.logger.warn({ event: 'TENANT_THROTTLED', tenantId, eventId: event.id });
       
-      await (this.prisma as any).eventOutbox.update({
+      await this.prisma.eventOutbox.update({
         where: { id: event.id },
         data: { status: 'PENDING', nextRetryAt: dayjs(now).add(1, 'minute').toDate() }
       });
@@ -132,9 +132,15 @@ export class OutboxWorker {
       ]);
 
       // ✅ SUCCESS MARKER
-      await (this.prisma as any).eventOutbox.update({
+      // PR-3 fix: schema comment documents valid status values as
+      // PENDING | PROCESSING | DONE | FAILED -- this previously wrote
+      // 'PROCESSED', which isn't one of them. Since `status` is a plain
+      // String column (not a Prisma enum), this compiled fine and never
+      // errored -- it would just have silently broken any future query
+      // filtering on status: 'DONE' to find completed events.
+      await this.prisma.eventOutbox.update({
         where: { id: event.id },
-        data: { status: 'PROCESSED', processedAt: now, updatedAt: now }
+        data: { status: 'DONE', processedAt: now, updatedAt: now }
       });
 
       this.logger.log({ event: 'OUTBOX_SUCCESS', eventId: event.id, correlationId, latency: Date.now() - start });
@@ -151,14 +157,19 @@ export class OutboxWorker {
       const nextDelaySeconds = Math.min(300, baseDelay + jitter + spread); 
       const nextRetryAt = dayjs(now).add(nextDelaySeconds, 'second').toDate();
 
-      await (this.prisma as any).eventOutbox.update({
+      await this.prisma.eventOutbox.update({
         where: { id: event.id },
         data: {
           status: isFailedPermanently ? 'FAILED' : 'PENDING',
           retryCount,
           nextRetryAt: isFailedPermanently ? null : nextRetryAt,
           updatedAt: now,
-          errorLog: `[Attempt ${retryCount}] ${err.message}`
+          // PR-3 fix: schema field is `error`, not `errorLog`. This was
+          // masked by the as-any cast -- silently wrote to a nonexistent
+          // field via Prisma's loose JSON handling under `as any`... actually
+          // more precisely: TypeScript couldn't catch it because `as any`
+          // disabled type checking on this call entirely.
+          error: `[Attempt ${retryCount}] ${err.message}`
         }
       });
 
@@ -172,9 +183,9 @@ export class OutboxWorker {
 
   private async failEvent(id: string, reason: string, correlationId: string) {
     const now = new Date();
-    await (this.prisma as any).eventOutbox.update({
+    await this.prisma.eventOutbox.update({
       where: { id },
-      data: { status: 'FAILED', errorLog: reason, updatedAt: now }
+      data: { status: 'FAILED', error: reason, updatedAt: now }
     });
     this.logger.error({ event: 'OUTBOX_TERMINAL_ERROR', eventId: id, correlationId, reason });
   }

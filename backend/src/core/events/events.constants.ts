@@ -10,6 +10,12 @@ export const EVENTS = {
   INVOICE_OVERDUE:               'invoice.overdue',
   FEE_REMINDER:                  'fee.reminder',
 
+  // ── SaaS Billing (ByteBeam <- Tenant, distinct from student-billing above
+  //    which is Parent -> Tenant/School — different money flow, different
+  //    consumers, kept as separate event names deliberately) ─────────────────
+  SAAS_INVOICE_PAID:             'saas.invoice.paid',
+  SAAS_PAYMENT_FAILED:           'saas.payment.failed',
+
   // ── Attendance ────────────────────────────────────────────────────────────
   ATTENDANCE_MARKED:             'attendance.marked',
   ATTENDANCE_ABSENT:             'attendance.absent',

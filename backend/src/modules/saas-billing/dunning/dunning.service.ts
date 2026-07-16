@@ -1,3 +1,17 @@
+// ⚠️ DEPRECATED (PR-3A) — never registered as a provider anywhere, zero
+// consumers. Kept, not deleted, per review feedback (see dunning.processor.ts
+// for the full rationale). Also has a real correctness problem beyond being
+// unused: it references DunningAttempt fields (invoiceId, stage,
+// gatewayError, resolvedAt) that don't exist on the actual schema (real
+// fields: subscriptionId, attemptNumber, status, action, scheduledAt,
+// executedAt, result) -- every call below is protected from surfacing that
+// as a type error only by the `as any` casts, which is exactly the masking
+// pattern PR-1 was about removing elsewhere. Do not start calling this from
+// new code; it would not compile without the as-any casts, and even with
+// them, it would silently fail (see the .catch(() => ...) on every call).
+//
+// Verified zero consumers as of PR-3A (re-run before deleting):
+//   grep -R "DunningService" backend/src
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue }        from '@nestjs/bull';
 import { Queue }              from 'bull';

@@ -4,6 +4,7 @@ import { Logger }             from '@nestjs/common';
 import { Job }                from 'bull';
 import { QUEUE_NAMES }        from '../queue.module';
 import { PrismaService } from '@infra/database/prisma.service';
+import { SaasPaymentService } from '../../../modules/saas-billing/payment/services/saas-payment.service';
 
 export interface DunningJob {
   subscriptionId: string;
@@ -16,7 +17,10 @@ export interface DunningJob {
 export class DunningWorker {
   private readonly logger = new Logger(DunningWorker.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma:   PrismaService,
+    private readonly payments: SaasPaymentService,
+  ) {}
 
   @Process('execute')
   async handleExecute(job: Job<DunningJob>) {
@@ -78,8 +82,26 @@ export class DunningWorker {
       orderBy: { dueDate: 'desc' },
     });
     if (!invoice) return 'no_outstanding_invoice';
-    // Actual gateway charge happens in payment service — worker just triggers
-    this.logger.log(`[DunningWorker] Retry charge for invoice ${invoice.id}`);
-    return `retry_initiated:${invoice.id}`;
+
+    // PR-3 honesty note: this creates a fresh gateway order for the tenant
+    // to pay -- it does NOT silently auto-charge a saved payment method.
+    // True auto-debit requires a tokenized/mandate-based recurring billing
+    // setup (e.g. Razorpay e-mandate or UPI Autopay), which is a materially
+    // different, larger feature with its own consent flow -- not built
+    // here. "Retry" in the current dunning flow means: generate a payable
+    // order and (via the existing notification pipeline) prompt the tenant
+    // to complete it via POST /saas/invoices/:id/pay -- not "we charged
+    // their card again without asking."
+    try {
+      const order = await this.payments.createOrder(invoice.id, tenantId);
+      this.logger.log(`[DunningWorker] Payment order created for retry: invoice=${invoice.id} order=${order.gatewayOrderId}`);
+      return `order_created:${invoice.id}:${order.gatewayOrderId}`;
+    } catch (err: any) {
+      // A failure here (e.g. invoice already paid between the dunning
+      // schedule being set up and this job running -- a real race, not
+      // hypothetical) must not silently look like a successful retry.
+      this.logger.warn(`[DunningWorker] Failed to create retry order for invoice ${invoice.id}: ${err.message}`);
+      return `order_creation_failed:${invoice.id}:${err.message}`;
+    }
   }
 }

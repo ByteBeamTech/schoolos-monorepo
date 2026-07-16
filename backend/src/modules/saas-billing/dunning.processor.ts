@@ -1,3 +1,17 @@
+// ⚠️ DEPRECATED (PR-3A) — not registered in saas-billing.module.ts.
+// DunningWorker (infra/queue/workers/dunning.worker.ts) is the canonical,
+// live implementation as of PR-3A. This file is kept, not deleted, per
+// review feedback: destructive cleanup should follow a separate,
+// specifically-verified PR (PR-3B), not ride along with infra registration
+// changes -- if a hidden consumer turns up, rollback should be a revert of
+// one focused PR, not an unpick from a larger one.
+//
+// Verified zero consumers as of PR-3A (re-run these before deleting):
+//   grep -R "DunningProcessor" backend/src
+//   grep -R "retry-payment" backend/src
+// Both confirmed: only this file's own class/decorator definitions, no
+// producer anywhere calls `.add('retry-payment', ...)`. This processor has
+// never received a real job even while it was registered.
 import { Process, Processor } from '@nestjs/bull';
 import { Logger }             from '@nestjs/common';
 import { Job }                from 'bull';
