@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { LicenseService } from '../services/license.service';
+import { LicenseService } from '../services/license.service.legacy';
 
 const prisma = new PrismaClient();
 

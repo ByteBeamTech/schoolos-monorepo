@@ -1,5 +1,5 @@
 // core/license/license.service.ts
-import { Injectable, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, ForbiddenException, ServiceUnavailableException, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { RedisService }  from '../../infra/cache/redis.service';
 
@@ -21,20 +21,34 @@ export class LicenseService {
   ) {}
 
   // ─── Get active license for tenant ─────────────────────────────────────────
+  //
+  // NOTE: a tenant with no matching row here is treated as "trial / unrestricted"
+  // (see canEnrollStudent/hasFeature below) — that is an intentional business rule,
+  // not a bug. What IS a bug, and what this fixes, is treating a *failed* DB/cache
+  // lookup the same way as "no license row found". Infra failures must not silently
+  // grant access — they must surface loudly so callers/monitoring can see it.
 
   async getActiveLicense(tenantId: string) {
     const cacheKey = `license:${tenantId}`;
     const cached = await this.redis.getJson<any>(cacheKey);
     if (cached) return cached;
 
-    const license = await (this.prisma as any).license?.findFirst({
-      where: {
-        tenantId,
-        status: { in: ['ACTIVE', 'UNUSED'] },
-        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-      },
-      orderBy: { createdAt: 'desc' },
-    }).catch(() => null);
+    let license;
+    try {
+      license = await this.prisma.license.findFirst({
+        where: {
+          tenantId,
+          status: { in: ['ACTIVE', 'UNUSED'] },
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch (err) {
+      this.logger.error(
+        `License lookup failed for tenant ${tenantId}: ${err instanceof Error ? err.message : err}`,
+      );
+      throw new ServiceUnavailableException('Unable to verify license status. Please try again.');
+    }
 
     if (license) {
       await this.redis.setJson(cacheKey, license, this.CACHE_TTL);
@@ -94,9 +108,17 @@ export class LicenseService {
     const license = await this.getActiveLicense(tenantId);
     if (!license?.maxBranches) return { allowed: true };
 
-    const current = await (this.prisma as any).branch?.count({
-      where: { tenantId, status: { not: 'SUSPENDED' } },
-    }).catch(() => 0) ?? 0;
+    let current: number;
+    try {
+      current = await this.prisma.branch.count({
+        where: { tenantId, status: { not: 'SUSPENDED' } },
+      });
+    } catch (err) {
+      this.logger.error(
+        `Branch count failed for tenant ${tenantId}: ${err instanceof Error ? err.message : err}`,
+      );
+      throw new ServiceUnavailableException('Unable to verify branch quota. Please try again.');
+    }
 
     if (current >= license.maxBranches) {
       return {
