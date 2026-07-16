@@ -24,9 +24,18 @@ model Tenant {
 
   // --- 📊 Quotas & Status ---
   status       TenantStatus @default(TRIAL)
+  // @deprecated (PR-2, COMM-002/COMM-004 gap fill): written at onboarding
+  // (onboarding.service.ts) but never read by enforcement — License.maxStudents
+  // (see core/license/license.service.ts) is the sole enforcement source of
+  // truth. Left writable to avoid breaking onboarding's existing write path;
+  // full removal + onboarding refactor to stop writing this is PR-4 scope.
   maxStudents  Int          @default(500)
   storageLimit Int          @default(1024) // MB mein
   smsBalance   Int          @default(0)
+
+  // PR-2 (COMM-005 gap fill): routing flag for hybrid purchasing model.
+  // Field-only — no runtime routing behavior wired to it yet (PR-4/5 scope).
+  commercialTier CommercialTier @default(SELF_SERVICE)
 
   // --- Contact & Business ---
   contactEmail     String
@@ -34,7 +43,11 @@ model Tenant {
   address          Json?
   gstNumber        String?
   panNumber        String?
+  // @deprecated (PR-2, COMM-002 gap fill): fully superseded by the License
+  // model (see saas-billing.prisma). Confirmed zero read/write usage anywhere
+  // in backend/src as of PR-2 — safe to remove entirely in PR-4.
   licenseKey       String?   @unique
+  // @deprecated (PR-2, COMM-002 gap fill): see licenseKey above — same status.
   licenseExpiresAt DateTime?
   settings         Json?     @default("{}")
   metadata         Json?     @default("{}")

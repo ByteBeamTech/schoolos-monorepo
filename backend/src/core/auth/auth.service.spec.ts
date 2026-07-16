@@ -4,6 +4,22 @@ import { AuthService }    from './auth.service';
 import { UsersService }   from '../users/users.service';
 import { TokenService }   from '../identity/token.service';
 import { AuditService }   from '../compliance/audit.service';
+import { PrismaService }  from '@infra/database/prisma.service';
+
+// PR-2.5 (test infra cleanup): AuthService.login() resolves the tenant via
+// prisma.tenant.findFirst({ where: { OR: [{ id }, { slug }] } }) before
+// anything else -- see auth.service.ts. Without this mock, every test module
+// fails to compile ("Nest can't resolve dependencies"). Echoes back whichever
+// id/slug was queried so it works across every describe block below, which
+// each use different tenantId fixtures ('tenant-1' vs 't1').
+const mockPrismaService = {
+  tenant: {
+    findFirst: jest.fn().mockImplementation(({ where }: any) => {
+      const id = where?.OR?.[0]?.id ?? where?.OR?.[1]?.slug;
+      return Promise.resolve(id ? { id } : null);
+    }),
+  },
+};
 
 const mockUser = {
   id: 'user-1', tenantId: 'tenant-1', email: 'admin@school.com',
@@ -45,6 +61,10 @@ describe('AuthService', () => {
         {
           provide: AuditService,
           useValue: { log: jest.fn(), logCreate: jest.fn() },
+        },
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
         },
       ],
     }).compile();
@@ -133,6 +153,7 @@ describe("AuthService — redirectPath by role", () => {
         { provide: UsersService, useValue: { findByEmailWithPassword: jest.fn().mockResolvedValue(user), validatePassword: jest.fn().mockResolvedValue(true), updateLastLogin: jest.fn() } },
         { provide: TokenService,  useValue: { issueTokens: jest.fn().mockResolvedValue(mockTokenPair) } },
         { provide: AuditService,  useValue: { log: jest.fn() } },
+        { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
     return m.get<AuthService>(AuthService);
@@ -161,6 +182,7 @@ describe("AuthService — security edge cases", () => {
         { provide: UsersService, useValue: { findByEmailWithPassword: jest.fn().mockResolvedValue(null), validatePassword: jest.fn(), updateLastLogin: jest.fn() } },
         { provide: TokenService,  useValue: { issueTokens: jest.fn() } },
         { provide: AuditService,  useValue: { log: jest.fn() } },
+        { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
     const svc = m.get<AuthService>(AuthService);
@@ -177,6 +199,7 @@ describe("AuthService — security edge cases", () => {
         { provide: UsersService, useValue: { findByEmailWithPassword: jest.fn().mockResolvedValue(ssoUser), validatePassword: jest.fn(), updateLastLogin: jest.fn() } },
         { provide: TokenService,  useValue: { issueTokens: jest.fn() } },
         { provide: AuditService,  useValue: { log: jest.fn() } },
+        { provide: PrismaService, useValue: mockPrismaService },
       ],
     }).compile();
     const svc = m.get<AuthService>(AuthService);

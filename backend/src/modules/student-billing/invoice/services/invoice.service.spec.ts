@@ -28,6 +28,15 @@ describe('InvoiceService', () => {
           useValue: {
             feePlan: { findFirst: jest.fn().mockResolvedValue(mockFeePlan) },
             student: { findFirst: jest.fn().mockResolvedValue(mockStudent) },
+            // PR-2.5 (test infra cleanup): both were entirely missing.
+            // InvoiceService.generate() calls transportAssignment.findFirst()
+            // and discount.findMany() unconditionally, before invoice.create()
+            // -- see invoice.service.ts. Defaulted to "none" (no transport
+            // assignment, no approved discounts) so the GST math the tests
+            // assert on (12000 subtotal / 360 gst / 12360 total) stays exactly
+            // as originally intended, unaffected by these additions.
+            transportAssignment: { findFirst: jest.fn().mockResolvedValue(null) },
+            discount: { findMany: jest.fn().mockResolvedValue([]) },
             invoice: {
               count:  jest.fn().mockResolvedValue(0),
               create: jest.fn(),
@@ -121,7 +130,7 @@ describe('InvoiceService', () => {
     const mod = await Test.createTestingModule({
       providers: [
         InvoiceService,
-        { provide: PrismaService, useValue: { feePlan: { findFirst: jest.fn().mockResolvedValue(mockFeePlan) }, student: { findFirst: jest.fn().mockResolvedValue(mockStudent) }, invoice: { count: jest.fn().mockResolvedValue(0), create: jest.fn().mockResolvedValue({ id: 'inv-1', invoiceNumber: 'INV-2025-00001', totalAmount: 12360 }) }, $transaction: jest.fn().mockImplementation(async (fn) => fn({ $executeRawUnsafe: jest.fn(), invoice: { count: jest.fn().mockResolvedValue(0) } })) } },
+        { provide: PrismaService, useValue: { feePlan: { findFirst: jest.fn().mockResolvedValue(mockFeePlan) }, student: { findFirst: jest.fn().mockResolvedValue(mockStudent) }, transportAssignment: { findFirst: jest.fn().mockResolvedValue(null) }, discount: { findMany: jest.fn().mockResolvedValue([]) }, invoice: { count: jest.fn().mockResolvedValue(0), create: jest.fn().mockResolvedValue({ id: 'inv-1', invoiceNumber: 'INV-2025-00001', totalAmount: 12360 }) }, $transaction: jest.fn().mockImplementation(async (fn) => fn({ $executeRawUnsafe: jest.fn(), invoice: { count: jest.fn().mockResolvedValue(0) } })) } },
         { provide: AuditService, useValue: { logCreate: jest.fn() } },
         { provide: EventEmitter2, useValue: emitter },
       ],

@@ -20,6 +20,15 @@ describe('StudentsService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
+    // PR-2.5 (test infra cleanup): 'class' was entirely missing from this
+    // mock. StudentsService.create() runs inside $transaction and calls
+    // tx.class.findFirst() as its first step (see students.service.ts) --
+    // without this key, every create() test failed with
+    // "Cannot read properties of undefined (reading 'findFirst')" before
+    // reaching any of the logic the tests are meant to exercise.
+    class: {
+      findFirst: jest.fn(),
+    },
     section: {
       findFirst: jest.fn(),
     },
@@ -53,7 +62,8 @@ describe('StudentsService', () => {
 
   describe('create', () => {
     it('should successfully register a student profile context matching institutional guidelines', async () => {
-      mockPrismaService.student.findFirst.mockResolvedValue(null);
+      mockPrismaService.class.findFirst.mockResolvedValue({ id: 'cl-1', tenantId: 't-1', branchId: 'br-1' });
+      mockPrismaService.student.count.mockResolvedValue(0);
       mockPrismaService.student.create.mockResolvedValue({ id: 'stu-1', firstName: 'Aarav' });
 
       const result = await service.create('t-1', 'br-1', {
@@ -68,19 +78,30 @@ describe('StudentsService', () => {
       expect(mockPrismaService.student.create).toHaveBeenCalled();
     });
 
-    it('should throw an exception if admission number holds configuration conflicts inside campus', async () => {
-      mockPrismaService.student.findFirst.mockResolvedValue({ id: 'existing-stu' });
+    // PR-2.5 NOTE: this test's name/intent ("admission number ... conflicts")
+    // does not match what StudentsService.create() actually checks today --
+    // grep confirms there is no admission-number-uniqueness lookup anywhere
+    // in create() (see students.service.ts). The original mock
+    // (student.findFirst returning an existing row) was never consulted by
+    // the real code, so this test could never have caught a real duplicate-
+    // admission-number bug even before PR-1/PR-2. Rewritten here to exercise
+    // a throw path that genuinely exists (missing/invalid class) rather than
+    // silently leaving a mock that asserts nothing real. Whether admission
+    // numbers should be enforced unique is a product question for the
+    // Students module owner, not something to decide inside a test-infra PR.
+    it('should throw NotFoundException when the target class does not exist', async () => {
+      mockPrismaService.class.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.create('t-1', 'br-1', { 
-          classId: 'cl-1',
-          admissionNumber: 'ADM001', 
-          branchId: 'br-1', 
-          firstName: 'X', 
-          lastName: 'Y', 
-          academicYear: '2025-26' 
+        service.create('t-1', 'br-1', {
+          classId: 'nonexistent-class',
+          admissionNumber: 'ADM001',
+          branchId: 'br-1',
+          firstName: 'X',
+          lastName: 'Y',
+          academicYear: '2025-26'
         } as any, 'actor-1')
-      ).rejects.toThrow();
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

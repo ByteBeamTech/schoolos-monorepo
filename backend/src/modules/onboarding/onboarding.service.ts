@@ -114,6 +114,11 @@ await tx.userBranch.create({
 });
 
       // 3. Create subscription
+      // PR-2 (COMM-004 gap fill): capture an immutable snapshot of the plan's
+      // pricing terms at subscription time. Invoice generation must read this,
+      // never the live PricingPlan relation (see billing-cycle.processor.ts) --
+      // otherwise a later catalog price change would silently retroact onto
+      // this tenant's existing subscription.
       const subscription = await tx.tenantSubscription.create({
         data: {
           tenantId:           tenant.id,
@@ -124,6 +129,28 @@ await tx.userBranch.create({
           currentPeriodStart: now,
           currentPeriodEnd:   trialEnd,
           trialEndsAt:        trialDays > 0 ? trialEnd : null,
+          planVersion:        plan!.version,
+          planSnapshot: {
+            id:             plan!.id,
+            code:           plan!.code,
+            name:           plan!.name,
+            version:        plan!.version,
+            model:          plan!.model,
+            // Decimal fields are stringified: Prisma's Decimal type is not
+            // directly JSON-serializable, and string preserves exact money
+            // precision (avoids float rounding on read-back).
+            baseFee:        plan!.baseFee?.toString() ?? null,
+            perStudentRate: plan!.perStudentRate?.toString() ?? null,
+            overageRate:    plan!.overageRate?.toString() ?? null,
+            overageEnabled: plan!.overageEnabled,
+            studentLimit:   plan!.studentLimit,
+            branchLimit:    plan!.branchLimit,
+            staffLimit:     plan!.staffLimit,
+            storageLimitGb: plan!.storageLimitGb,
+            currency:       plan!.currency,
+            features:       plan!.features,
+            capturedAt:     now.toISOString(),
+          },
         },
       });
 
@@ -286,3 +313,4 @@ await tx.userBranch.create({
     return { success: true, adminEmail: admin.email };
   }
 }
+

@@ -785,3 +785,11 @@ enum NotificationProviderMode {
   SCHOOL_PROVIDER
   BYTEBEAM_MANAGED
 }
+
+// PR-2 (COMM-005 gap fill): routing flag for hybrid purchasing model.
+// Field-only addition — no runtime routing behavior yet (that's PR-4/5 scope).
+enum CommercialTier {
+  SELF_SERVICE
+  ASSISTED
+  ENTERPRISE
+}

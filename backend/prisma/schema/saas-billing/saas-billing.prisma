@@ -70,7 +70,18 @@ model TenantSubscription {
   autoRenew             Boolean                 @default(true)
   billingEmail          String?
   notes                 String?
+  // PR-2 (COMM-004 gap fill): immutable pricing payload captured at
+  // subscription create/upgrade time. Populated by onboarding.service.ts.
+  // Invoice generation (billing-cycle.processor.ts) reads this instead of
+  // the live PricingPlan relation — see ARCH invariant note in ADR COMM-004.
+  // Nullable for backward compatibility with subscriptions created before
+  // PR-2; those fall back to the live PricingPlan (see processor fallback).
   planSnapshot          Json?
+  // PR-2: explicit version pin alongside planSnapshot, for audit/debugging
+  // clarity independent of parsing the snapshot payload. No versioning
+  // *system* behind this yet (PR-4) -- today it's always plan.version at
+  // the single mutable PricingPlan row's current value.
+  planVersion           Int?
   suspendedAt           DateTime?
   endedAt               DateTime?
   createdBy             String?
@@ -278,3 +289,4 @@ model TenantAddon {
   @@index([addonId])
   @@index([status])
 }
+
