@@ -311,31 +311,258 @@ export class FeatureFlagService {
   }
 
   // ── Controller-surface helpers ────────────────────────────────────────────
+  //
+  // COMM-006A: these were previously stubs (returned fake success/empty
+  // results without touching the database -- see ADR-COMM-015 §6.2 for
+  // the full history of that finding). This is an operational-tooling
+  // repair, not a licensing change -- EntitlementResolver, AccessService,
+  // and commercial/licensing semantics are untouched. Per Phase-0 review:
+  // audit logging (AuditService is already injected but still unused
+  // below) and the expired-override cleanup job are explicitly deferred
+  // to COMM-006B, not bundled in here.
+  //
+  // Duplicate-PENDING prevention is a SERVICE-level check (query + reject),
+  // not a DB unique constraint -- explicit Phase-0 decision: a constraint
+  // would block "reject an old request, then submit a fresh one" for the
+  // same flag+target, which must remain possible. FeatureFlagOverride
+  // itself already has a real DB-level unique constraint
+  // (@@unique([flagId, targetType, targetId])) and needs no change --
+  // approveRequest()'s existing upsert already relies on it correctly.
 
   async getTenantFlags(tenantId: string, planTier: string) {
     return this.getAllForContext({ tenantId, planTier });
   }
 
-  async setOverride(dto: any) {
+  private async resolveFlagId(flagName: string): Promise<string> {
+    const flag = await this.prisma.featureFlag.findUnique({ where: { name: flagName } });
+    if (!flag) throw new NotFoundException(`Unknown flag: ${flagName}`);
+    return flag.id;
+  }
+
+  async setOverride(dto: {
+    flagName: string;
+    targetType: string;
+    targetId: string;
+    isEnabled: boolean;
+    expiresAt?: string;
+    reason?: string;
+    actorId: string;
+    tenantId: string;
+    tenantControllableOnly?: boolean;
+  }) {
+    const flag = await this.prisma.featureFlag.findUnique({ where: { name: dto.flagName } });
+    if (!flag) throw new NotFoundException(`Unknown flag: ${dto.flagName}`);
+
+    // Tenant self-service toggle path (PATCH /flags/tenant/toggle) must
+    // only ever touch flags the flag definition marks tenantControllable
+    // -- this is the one guard standing between "tenant toggles their own
+    // flag" and "tenant toggles an arbitrary flag via the same method
+    // superadmin uses for direct overrides."
+    if (dto.tenantControllableOnly && !flag.tenantControllable) {
+      throw new BadRequestException(`Flag ${dto.flagName} is not tenant-controllable.`);
+    }
+
+    const override = await this.prisma.featureFlagOverride.upsert({
+      where: {
+        flagId_targetType_targetId: {
+          flagId: flag.id, targetType: dto.targetType as any, targetId: dto.targetId,
+        },
+      },
+      update: {
+        isEnabled: dto.isEnabled,
+        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        reason:    dto.reason ?? null,
+        createdBy: dto.actorId,
+      },
+      create: {
+        flagId: flag.id, targetType: dto.targetType as any, targetId: dto.targetId,
+        isEnabled: dto.isEnabled,
+        expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
+        reason:    dto.reason ?? null,
+        createdBy: dto.actorId,
+      },
+    });
+
+    await this.invalidateCache(dto.targetType, dto.targetId);
+    return { success: true, override };
+  }
+
+  async deleteOverride(dto: { flagName: string; targetType: string; targetId: string; actorId: string; tenantId: string }) {
+    const flag = await this.prisma.featureFlag.findUnique({ where: { name: dto.flagName } });
+    if (!flag) throw new NotFoundException(`Unknown flag: ${dto.flagName}`);
+
+    await this.prisma.featureFlagOverride.deleteMany({
+      where: { flagId: flag.id, targetType: dto.targetType as any, targetId: dto.targetId },
+    });
+
     await this.invalidateCache(dto.targetType, dto.targetId);
     return { success: true };
   }
 
-  async deleteOverride(dto: any) {
-    await this.invalidateCache(dto.targetType, dto.targetId);
-    return { success: true };
+  async createOverrideRequest(dto: {
+    flagName: string;
+    targetType: string;
+    targetId: string;
+    targetName?: string;
+    isEnabled?: boolean;
+    requestReason: string;
+    activationMode: string;
+    activatesAt?: string;
+    trialDays?: number;
+    gracePeriodDays?: number;
+    autoRevokeIfNotUpgradedDays?: number;
+    requestedBy: string;
+    requestedByTenantId: string;
+  }) {
+    const flag = await this.prisma.featureFlag.findUnique({ where: { name: dto.flagName } });
+    if (!flag) throw new NotFoundException(`Unknown flag: ${dto.flagName}`);
+
+    if (!dto.requestReason) {
+      throw new BadRequestException('requestReason is required.');
+    }
+
+    // ActivationMode-specific validation -- the fields these modes need
+    // already exist on the model but nothing validated their presence
+    // before this PR (createOverrideRequest was a total stub).
+    if (dto.activationMode === 'TRIAL' && !dto.trialDays) {
+      throw new BadRequestException('trialDays is required when activationMode=TRIAL.');
+    }
+    if (dto.activationMode === 'SCHEDULED' && !dto.activatesAt) {
+      throw new BadRequestException('activatesAt is required when activationMode=SCHEDULED.');
+    }
+
+    // Duplicate-PENDING prevention (§3, service-level per Phase-0 decision).
+    const existingPending = await this.prisma.featureFlagOverrideRequest.findFirst({
+      where: {
+        flagId: flag.id, targetType: dto.targetType as any, targetId: dto.targetId, status: 'PENDING',
+      },
+    });
+    if (existingPending) {
+      throw new BadRequestException(
+        `A pending override request already exists for this flag/target (request ${existingPending.id}). ` +
+        `Reject or cancel it before submitting a new one.`,
+      );
+    }
+
+    return this.prisma.featureFlagOverrideRequest.create({
+      data: {
+        flagId:                       flag.id,
+        targetType:                   dto.targetType as any,
+        targetId:                     dto.targetId,
+        targetName:                   dto.targetName ?? null,
+        isEnabled:                    dto.isEnabled ?? true,
+        requestedBy:                  dto.requestedBy,
+        requestReason:                dto.requestReason,
+        activationMode:               dto.activationMode as any,
+        activatesAt:                  dto.activatesAt ? new Date(dto.activatesAt) : null,
+        trialDays:                    dto.trialDays ?? null,
+        gracePeriodDays:              dto.gracePeriodDays ?? null,
+        autoRevokeIfNotUpgradedDays:  dto.autoRevokeIfNotUpgradedDays ?? null,
+      },
+    });
   }
 
-  async createOverrideRequest(dto: any) {
-    return { id: 'req_' + Date.now(), status: 'PENDING' };
+  async getAllRequests(query: {
+    status?: string; flagName?: string; targetId?: string; requestedBy?: string; page: number; limit: number;
+  }) {
+    const where: any = {};
+    if (query.status)      where.status      = query.status;
+    if (query.targetId)    where.targetId    = query.targetId;
+    if (query.requestedBy) where.requestedBy = query.requestedBy;
+    if (query.flagName)    where.flag        = { name: query.flagName };
+
+    const [items, total] = await Promise.all([
+      this.prisma.featureFlagOverrideRequest.findMany({
+        where,
+        include:  { flag: true },
+        orderBy:  { requestedAt: 'desc' },
+        skip:     (query.page - 1) * query.limit,
+        take:     query.limit,
+      }),
+      this.prisma.featureFlagOverrideRequest.count({ where }),
+    ]);
+
+    return { items, total, page: query.page, limit: query.limit };
   }
 
-  async getAllRequests(_query: any)  { return []; }
-  async getPendingRequests()         { return []; }
-  async rejectRequest(_dto: any)     { return { success: true }; }
-  async cancelRequest(_dto: any)     { return { success: true }; }
-  async revokeOverride(_dto: any)    { return { success: true }; }
-  async getAllFlags()                 { return ALL_FLAGS; }
+  async getPendingRequests() {
+    return this.prisma.featureFlagOverrideRequest.findMany({
+      where:   { status: 'PENDING' },
+      include: { flag: true },
+      orderBy: { requestedAt: 'asc' },
+    });
+  }
+
+  async rejectRequest(dto: { requestId: string; rejectedBy: string; rejectionReason: string; tenantId: string }) {
+    const request = await this.prisma.featureFlagOverrideRequest.findUnique({ where: { id: dto.requestId } });
+    if (!request || request.status !== 'PENDING') {
+      throw new BadRequestException('Invalid or already processed request');
+    }
+    if (!dto.rejectionReason) {
+      throw new BadRequestException('rejectionReason is required.');
+    }
+
+    // Transactional per Phase-0 consistency requirement, even though this
+    // path only writes one row today -- keeps the same shape as
+    // approveRequest()/cancelRequest()/revokeOverride() so a future
+    // second write (e.g. an audit row in COMM-006B) slots in without
+    // restructuring this method.
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.featureFlagOverrideRequest.update({
+        where: { id: dto.requestId },
+        data:  { status: 'REJECTED', rejectedBy: dto.rejectedBy, rejectedAt: new Date(), rejectionReason: dto.rejectionReason },
+      }),
+    ]);
+
+    // No cache invalidation: a PENDING->REJECTED request never had an
+    // active FeatureFlagOverride, so no evaluated flag result changes.
+    return updated;
+  }
+
+  async cancelRequest(dto: { requestId: string; cancelledBy: string; tenantId: string }) {
+    const request = await this.prisma.featureFlagOverrideRequest.findUnique({ where: { id: dto.requestId } });
+    if (!request || request.status !== 'PENDING') {
+      throw new BadRequestException('Invalid or already processed request');
+    }
+
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.featureFlagOverrideRequest.update({
+        where: { id: dto.requestId },
+        data:  { status: 'CANCELLED', cancelledBy: dto.cancelledBy, cancelledAt: new Date() },
+      }),
+    ]);
+
+    return updated; // same no-cache-invalidation rationale as rejectRequest
+  }
+
+  async revokeOverride(dto: { requestId: string; revokedBy: string; revokeReason: string; tenantId: string }) {
+    const request = await this.prisma.featureFlagOverrideRequest.findUnique({
+      where:   { id: dto.requestId },
+      include: { createdOverride: true },
+    });
+    if (!request || request.status !== 'APPROVED') {
+      throw new BadRequestException('Only an approved request with an active override can be revoked.');
+    }
+    if (!dto.revokeReason) {
+      throw new BadRequestException('revokeReason is required.');
+    }
+
+    const ops: any[] = [
+      this.prisma.featureFlagOverrideRequest.update({
+        where: { id: dto.requestId },
+        data:  { status: 'REVOKED', revokedBy: dto.revokedBy, revokedAt: new Date(), revokeReason: dto.revokeReason },
+      }),
+    ];
+    if (request.createdOverride) {
+      ops.push(this.prisma.featureFlagOverride.delete({ where: { id: request.createdOverride.id } }));
+    }
+
+    const [updated] = await this.prisma.$transaction(ops);
+    await this.invalidateCache(request.targetType, request.targetId);
+    return updated;
+  }
+
+  async getAllFlags() { return ALL_FLAGS; }
 
   // ── Usage analytics (fire-and-forget) ────────────────────────────────────
 

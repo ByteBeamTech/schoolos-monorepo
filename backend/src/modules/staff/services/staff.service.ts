@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }  from '../../../core/compliance/audit.service';
+import { EntitlementResolver } from '@core/license/entitlement-resolver.service';
 import { CreateStaffDto, UpdateStaffDto } from '../dto/staff.dto';
 
 @Injectable()
@@ -15,9 +16,15 @@ export class StaffService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit:  AuditService,
+    private readonly entitlementResolver: EntitlementResolver,
   ) {}
 
   async create(tenantId: string, dto: CreateStaffDto, actorId: string) {
+    // PR-5G: license/quota gate, checked before any other work -- same
+    // placement convention as StudentsService.create() and
+    // SchoolManagementService.createBranch() (PR-5B).
+    await this.entitlementResolver.assertCanAddStaff(tenantId);
+
     // Guard: duplicate employeeId
     const existing = await this.prisma.staff.findFirst({
       where: { tenantId, employeeId: dto.employeeId },

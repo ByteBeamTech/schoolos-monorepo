@@ -1,4 +1,15 @@
 // path: apps/schoolos/backend/src/core/feature-flags/feature-flags.controller.ts
+//
+// SA-1: class-level `@UseGuards(JwtGuard)` removed. That single guard
+// was wrong for roughly half this controller's routes -- the superadmin-
+// actioned ones (override requests, direct override, admin views) need
+// JwtSuperadminGuard + @SuperadminRoute() (so the global JwtGuard defers
+// to it instead of rejecting a superadmin-signed token first), while the
+// tenant-facing ones (GET /, GET /modules, tenant self-service) correctly
+// keep JwtGuard. Guards are now applied per-method/per-group instead of
+// once at the class level -- see the SA-1 Phase-1 audit report for the
+// full platform-wide finding this fixes (feature-flags, saas-billing,
+// saas-payment controllers were all affected the same way).
 
 import {
   Controller, Get, Post, Patch, Delete, Param, Body,
@@ -7,6 +18,8 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Request }              from 'express';
 import { JwtGuard }             from '../auth/guards/jwt.guard';
+import { JwtSuperadminGuard }   from '../auth/guards/jwt-superadmin.guard';
+import { SuperadminRoute }      from '../auth/decorators/superadmin-route.decorator';
 import { RolesGuard }           from '../roles/roles.guard';
 import { Roles }                from '../roles/roles.decorator';
 import { CurrentUser }          from '../auth/decorators/current-user.decorator';
@@ -15,14 +28,14 @@ import { FeatureFlagService }   from './feature-flags.service';
 
 @ApiTags('feature-flags')
 @ApiBearerAuth('access-token')
-@UseGuards(JwtGuard)
 @Controller('flags')
 export class FeatureFlagsController {
   constructor(private readonly svc: FeatureFlagService) {}
 
-  // ── Evaluation endpoints ──────────────────────────────────────────────────
+  // ── Evaluation endpoints (tenant-facing, any authenticated user) ──────────
 
   @Get()
+  @UseGuards(JwtGuard)
   @ApiOperation({ summary: 'Get resolved flag map for current user context' })
   async getMyFlags(@CurrentUser() user: AuthenticatedUser, @Req() req: Request) {
     const planTier = (req as any).tenantPlanTier ?? undefined;
@@ -35,6 +48,7 @@ export class FeatureFlagsController {
   }
 
   @Get('modules')
+  @UseGuards(JwtGuard)
   @ApiOperation({ summary: 'Get only MODULE flags for current tenant' })
   async getModuleFlags(@CurrentUser() user: AuthenticatedUser, @Req() req: Request) {
     const planTier = (req as any).tenantPlanTier ?? undefined;
@@ -49,10 +63,10 @@ export class FeatureFlagsController {
     );
   }
 
-  // ── Tenant self-service ──────────────────────────────────────────────────
+  // ── Tenant self-service (tenant-facing, JwtGuard unchanged) ───────────────
 
   @Get('tenant/controllable')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtGuard, RolesGuard)
   @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER')
   @ApiOperation({ summary: 'Get flags this tenant can toggle themselves' })
   async getTenantControllable(
@@ -64,7 +78,7 @@ export class FeatureFlagsController {
   }
 
   @Patch('tenant/toggle')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtGuard, RolesGuard)
   @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER')
   @ApiOperation({ summary: 'Tenant admin toggles a tenant-controllable flag' })
   async tenantToggle(
@@ -86,7 +100,8 @@ export class FeatureFlagsController {
   // ── Superadmin: direct override ───────────────────────────────────────────
 
   @Post('override')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN')
   @ApiOperation({ summary: 'Superadmin: set a flag override directly' })
   async setOverride(
@@ -109,7 +124,8 @@ export class FeatureFlagsController {
   }
 
   @Delete('override')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN')
   @ApiOperation({ summary: 'Superadmin: remove a flag override' })
   async deleteOverride(
@@ -120,10 +136,11 @@ export class FeatureFlagsController {
     return { ok: true };
   }
 
-  // ── Override request workflow ──────────────────────────────────────────────
+  // ── Override request workflow (superadmin platform roles) ──────────────────
 
   @Post('requests')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
   @ApiOperation({ summary: 'Submit a flag override request' })
   async createRequest(
@@ -138,7 +155,8 @@ export class FeatureFlagsController {
   }
 
   @Get('requests')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
   @ApiOperation({ summary: 'List override requests' })
   async listRequests(
@@ -161,7 +179,8 @@ export class FeatureFlagsController {
   }
 
   @Get('requests/pending')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
   async getPendingCount() {
     const requests = await this.svc.getPendingRequests();
@@ -169,7 +188,8 @@ export class FeatureFlagsController {
   }
 
   @Patch('requests/:id/approve')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
   async approveRequest(
     @Param('id')          requestId: string,
@@ -186,7 +206,8 @@ export class FeatureFlagsController {
   }
 
   @Patch('requests/:id/reject')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
   async rejectRequest(
     @Param('id')   requestId: string,
@@ -202,7 +223,8 @@ export class FeatureFlagsController {
   }
 
   @Patch('requests/:id/cancel')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
   async cancelRequest(
     @Param('id')   requestId: string,
@@ -216,7 +238,8 @@ export class FeatureFlagsController {
   }
 
   @Patch('requests/:id/revoke')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER')
   async revokeOverride(
     @Param('id')   requestId: string,
@@ -234,14 +257,16 @@ export class FeatureFlagsController {
   // ── Admin: view all ───────────────────────────────────────────────────────
 
   @Get('admin/all')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER')
   async getAllFlags() {
     return this.svc.getAllFlags();
   }
 
   @Get('admin/tenant/:tenantId')
-  @UseGuards(RolesGuard)
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN', 'SAAS_OWNER', 'ACCOUNT_MANAGER')
   async getTenantResolved(
     @Param('tenantId') tenantId: string,

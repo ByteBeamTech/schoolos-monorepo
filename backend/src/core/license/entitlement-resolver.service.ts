@@ -15,6 +15,7 @@
 //     (batch-aware variant for bulk import pre-flight checks; single-
 //     student assertCanEnrollStudent is just this with additionalCount=1)
 //   assertCanCreateBranch(tenantId)    -> throws ForbiddenException
+//   assertCanAddStaff(tenantId)        -> throws ForbiddenException
 //   canUseAI(tenantId)                 -> boolean
 //   assertCanUseAI(tenantId)           -> throws ForbiddenException
 //
@@ -157,6 +158,40 @@ export class EntitlementResolver {
     if (current >= license.maxBranches) {
       throw new ForbiddenException(
         `Branch limit reached (${current}/${license.maxBranches}). Please upgrade your plan.`,
+      );
+    }
+  }
+
+  // ─── Staff quota ─────────────────────────────────────────────────────────────
+  //
+  // PR-5G (Staff Limit): mirrors assertCanCreateBranch exactly -- License.
+  // maxStaff already existed and was already correctly derived by
+  // LicenseBuilder from the plan snapshot (confirmed during the PR-5D/
+  // Licensing Matrix audit), it just had zero enforcement anywhere.
+  // `staff/` was confirmed architecturally separate from `hr/` (headcount/
+  // profile vs. leave/joining workflows -- see flag-definitions.ts's own
+  // MODULE_STAFF vs MODULE_HR split) before this was wired, per the
+  // standing instruction not to touch HR without explicit go-ahead.
+
+  async assertCanAddStaff(tenantId: string): Promise<void> {
+    const license = await this.licenseService.getActiveLicense(tenantId);
+    if (!license?.maxStaff) return; // unrestricted
+
+    let current: number;
+    try {
+      current = await this.prisma.staff.count({
+        where: { tenantId, isActive: true },
+      });
+    } catch (err) {
+      this.logger.error(
+        `Staff count failed for tenant ${tenantId}: ${err instanceof Error ? err.message : err}`,
+      );
+      throw new ServiceUnavailableException('Unable to verify staff quota. Please try again.');
+    }
+
+    if (current >= license.maxStaff) {
+      throw new ForbiddenException(
+        `Staff limit reached (${current}/${license.maxStaff}). Please upgrade your plan.`,
       );
     }
   }
