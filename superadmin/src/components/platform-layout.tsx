@@ -2,7 +2,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSAStore } from "@/lib/store";
-import { useApi } from "@/lib/use-api"; // सुनिश्चित करें कि useApi सही पाथ से इम्पोर्टेड है
+// UI-0.5: migrated off lib/use-api.ts (deleted — see lib/hooks.ts's own
+// header comment for why). pollInterval: 30000 preserves the exact 30s
+// polling cadence this sidebar badge always had; the consolidated hook
+// additionally pauses while the tab is hidden and force-refetches on
+// focus, which lib/use-api.ts's SWR-based version did not do.
+import { useApi } from "@/lib/hooks";
 import {
   LayoutDashboard, Building2, CreditCard, ShieldAlert,
   Settings, Inbox, LogOut, Shield, Zap, ChevronRight, BarChart3,
@@ -21,7 +26,7 @@ export function PlatformLayout({ children }: { children: React.ReactNode }) {
 
 // ─── LIVE DATA FETCHING ───
 // हम 'any' टाइप का उपयोग कर रहे हैं ताकि बैकएंड के अलग-अलग स्ट्रक्चर को हैंडल कर सकें
-const { data: pendingData, loading } = useApi<any>('/flags/requests/pending');
+const { data: pendingData, loading } = useApi<any>('/flags/requests/pending', [], { pollInterval: 30000 });
 
 // Defensive Logic: पहले check करो कि count सीधा मिल रहा है या 'data' ऑब्जेक्ट के अंदर
 const pendingCount = pendingData?.data?.count ?? pendingData?.count ?? 0;
