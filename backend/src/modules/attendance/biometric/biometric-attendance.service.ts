@@ -13,6 +13,27 @@ export interface RegisteredDevice {
   adapter?:   InstanceType<typeof GenericBiometricAdapter>;
 }
 
+// TODO (found during PR-5C's Attendance audit, not fixed here --
+// production-safety discipline, same treatment as PR-5B's
+// ApplicationService.finalize() finding): this service is not registered
+// as a provider in AttendanceModule, has no controller, and has zero
+// callers anywhere in the codebase (confirmed via grep) -- fully dead
+// code. Not given an entitlement check for the same reason
+// ApplicationService.finalize() wasn't: wiring one into dead code has no
+// effect and would be misleading about actual coverage.
+//
+// PR-5C's broader conclusion (see PR-5 handoff doc): Attendance has no
+// license-governed concept at all right now, live or dead -- core
+// attendance/leave marking is intentionally unrestricted (no numeric
+// quota makes product sense, and the one piece of commercial-intent
+// evidence in the codebase, flag-definitions.ts's MODULE_ATTENDANCE,
+// explicitly marks it core/always-on for every tier). IF this service is
+// ever wired up (real biometric hardware integration), it would be the
+// one plausible feature-gate candidate here (hardware/device-integration
+// features are a natural "premium add-on," matching the WhatsApp/AI
+// precedent) -- but per explicit instruction, no feature string or
+// entitlement check is introduced speculatively. Revisit when/if this
+// service actually gets a controller and a live caller.
 @Injectable()
 export class BiometricAttendanceService {
   private readonly logger  = new Logger(BiometricAttendanceService.name);

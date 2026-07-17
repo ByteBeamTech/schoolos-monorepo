@@ -92,12 +92,23 @@ export class LeaveService {
       await Promise.all(
         dates.map(date =>
           this.prisma.attendance.upsert({
+            // BUG FIX (PR-5C): where.period must be null, not 0, to match the
+            // unique constraint @@unique([tenantId, studentId, date, period])
+            // and the create/update data below, which also store null (daily
+            // records use period:null; only period-wise records use a real
+            // period number). Same bug class as PR-5B's bulkMarkDaily fix —
+            // period:0 in the where clause never matches an existing
+            // period:null row, so a second upsert for an already-marked date
+            // (e.g. overlapping/re-approved leave) hit the unique constraint
+            // instead of updating. Reintroduced here independently of that
+            // earlier fix; also present (but unreachable) in the dead
+            // BiometricAttendanceService — see PR-5C notes.
             where: {
               tenantId_studentId_date_period: {
                 tenantId,
                 studentId: leave.studentId,
                 date,
-                period:    0,
+                period:    null,
               },
             },
             create: {
