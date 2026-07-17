@@ -6,7 +6,8 @@ import { StudentsService } from './students.service';
 import { PrismaService } from '@infra/database/prisma.service';
 // 🟢 FIXED: Adjusted relative path mapping hierarchy depth to find the module cleanly
 import { AuditService } from '../../../core/compliance/audit.service'; 
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { EntitlementResolver } from '@core/license/entitlement-resolver.service';
+import { BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 
 describe('StudentsService', () => {
   let service: StudentsService;
@@ -41,12 +42,24 @@ describe('StudentsService', () => {
     logUpdate: jest.fn(),
   };
 
+  // PR-5B: StudentsService.create() now calls
+  // entitlementResolver.assertCanEnrollStudent() before opening its
+  // transaction. Defaults to resolving (allowed) so every pre-existing
+  // test keeps exercising the same behavior it did before PR-5B -- this
+  // mock is not meant to test quota enforcement itself, that belongs in
+  // entitlement-resolver.service.spec.ts (not written yet, out of this
+  // PR's scope; flagging rather than adding it here as a drive-by).
+  const mockEntitlementResolver = {
+    assertCanEnrollStudent: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         StudentsService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: EntitlementResolver, useValue: mockEntitlementResolver },
       ],
     }).compile();
 
@@ -102,6 +115,32 @@ describe('StudentsService', () => {
           academicYear: '2025-26'
         } as any, 'actor-1')
       ).rejects.toThrow(NotFoundException);
+    });
+
+    // PR-5B regression guard: if a future refactor of create() accidentally
+    // drops or reorders the entitlement check, this test fails loudly.
+    // Deliberately does NOT set up any other mocks (class.findFirst,
+    // student.create, etc.) -- assertCanEnrollStudent() is called before
+    // any of that, so if this test ever starts failing for a DIFFERENT
+    // reason (e.g. "Cannot read properties of undefined"), that itself is
+    // a signal the call got moved later in the method.
+    it('should reject student creation when EntitlementResolver denies quota (Student limit reached)', async () => {
+      mockEntitlementResolver.assertCanEnrollStudent.mockRejectedValueOnce(
+        new ForbiddenException('Student limit reached (2/2). Please upgrade your plan.'),
+      );
+
+      await expect(
+        service.create('t-1', 'br-1', {
+          classId: 'cl-1',
+          admissionNumber: 'ADM002',
+          firstName: 'Blocked',
+          lastName: 'Student',
+          academicYear: '2025-26',
+        } as any, 'actor-1')
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockEntitlementResolver.assertCanEnrollStudent).toHaveBeenCalledWith('t-1');
+      expect(mockPrismaService.student.create).not.toHaveBeenCalled();
     });
   });
 

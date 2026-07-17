@@ -1,8 +1,41 @@
 // core/license/license.service.ts
-import { Injectable, ForbiddenException, ServiceUnavailableException, Logger } from '@nestjs/common';
+//
+// PR-5A: LicenseService is now a thin, cached data-access layer
+// (getActiveLicense/invalidateCache) PLUS a deprecated backward-compat
+// shim. All business-rule entitlement logic (feature checks, quota
+// asserts) now lives in EntitlementResolver (./entitlement-resolver.
+// service.ts) -- the ADR COMM-007 split. This class still owns the
+// canonical cached License lookup because LicenseBuilder,
+// license-expiry.job.ts, and the backfill script all need raw
+// data access without the entitlement-decision layer on top.
+//
+// Backward-compat note: confirmed via grep that nothing outside this
+// module ever called the old business methods (canEnrollStudent,
+// hasFeature, assertFeature, canCreateBranch, assertCanEnrollStudent) --
+// they are kept here ONLY as deprecated pass-throughs to
+// EntitlementResolver, per explicit instruction to preserve the public
+// method surface during this transition even though it's currently
+// unused, rather than assume nothing external will ever reference it.
+// New code must depend on EntitlementResolver directly -- these wrappers
+// are scheduled for removal once PR-5B's rollout confirms nothing needs
+// them.
+//
+// Circular-dependency note: EntitlementResolver depends on LicenseService
+// (for getActiveLicense), and LicenseService depends on
+// EntitlementResolver (for these deprecated wrappers) -- both sides use
+// forwardRef() to break the cycle at module-init time. This is the
+// standard NestJS pattern for two services in the same module that
+// legitimately need each other; it is not a design smell here because
+// the two directions serve genuinely different purposes (data access vs.
+// business-rule delegation).
+import { Injectable, ForbiddenException, ServiceUnavailableException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { RedisService }  from '../../infra/cache/redis.service';
+import { EntitlementResolver } from './entitlement-resolver.service';
 
+// Preserved verbatim from pre-PR-5A LicenseService -- the deprecated
+// canEnrollStudent()/canCreateBranch() wrappers below still return this
+// shape for backward compatibility.
 export interface LicenseCheckResult {
   allowed:       boolean;
   reason?:       string;
@@ -18,15 +51,18 @@ export class LicenseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis:  RedisService,
+    @Inject(forwardRef(() => EntitlementResolver))
+    private readonly entitlementResolver: EntitlementResolver,
   ) {}
 
   // ─── Get active license for tenant ─────────────────────────────────────────
   //
   // NOTE: a tenant with no matching row here is treated as "trial / unrestricted"
-  // (see canEnrollStudent/hasFeature below) — that is an intentional business rule,
-  // not a bug. What IS a bug, and what this fixes, is treating a *failed* DB/cache
-  // lookup the same way as "no license row found". Infra failures must not silently
-  // grant access — they must surface loudly so callers/monitoring can see it.
+  // (see EntitlementResolver) — that is an intentional business rule, not a bug.
+  // What IS a bug, and what this fixes (since PR-1), is treating a *failed*
+  // DB/cache lookup the same way as "no license row found". Infra failures must
+  // not silently grant access — they must surface loudly so callers/monitoring
+  // can see it.
 
   async getActiveLicense(tenantId: string) {
     const cacheKey = `license:${tenantId}`;
@@ -56,93 +92,68 @@ export class LicenseService {
     return license;
   }
 
-  // ─── Student count enforcement ──────────────────────────────────────────────
-
-  async canEnrollStudent(tenantId: string): Promise<LicenseCheckResult> {
-    const license = await this.getActiveLicense(tenantId);
-    if (!license) return { allowed: true }; // No license = no restriction (trial)
-
-    if (!license.maxStudents) return { allowed: true };
-
-    const current = await this.prisma.student.count({
-      where: { tenantId, isActive: true },
-    });
-
-    const gracePct = 1.05; // Allow 5% overage
-    const hardLimit = Math.floor(license.maxStudents * gracePct);
-
-    if (current >= hardLimit) {
-      return {
-        allowed:      false,
-        reason:       `Student limit reached (${current}/${license.maxStudents})`,
-        currentCount: current,
-        limit:        license.maxStudents,
-      };
-    }
-
-    return { allowed: true, currentCount: current, limit: license.maxStudents };
-  }
-
-  // ─── Feature tier enforcement ───────────────────────────────────────────────
-
-  async hasFeature(tenantId: string, feature: string): Promise<boolean> {
-    const license = await this.getActiveLicense(tenantId);
-    if (!license) return false;
-
-    const features: string[] = license.features ?? [];
-    return features.includes(feature) || features.includes('*');
-  }
-
-  async assertFeature(tenantId: string, feature: string): Promise<void> {
-    const allowed = await this.hasFeature(tenantId, feature);
-    if (!allowed) {
-      throw new ForbiddenException(
-        `Feature "${feature}" is not available on your current plan. Please upgrade.`,
-      );
-    }
-  }
-
-  // ─── Branch count enforcement ───────────────────────────────────────────────
-
-  async canCreateBranch(tenantId: string): Promise<LicenseCheckResult> {
-    const license = await this.getActiveLicense(tenantId);
-    if (!license?.maxBranches) return { allowed: true };
-
-    let current: number;
-    try {
-      current = await this.prisma.branch.count({
-        where: { tenantId, status: { not: 'SUSPENDED' } },
-      });
-    } catch (err) {
-      this.logger.error(
-        `Branch count failed for tenant ${tenantId}: ${err instanceof Error ? err.message : err}`,
-      );
-      throw new ServiceUnavailableException('Unable to verify branch quota. Please try again.');
-    }
-
-    if (current >= license.maxBranches) {
-      return {
-        allowed:      false,
-        reason:       `Branch limit reached (${current}/${license.maxBranches})`,
-        currentCount: current,
-        limit:        license.maxBranches,
-      };
-    }
-    return { allowed: true, currentCount: current, limit: license.maxBranches };
-  }
-
   // ─── Invalidate cache ────────────────────────────────────────────────────────
 
   async invalidateCache(tenantId: string): Promise<void> {
     await this.redis.del(`license:${tenantId}`);
   }
 
-  // ─── Guard helper — throw if not allowed ─────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // DEPRECATED — backward-compat shims only. New code must call
+  // EntitlementResolver directly. These delegate, they do not reimplement.
+  // ══════════════════════════════════════════════════════════════════════════
 
+  /** @deprecated Use EntitlementResolver.hasFeature() directly. */
+  async hasFeature(tenantId: string, feature: string): Promise<boolean> {
+    return this.entitlementResolver.hasFeature(tenantId, feature);
+  }
+
+  /** @deprecated Use EntitlementResolver.assertFeature() directly. */
+  async assertFeature(tenantId: string, feature: string): Promise<void> {
+    return this.entitlementResolver.assertFeature(tenantId, feature);
+  }
+
+  /**
+   * @deprecated Use EntitlementResolver.assertCanEnrollStudent() directly.
+   * NOTE: EntitlementResolver's assert-style method throws with a
+   * human-readable message but does not separately expose currentCount/
+   * limit as structured fields. This wrapper reconstructs the {allowed:
+   * false, reason} shape from the thrown error for backward compatibility,
+   * but currentCount/limit are left undefined on the false-path here --
+   * flagging rather than silently fabricating counts. No caller reads
+   * these fields today (confirmed via grep), so this is a safe temporary
+   * gap, not a live regression.
+   */
+  async canEnrollStudent(tenantId: string): Promise<LicenseCheckResult> {
+    try {
+      await this.entitlementResolver.assertCanEnrollStudent(tenantId);
+      return { allowed: true };
+    } catch (err) {
+      if (err instanceof ForbiddenException) {
+        return { allowed: false, reason: err.message };
+      }
+      throw err;
+    }
+  }
+
+  /** @deprecated Use EntitlementResolver.assertCanEnrollStudent() directly. */
   async assertCanEnrollStudent(tenantId: string): Promise<void> {
-    const result = await this.canEnrollStudent(tenantId);
-    if (!result.allowed) {
-      throw new ForbiddenException(result.reason ?? 'Student enrollment not allowed');
+    return this.entitlementResolver.assertCanEnrollStudent(tenantId);
+  }
+
+  /**
+   * @deprecated Use EntitlementResolver.assertCanCreateBranch() directly.
+   * Same currentCount/limit caveat as canEnrollStudent() above.
+   */
+  async canCreateBranch(tenantId: string): Promise<LicenseCheckResult> {
+    try {
+      await this.entitlementResolver.assertCanCreateBranch(tenantId);
+      return { allowed: true };
+    } catch (err) {
+      if (err instanceof ForbiddenException) {
+        return { allowed: false, reason: err.message };
+      }
+      throw err;
     }
   }
 }

@@ -460,6 +460,17 @@ export class ApplicationService {
   // PHASE 4 — FINALIZE ENROLLMENT (Student + Guardian + Users)
   // ============================================================
 
+  // TODO (found during PR-5B student-path audit, not fixed here --
+  // production-safety discipline, same as PR-3A's dead-code handling):
+  // ApplicationService is not injected/registered into any module and
+  // this method has zero callers anywhere in the codebase (confirmed via
+  // grep) -- it is a third, unwired "admission -> student" conversion
+  // implementation, alongside the two LIVE ones in AdmissionsService.
+  // finalizeEnrollment() and PromotionService.approveAdmission(). Left
+  // unwired here deliberately -- NOT given an entitlement check, since
+  // wiring one into dead code has no effect and would be misleading.
+  // Flagging for a future consolidation pass (delete or merge into one
+  // of the two live implementations), not deciding that here.
   async finalize(user: AuthenticatedUser, id: string, dto: FinalizeApplicationDto) {
     const app = await this.assertEditable(user, id);
     if (app.status !== ApplicationStatus.APPROVED) {

@@ -4,6 +4,7 @@ import {
 import { PrismaService } from '@infra/database/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { OnboardTenantDto } from './onboarding.dto';
+import { LicenseBuilder } from '@core/license/license-builder.service';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -11,7 +12,10 @@ const BCRYPT_ROUNDS = 12;
 export class OnboardingService {
   private readonly logger = new Logger(OnboardingService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly licenseBuilder: LicenseBuilder,
+  ) {}
 
   // ── Validate slug uniqueness (real-time check) ────────────────────────────
   async checkSlug(slug: string) {
@@ -154,6 +158,37 @@ await tx.userBranch.create({
         },
       });
 
+      // 3B. Generate the initial trial License -- synchronously, inside
+      // THIS transaction (reusing `tx`, not opening a nested one).
+      //
+      // This closes a real gap found during PR-5B testing: the schema
+      // already had LicenseGenerationReason.ONBOARDING_TRIAL and
+      // LicenseBuilder.regenerateForTenant() already accepted an optional
+      // `tx` specifically so onboarding could do this (see PR-4 notes in
+      // license-builder.service.ts) -- but nothing ever actually called
+      // it here. Result: every trial tenant had zero License row until
+      // their first real payment (SUBSCRIPTION_ACTIVATED, fired only from
+      // the payment domain -- see subscription-activated.listener.ts),
+      // meaning PR-5B's entitlement enforcement was silently a no-op for
+      // the entire trial period (missing License = unrestricted, by
+      // design, for the pre-commercial/legacy case -- but a fresh trial
+      // tenant is neither of those).
+      //
+      // Passing `tx` (not omitting it) makes this participate in the same
+      // atomic unit as Tenant/Subscription/Branch creation -- if license
+      // generation throws for any reason, the entire onboarding
+      // transaction rolls back, per the "synchronous caller: pass tx, no
+      // sourceEventKey" rule LicenseBuilder itself documents. This is NOT
+      // event-driven and must stay that way -- SUBSCRIPTION_ACTIVATED
+      // remains reserved for paid-subscription changes only; onboarding
+      // does not emit or listen for events.
+      const license = await this.licenseBuilder.regenerateForTenant(
+        tenant.id,
+        'ONBOARDING_TRIAL',
+        actorId,
+        tx,
+      );
+
       // 4. Create first academic session
       const session = await tx.academicSession.create({
         data: {
@@ -182,7 +217,7 @@ await tx.userBranch.create({
         },
       });
 
-      return { tenant, adminUser, primaryBranch, subscription, session };
+      return { tenant, adminUser, primaryBranch, subscription, session, license };
     });
 
     this.logger.log(
@@ -193,6 +228,7 @@ await tx.userBranch.create({
       success:      true,
       tenantId:     result.tenant.id,
       branchId:     result.primaryBranch.id,
+      licenseId:    result.license.licenseId,
       slug:         result.tenant.slug,
       name:         result.tenant.name,
       adminEmail:   result.adminUser.email,
@@ -313,4 +349,3 @@ await tx.userBranch.create({
     return { success: true, adminEmail: admin.email };
   }
 }
-

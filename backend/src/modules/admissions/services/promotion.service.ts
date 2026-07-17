@@ -11,6 +11,7 @@ import {
   AlumniQueryDto, ApproveAdmissionDto, RejectAdmissionDto
 } from '../dto/promotion.dto';
 import { PromotionPreviewDto } from '../dto/promotion-preview.dto';
+import { EntitlementResolver } from '@core/license/entitlement-resolver.service';
 @Injectable()
 export class PromotionService {
   private readonly logger = new Logger(PromotionService.name);
@@ -18,6 +19,7 @@ export class PromotionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emitter: EventEmitter2,
+    private readonly entitlementResolver: EntitlementResolver,
   ) {}
 
   // ==========================================
@@ -371,6 +373,11 @@ if (!targetSection) {
   async approveAdmission(tenantId: string, admissionId: string, dto: ApproveAdmissionDto, userId: string) {
     const admission = await this.prisma.admission.findFirst({ where: { id: admissionId, tenantId } });
     if (!admission || admission.status === 'CONVERTED') throw new BadRequestException('Already enrolled');
+
+    // PR-5B: third live path that creates a Student row (this admission
+    // flow is separate from AdmissionsService.finalizeEnrollment -- see
+    // PR-5B notes) -- same quota gate applies.
+    await this.entitlementResolver.assertCanEnrollStudent(tenantId);
 
     return this.prisma.$transaction(async (tx) => {
       const student = await tx.student.create({

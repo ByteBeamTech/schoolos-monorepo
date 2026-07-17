@@ -3,13 +3,18 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../core/compliance/audit.service';
+import { EntitlementResolver } from '@core/license/entitlement-resolver.service';
 import { ApplicationStatus, AdmissionStepStatus, StudentStatus } from '@prisma/client';
 
 @Injectable()
 export class AdmissionsService {
   private readonly logger = new Logger(AdmissionsService.name);
 
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly entitlementResolver: EntitlementResolver,
+  ) {}
 
   private generateAdmissionNumber(crmNo: string): string {
     if (!crmNo) throw new BadRequestException('CRM Tracking Identification token corrupted.');
@@ -67,6 +72,11 @@ export class AdmissionsService {
   }
 
   async finalizeEnrollment(tenantId: string, branchId: string, applicationId: string, rollNumber: string, actorId: string) {
+    // PR-5B: same quota gate as StudentsService.create() -- this is a
+    // second live path that creates a Student row (admission -> student
+    // conversion) and must not bypass the license/quota check.
+    await this.entitlementResolver.assertCanEnrollStudent(tenantId);
+
     return this.prisma.$transaction(async (tx) => {
       const app = await tx.admissionApplication.findFirst({
         where: { id: applicationId, tenantId, branchId, isDeleted: false },

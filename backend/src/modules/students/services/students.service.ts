@@ -1,4 +1,3 @@
-
 import {
   Injectable,
   NotFoundException,
@@ -9,6 +8,7 @@ import {
 import { Prisma, BloodGroup, Gender, Student } from '@prisma/client';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../core/compliance/audit.service';
+import { EntitlementResolver } from '@core/license/entitlement-resolver.service';
 import {
   CreateStudentDto,
   UpdateStudentDto,
@@ -34,6 +34,7 @@ export class StudentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly entitlementResolver: EntitlementResolver,
   ) {}
 
   /**
@@ -60,6 +61,14 @@ export class StudentsService {
    */
   async create(tenantId: string, branchId: string, dto: CreateStudentDto, actorId: string) {
     if (!tenantId || !branchId) throw new BadRequestException('Tenant aur Branch context identifiers mandatory hain!');
+
+    // PR-5B: license/quota gate, checked before opening the transaction --
+    // this is a cheap read-mostly check, not something that needs
+    // transactional atomicity with the create itself (the existing 5%
+    // grace period in assertCanEnrollStudent already tolerates the small
+    // race window between this check and the eventual insert, same as
+    // every other quota check in this codebase).
+    await this.entitlementResolver.assertCanEnrollStudent(tenantId);
 
     return this.prisma.$transaction(async (tx) => {
       // 1. Structural Validation

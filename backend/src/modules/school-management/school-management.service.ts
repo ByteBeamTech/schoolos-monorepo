@@ -5,6 +5,7 @@ import { Injectable, NotFoundException, ConflictException, BadRequestException, 
 import { PrismaService } from '@infra/database/prisma.service';
 
 import { AuditService } from '@core/compliance/audit.service';
+import { EntitlementResolver } from '@core/license/entitlement-resolver.service';
 import { Prisma, UserRole, Currency } from '@prisma/client';
 import {
   UpdateSchoolProfileDto,
@@ -29,6 +30,7 @@ export class SchoolManagementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit:  AuditService,
+    private readonly entitlementResolver: EntitlementResolver,
   ) {}
 
   private async resolveTenant(tenantId: string) {
@@ -76,6 +78,17 @@ export class SchoolManagementService {
   }
 
   async createBranch(tenantId: string, dto: CreateBranchDto, actorId: string) {
+    // PR-5B: this is the "additional branch" path, distinct from the
+    // primary branch onboarding.service.ts creates when a tenant is first
+    // provisioned (before any subscription/license exists -- that path
+    // deliberately does NOT call this check, see onboarding.service.ts).
+    // By the time this endpoint is ever reachable, onboarding has already
+    // run and a trial License row exists (PR-4: onboarding creates it
+    // synchronously in the same transaction as the tenant + subscription),
+    // so assertCanCreateBranch reads a real, plan-derived maxBranches
+    // limit here, not a hardcoded default.
+    await this.entitlementResolver.assertCanCreateBranch(tenantId);
+
     const existing = await this.prisma.branch.findFirst({ where: { tenantId, name: dto.name } });
     if (existing) throw new ConflictException(`Branch "${dto.name}" already exists.`);
 

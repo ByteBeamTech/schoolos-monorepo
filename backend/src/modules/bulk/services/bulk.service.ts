@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { InvoiceService } from '../../student-billing/invoice/services/invoice.service';
 import { ClsService } from 'nestjs-cls'; // 🟢 FIX #1: Injected AsyncLocalStorage for implicit context propagation
+import { EntitlementResolver } from '@core/license/entitlement-resolver.service';
 import { BulkInvoiceDto } from '../dto/bulk.dto';
 import * as _ from 'lodash';
 import pLimit from 'p-limit';
@@ -42,6 +43,7 @@ export class BulkService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly invoices: InvoiceService,
     private readonly cls: ClsService, // 🟢 Implicit Context Storage instance initialized
+    private readonly entitlementResolver: EntitlementResolver,
   ) {}
 
   async onModuleInit() {
@@ -237,6 +239,17 @@ export class BulkService implements OnModuleInit {
 
         const toCreate = validRows.filter((r) => !existingSet.has(r.data.admissionNumber));
         results.skipped += validRows.length - toCreate.length;
+
+        // PR-5B: createMany() bypasses any per-row entitlement hook, so
+        // this is a SINGLE pre-flight capacity check for the whole import,
+        // not a per-row one -- checked against toCreate.length (the actual
+        // post-dedup row count that will be written), not validRows.length
+        // or raw rows.length. Fail fast: reject the entire import before
+        // any row is written if it would exceed the licensed student
+        // limit, rather than silently truncating or partially importing.
+        if (toCreate.length > 0) {
+          await this.entitlementResolver.assertCanEnrollStudents(tenantId, toCreate.length);
+        }
 
         for (const chunk of _.chunk(toCreate, this.BATCH_CHUNK_SIZE)) {
           await new Promise((res) => setImmediate(res));
