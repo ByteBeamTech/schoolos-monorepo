@@ -1,6 +1,7 @@
 import { Global, Module }           from '@nestjs/common';
 import { BullModule }               from '@nestjs/bull';
 import { FeatureFlagService }       from './feature-flags.service';
+import { FeatureFlagCatalogSyncService } from './feature-flag-catalog-sync.service';
 import { FeatureFlagsController }   from './feature-flags.controller';
 import { QUEUE_NAMES }              from '../../infra/queue/queue.module';
 import { ComplianceModule }         from '../compliance/compliance.module';
@@ -15,7 +16,7 @@ import { ComplianceModule }         from '../compliance/compliance.module';
     ),
   ],
   controllers: [FeatureFlagsController],
-  providers:   [FeatureFlagService],
-  exports:     [FeatureFlagService],       // must be exported for DI in CronEngine
+  providers:   [FeatureFlagService, FeatureFlagCatalogSyncService],
+  exports:     [FeatureFlagService, FeatureFlagCatalogSyncService],       // must be exported for DI in CronEngine
 })
 export class FeatureFlagsModule {}

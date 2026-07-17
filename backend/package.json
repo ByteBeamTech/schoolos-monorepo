@@ -19,7 +19,8 @@
     "db:seed": "ts-node prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
-    "commercial:backfill-licenses": "ts-node -r tsconfig-paths/register src/scripts/backfill-licenses.ts"
+    "commercial:backfill-licenses": "ts-node -r tsconfig-paths/register src/scripts/backfill-licenses.ts",
+    "commercial:sync-feature-flags": "ts-node -r tsconfig-paths/register src/scripts/sync-feature-flag-catalog.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
