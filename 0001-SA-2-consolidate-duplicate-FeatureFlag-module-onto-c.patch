@@ -1,0 +1,109 @@
+From ad910786b653e93bacddf0fe933f36cbd4c337e8 Mon Sep 17 00:00:00 2001
+From: "Claude (SA-2 assist)" <claude@bytebeam.local>
+Date: Fri, 17 Jul 2026 20:06:22 +0000
+Subject: [PATCH 1/2] SA-2: consolidate duplicate FeatureFlag module onto
+ canonical core/feature-flags
+
+- Delete modules/feature-flags/ (controller + module): a thin duplicate
+  exposing one read-only, auth-broken endpoint (GET /feature-flags/definitions)
+  that never received SA-1A's @SuperadminRoute() fix despite the handoff
+  doc claiming it had. Functionally equivalent, correctly-guarded endpoint
+  already exists at GET /flags/admin/all (core/feature-flags), confirmed
+  via svc.getAllFlags() returning the same ALL_FLAGS catalog.
+
+- app.module.ts: import FeatureFlagsModule directly from
+  core/feature-flags/feature-flags.module instead of the deleted
+  modules/feature-flags/feature-flags.module. Previously the core module
+  was only alive transitively via CronEngineModule's own import -- an
+  unintentional coupling between scheduling infra and the FeatureFlag API
+  surface. Now explicitly registered at the application level.
+
+- cron-engine.module.ts: unchanged. It already imports the canonical
+  core/feature-flags/feature-flags.module (same class reference), so
+  AppModule + CronEngineModule both importing it is a valid, deduped
+  Nest dependency graph -- not a new duplicate.
+
+Repo-wide grep confirmed before deletion: no other references to
+modules/feature-flags, feature-flags.controller (modules/ variant), or
+the '/feature-flags' route anywhere in backend/frontend/superadmin/mobile,
+no e2e specs, no postman collection, no docs/ dir mentioning it.
+
+Verification note: sandbox cannot run pnpm install / prisma generate /
+full build (network-restricted, same limitation as prior sessions).
+Server-side verification required before considering this fully landed:
+see Phase C checklist in handoff notes.
+---
+ backend/src/app.module.ts                     |  2 +-
+ .../feature-flags/feature-flags.controller.ts | 17 --------------
+ .../feature-flags/feature-flags.module.ts     | 22 -------------------
+ 3 files changed, 1 insertion(+), 40 deletions(-)
+ delete mode 100644 backend/src/modules/feature-flags/feature-flags.controller.ts
+ delete mode 100644 backend/src/modules/feature-flags/feature-flags.module.ts
+
+diff --git a/backend/src/app.module.ts b/backend/src/app.module.ts
+index b553187..93e14a9 100644
+--- a/backend/src/app.module.ts
++++ b/backend/src/app.module.ts
+@@ -34,7 +34,7 @@ import { ReferralsModule } from './core/referrals/referrals.module';
+ 
+ import { NotificationsModule } from './modules/notifications/notifications.module';
+ import { SchoolManagementModule } from './modules/school-management/school-management.module';
+-import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
++import { FeatureFlagsModule } from './core/feature-flags/feature-flags.module';
+ import { SaasBillingModule } from './modules/saas-billing/saas-billing.module';
+ import { SuperadminModule } from './modules/superadmin/superadmin.module';
+ import { TenantsAdminModule } from './modules/tenants/tenants-admin.module';
+diff --git a/backend/src/modules/feature-flags/feature-flags.controller.ts b/backend/src/modules/feature-flags/feature-flags.controller.ts
+deleted file mode 100644
+index 6e12597..0000000
+--- a/backend/src/modules/feature-flags/feature-flags.controller.ts
++++ /dev/null
+@@ -1,17 +0,0 @@
+-import { Controller, Get, UseGuards }  from '@nestjs/common';
+-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+-import { JwtGuard }   from '../../core/auth/guards/jwt.guard';
+-import { RolesGuard } from '../../core/roles/roles.guard';
+-import { Roles }      from '../../core/roles/roles.decorator';
+-import { ALL_FLAGS }  from '../../core/feature-flags/flag-definitions';
+-
+-@ApiTags('feature-flags')
+-@ApiBearerAuth('access-token')
+-@UseGuards(JwtGuard, RolesGuard)
+-@Controller('feature-flags')
+-export class FeatureFlagsController {
+-  @Get('definitions')
+-  @Roles('SUPER_ADMIN')
+-  @ApiOperation({ summary: 'Get all flag definitions' })
+-  getDefinitions() { return ALL_FLAGS; }
+-}
+diff --git a/backend/src/modules/feature-flags/feature-flags.module.ts b/backend/src/modules/feature-flags/feature-flags.module.ts
+deleted file mode 100644
+index 37eb44d..0000000
+--- a/backend/src/modules/feature-flags/feature-flags.module.ts
++++ /dev/null
+@@ -1,22 +0,0 @@
+-import { Global, Module }           from '@nestjs/common';
+-import { BullModule }               from '@nestjs/bull';
+-// 🚀 FIX 1: Service is in 'core', not here
+-import { FeatureFlagService }       from '../../core/feature-flags/feature-flags.service'; 
+-import { FeatureFlagsController }   from './feature-flags.controller';
+-// 🚀 FIX 2: Compliance is also in 'core'
+-import { ComplianceModule }         from '../../core/compliance/compliance.module'; 
+-import { QUEUE_NAMES }              from '../../infra/queue/queue.module';
+-
+-@Global()
+-@Module({
+-  imports: [
+-    ComplianceModule,
+-    BullModule.registerQueue(
+-      { name: QUEUE_NAMES.NOTIFICATIONS },
+-    ),
+-  ],
+-  controllers: [FeatureFlagsController],
+-  providers:   [FeatureFlagService],
+-  exports:     [FeatureFlagService],
+-})
+-export class FeatureFlagsModule {}
+-- 
+2.43.0
+
