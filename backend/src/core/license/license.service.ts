@@ -74,7 +74,27 @@ export class LicenseService {
       license = await this.prisma.license.findFirst({
         where: {
           tenantId,
-          status: { in: ['ACTIVE', 'UNUSED'] },
+          // PR-5B fix: 'TRIAL' was missing from this list. Every License
+          // row LicenseBuilder ever creates for an onboarding tenant has
+          // status='TRIAL' (see resolveLicenseStatus() in license-
+          // builder.service.ts) with real, plan-derived maxStudents/
+          // maxBranches values -- but this query never matched it, so
+          // getActiveLicense() returned null for every trial tenant,
+          // which every entitlement check treats as "unrestricted" by
+          // design. Net effect: the ENTIRE trial period had zero
+          // enforcement, for every tenant, since this filter was written
+          // (predates PR-5B) -- it just had nothing to surface against
+          // until PR-5B's EntitlementResolver calls and the onboarding
+          // license-generation fix both existed. Found via live server
+          // testing: a tenant with maxBranches=1 could still create
+          // unlimited branches.
+          //
+          // GRACE_PERIOD/SUSPENDED deliberately NOT added here -- both
+          // are reserved for ADR COMM-014 and not yet produced by any
+          // code path (see the enum's own comment in enums.prisma) --
+          // deciding their entitlement behavior now would be inventing
+          // policy for a state nothing can reach yet.
+          status: { in: ['ACTIVE', 'UNUSED', 'TRIAL'] },
           OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
         },
         orderBy: { createdAt: 'desc' },

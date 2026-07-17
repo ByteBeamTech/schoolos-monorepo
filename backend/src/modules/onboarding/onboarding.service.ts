@@ -70,7 +70,25 @@ export class OnboardingService {
           contactEmail: dto.adminEmail.toLowerCase(),
           contactPhone: dto.contactPhone,
           status:       trialDays > 0 ? 'TRIAL' : 'ACTIVE',
-          featureTier:  plan!.tier,
+          // PR-5B fix: `featureTier: plan!.tier` used to sit here, but
+          // Tenant has no `featureTier` field (confirmed via schema-wide
+          // grep -- zero matches) -- every onboarding call has been
+          // throwing PrismaClientValidationError at this line since
+          // whatever schema change removed/renamed it (predates this PR;
+          // this is the first time onboarding was actually exercised
+          // since then, per this session's testing).
+          //
+          // NOT a same-name swap to `commercialTier` (the field that
+          // likely replaced it): commercialTier's enum (SELF_SERVICE /
+          // ASSISTED / ENTERPRISE) represents sales/support model, a
+          // different axis from PricingPlan.tier's SubscriptionTier
+          // (STARTER / PRO / ENTERPRISE) -- plan!.tier is not a valid
+          // CommercialTier value, so writing it there would just trade
+          // one wrong value for another. Left at its schema default
+          // (SELF_SERVICE) instead. What commercialTier SHOULD resolve to
+          // at onboarding time is an open COMM-005 product question
+          // ("no routing logic yet" per that ADR's own gap-fill note) --
+          // flagging, not deciding it here.
           maxStudents:  dto.maxStudents ?? plan!.studentLimit ?? 500,
           region:       (dto.region ?? 'IN') as any,
           currency:     (dto.currency ?? 'INR') as any,

@@ -176,6 +176,18 @@ export class AppModule implements NestModule {
         'auth/(.*)',
 	'superadmin/(.*)',
         'webhooks/(.*)', // Webhooks tenant-agnostic hote hain, isliye exclude zaroori hai
+        // PR-5B fix: onboarding/(.*) missing tha yahan -- POST
+        // onboarding/tenant is inherently tenant-agnostic (it CREATES a
+        // tenant; requiring one to already exist to call it is backwards)
+        // but wasn't in this exclusion list, so any call without an
+        // explicit x-tenant-id header fell through to subdomain-based
+        // resolution and failed with "Tenant not found: <subdomain>" --
+        // same bug shape PR-3B's webhook fix addressed, just a route
+        // added later that was never added here. Already guarded by
+        // JwtSuperadminGuard + @Roles('SUPER_ADMIN') at the controller
+        // level (see onboarding.controller.ts's @SuperadminRoute()), so
+        // excluding it from tenant resolution doesn't weaken auth.
+        'onboarding/(.*)',
       )
       .forRoutes('*');
 
@@ -189,6 +201,7 @@ export class AppModule implements NestModule {
         'auth/(.*)',
         'superadmin/(.*)',
         'webhooks/(.*)',
+        'onboarding/(.*)', // same rationale as TenantMiddleware's exclusion above
       )
       .forRoutes('*');
   }
