@@ -5,6 +5,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 
 import { JwtGuard }           from '../../../../core/auth/guards/jwt.guard';
 import { JwtSuperadminGuard } from '../../../../core/auth/guards/jwt-superadmin.guard';
+import { SuperadminRoute }    from '../../../../core/auth/decorators/superadmin-route.decorator';
 import { RolesGuard }         from '../../../../core/roles/roles.guard';
 import { Roles }              from '../../../../core/roles/roles.decorator';
 import { CurrentUser }        from '../../../../core/auth/decorators/current-user.decorator';
@@ -50,6 +51,7 @@ export class SaasPaymentController {
 
   @Post('invoices/:id/offline-payment')
   @ApiBearerAuth('access-token')
+  @SuperadminRoute()
   @UseGuards(JwtSuperadminGuard, RolesGuard)
   @Roles('SUPER_ADMIN')
   @ApiOperation({ summary: 'Record a manually-verified offline payment against a SaaS invoice' })

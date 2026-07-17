@@ -111,6 +111,18 @@ enum NotificationStatus {
 
 enum UserRole {
   SUPER_ADMIN
+  // SA-1: SaaS-platform-level roles, added alongside the auth-guard fix
+  // that finally makes FeatureFlagsController's/SaasBillingController's
+  // superadmin routes reachable at all. These were already referenced in
+  // @Roles() decorators (feature-flags.controller.ts) before this PR --
+  // aspirational, since no real User could ever hold them -- confirmed
+  // via schema-wide grep during the SA-1 Phase 1 audit. Adding them
+  // preserves that existing authorization intent instead of quietly
+  // narrowing @Roles() down to SUPER_ADMIN-only, which would require
+  // re-editing every affected controller a second time once these roles
+  // are actually assigned to real users.
+  SAAS_OWNER
+  ACCOUNT_MANAGER
   SCHOOL_OWNER
   SCHOOL_ADMIN
   PRINCIPAL
@@ -819,4 +831,5 @@ enum CommercialTier {
   ASSISTED
   ENTERPRISE
 }
+
 

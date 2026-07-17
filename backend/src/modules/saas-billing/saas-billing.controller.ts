@@ -13,12 +13,14 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtSuperadminGuard } from '../../core/auth/guards/jwt-superadmin.guard';
+import { SuperadminRoute }    from '../../core/auth/decorators/superadmin-route.decorator';
 import { RolesGuard }         from '../../core/roles/roles.guard';
 import { Roles }              from '../../core/roles/roles.decorator';
 import { PrismaService }      from '../../infra/database/prisma.service';
 
 @ApiTags('saas-billing')
 @ApiBearerAuth('access-token')
+@SuperadminRoute()
 @UseGuards(JwtSuperadminGuard, RolesGuard)
 @Roles('SUPER_ADMIN')
 @Controller('saas')
