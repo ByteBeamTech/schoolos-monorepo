@@ -426,7 +426,7 @@ export class SupportService {
 
   // ── Stats ─────────────────────────────────────────────────────────────────
   async stats() {
-    const [open, inProgress, resolved, critical, slaBreached] = await Promise.all([
+    const [open, inProgress, resolved, critical, slaBreached, closed] = await Promise.all([
       this.prisma.supportTicket.count({ where: { status: 'OPEN' } }),
       this.prisma.supportTicket.count({ where: { status: 'IN_PROGRESS' } }),
       this.prisma.supportTicket.count({ where: { status: 'RESOLVED' } }),
@@ -437,10 +437,11 @@ export class SupportService {
           OR: [{ slaResponseBreached: true }, { slaResolutionBreached: true }],
         },
       }),
+      this.prisma.supportTicket.count({ where: { status: 'CLOSED' } }),
     ]);
     return {
-      open, inProgress, resolved, critical, slaBreached,
-      total: open + inProgress + resolved,
+      open, inProgress, resolved, critical, slaBreached, closed,
+      total: open + inProgress + resolved + closed,
     };
   }
 

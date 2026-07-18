@@ -26,6 +26,7 @@ const PRIORITY_COLORS: Record<string, any> = {
 export default function SupportPage() {
   const [statusFilter,  setStatusFilter]  = useState("OPEN");
   const [slaFilter,     setSlaFilter]     = useState(false);
+  const [priorityFilter, setPriorityFilter] = useState("");
   const [selected,      setSelected]      = useState<any>(null);
   const [reply,         setReply]         = useState("");
   const [sending,       setSending]       = useState(false);
@@ -42,8 +43,8 @@ export default function SupportPage() {
   // within a bounded time instead of going silent indefinitely.
   const { data: stats }                     = useApi<any>("/support/admin/stats", [], { pollInterval: 45000 });
   const { data: tickets, loading, refetch } = useApi<any[]>(
-    `/support/admin/tickets?status=${statusFilter}${slaFilter ? "&slaBreached=true" : ""}`,
-    [statusFilter, slaFilter],
+    `/support/admin/tickets?status=${statusFilter}${slaFilter ? "&slaBreached=true" : ""}${priorityFilter ? `&priority=${priorityFilter}` : ""}`,
+    [statusFilter, slaFilter, priorityFilter],
     { pollInterval: 45000 }
   );
   const { data: ticket, refetch: refetchTicket } = useApi<any>(
@@ -172,35 +173,57 @@ export default function SupportPage() {
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-5 gap-4 mb-6">
+      {/* Stats -- each card is clickable and applies the exact same
+          filter combination the backend used to compute that count
+          (e.g. "Critical" = status OPEN + priority CRITICAL, matching
+          stats()'s own query -- not just a status match). */}
+      <div className="grid grid-cols-6 gap-4 mb-6">
         {[
-          { label: "Open",        value: stats?.open        ?? 0, icon: <AlertCircle className="w-5 h-5 text-red-400" />     },
-          { label: "In Progress", value: stats?.inProgress  ?? 0, icon: <Clock       className="w-5 h-5 text-amber-400" />   },
-          { label: "SLA Breached",value: stats?.slaBreached ?? 0, icon: <AlertTriangle className="w-5 h-5 text-orange-400" />},
-          { label: "Critical",    value: stats?.critical    ?? 0, icon: <AlertCircle className="w-5 h-5 text-red-500" />     },
-          { label: "Resolved",    value: stats?.resolved    ?? 0, icon: <CheckCircle className="w-5 h-5 text-emerald-400" /> },
-        ].map(({ label, value, icon }) => (
-          <div key={label} className="bg-slate-900 rounded-xl border border-slate-800 p-4 flex items-center gap-3">
+          { label: "Open",        value: stats?.open        ?? 0, icon: <AlertCircle className="w-5 h-5 text-red-400" />,
+            onClick: () => { setStatusFilter("OPEN"); setSlaFilter(false); setPriorityFilter(""); } },
+          { label: "In Progress", value: stats?.inProgress  ?? 0, icon: <Clock       className="w-5 h-5 text-amber-400" />,
+            onClick: () => { setStatusFilter("IN_PROGRESS"); setSlaFilter(false); setPriorityFilter(""); } },
+          { label: "SLA Breached",value: stats?.slaBreached ?? 0, icon: <AlertTriangle className="w-5 h-5 text-orange-400" />,
+            // Backend's slaBreached count spans every non-resolved/closed
+            // status, not one specific status -- clearing statusFilter to
+            // "" means the list omits the status param entirely (backend
+            // treats a missing status filter as "any status"), matching
+            // that same scope instead of narrowing to just one tab.
+            onClick: () => { setStatusFilter(""); setSlaFilter(true); setPriorityFilter(""); } },
+          { label: "Critical",    value: stats?.critical    ?? 0, icon: <AlertCircle className="w-5 h-5 text-red-500" />,
+            onClick: () => { setStatusFilter("OPEN"); setSlaFilter(false); setPriorityFilter("CRITICAL"); } },
+          { label: "Resolved",    value: stats?.resolved    ?? 0, icon: <CheckCircle className="w-5 h-5 text-emerald-400" />,
+            onClick: () => { setStatusFilter("RESOLVED"); setSlaFilter(false); setPriorityFilter(""); } },
+          { label: "Closed",      value: stats?.closed      ?? 0, icon: <CheckCircle className="w-5 h-5 text-slate-400" />,
+            onClick: () => { setStatusFilter("CLOSED"); setSlaFilter(false); setPriorityFilter(""); } },
+        ].map(({ label, value, icon, onClick }) => (
+          <button key={label} onClick={onClick}
+            className="bg-slate-900 rounded-xl border border-slate-800 p-4 flex items-center gap-3 text-left hover:border-slate-600 transition-colors cursor-pointer">
             {icon}
             <div>
               <p className="text-xs text-slate-500">{label}</p>
               <p className={`text-2xl font-bold ${label === "SLA Breached" && value > 0 ? "text-orange-400" : "text-white"}`}>{value}</p>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
       {/* Filters */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">
         {["OPEN","IN_PROGRESS","WAITING_CUSTOMER","RESOLVED","CLOSED"].map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)}
+          <button key={s} onClick={() => { setStatusFilter(s); setPriorityFilter(""); }}
             className={`px-3 py-1.5 text-xs rounded-lg border font-medium transition-colors ${
               statusFilter === s
                 ? "bg-orange-500/10 border-orange-500 text-orange-400"
                 : "bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-600"
             }`}>{s.replace(/_/g," ")}</button>
         ))}
+        {priorityFilter && (
+          <span className="px-3 py-1.5 text-xs rounded-lg border border-red-500 bg-red-500/10 text-red-400 font-medium flex items-center gap-1.5">
+            Priority: {priorityFilter}
+            <button onClick={() => setPriorityFilter("")} className="hover:text-red-200">×</button>
+          </span>
+        )}
         <button onClick={() => setSlaFilter(p => !p)}
           className={`px-3 py-1.5 text-xs rounded-lg border font-medium transition-colors ml-auto ${
             slaFilter
