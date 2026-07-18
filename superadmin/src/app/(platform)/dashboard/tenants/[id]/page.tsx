@@ -233,7 +233,7 @@ export default function TenantDetailPage() {
     }
     setIsImpersonatingMode(true);
     try {
-      const res = await api.post<any>(`/superadmin/impersonate`, { targetTenantId: id, reason: reasonImpersonateInput });
+      const res = await api.post<any>(`/superadmin/impersonate/${id}`, { reason: reasonImpersonateInput });
       toast({ description: "Redirecting to school workspace dashboard..." });
       if (res.token) {
         localStorage.setItem("accessToken", res.token);
