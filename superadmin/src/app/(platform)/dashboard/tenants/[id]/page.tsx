@@ -33,15 +33,18 @@ interface BillingData {
   totalInvoices:     number;
 }
 
-const FEATURE_FLAGS = [
-  "FEATURE_AI_SMART_REMINDERS",
-  "FEATURE_AI_DROPOUT_PREDICTION",
-  "FEATURE_AI_CHATBOT",
-  "FEATURE_BILLING_INSTALLMENT_PLANS",
-  "FEATURE_BILLING_HYBRID_PRICING",
-  "FEATURE_REPORTING_AI_INSIGHTS",
-  "FEATURE_INTEGRATIONS_WHATSAPP",
-];
+// BUG FIX: this used to be a hardcoded array of flag names, 4 of which
+// didn't match the real catalog at all (FEATURE_BILLING_INSTALLMENT_PLANS
+// vs real FEATURE_INSTALLMENT_PLANS, FEATURE_BILLING_HYBRID_PRICING which
+// doesn't exist anywhere, FEATURE_REPORTING_AI_INSIGHTS vs real
+// FEATURE_AI_REPORT_INSIGHTS, FEATURE_INTEGRATIONS_WHATSAPP vs real
+// FEATURE_WHATSAPP_INTEGRATION) -- every toggle for those 4 hit the
+// backend's "Unknown flag" 404. Same failure shape as referrals/page.tsx's
+// hardcoded fake data (UI Architecture Audit v1, §2/§7). Fixed by fetching
+// the real catalog live from GET /flags/admin/all (already used correctly
+// by the sidebar's own Feature Flags page) instead of a list someone
+// hand-typed once and never re-checked -- this can't drift again the same
+// way, since it's no longer a copy.
 
 function statusVariant(s: string) {
   if (s === "ACTIVE")    return "success" as const;
@@ -193,13 +196,22 @@ export default function TenantDetailPage() {
   // no transformation needed.
   const { data: resolvedFlags } = useApi<Record<string, boolean>>(`/flags/admin/tenant/${id}`);
 
+  // Real catalog, live -- see the removed FEATURE_FLAGS array's comment
+  // above for why this replaced a hardcoded list. Filtered to category
+  // "FEATURE" to match this widget's original intent (premium features,
+  // not whole-module MODULE_* toggles -- those are a different concept,
+  // shown on the sidebar's own Feature Flags page).
+  const { data: catalogData } = useApi<{ name: string; label: string; category: string }[]>("/flags/admin/all");
+  const featureCatalog = (catalogData ?? []).filter(f => f.category === "FEATURE");
+
   useEffect(() => {
-    if (resolvedFlags) {
+    if (resolvedFlags && featureCatalog.length > 0) {
       const flagsMap: Record<string, boolean> = {};
-      FEATURE_FLAGS.forEach(flag => { flagsMap[flag] = !!resolvedFlags[flag]; });
+      featureCatalog.forEach(f => { flagsMap[f.name] = !!resolvedFlags[f.name]; });
       setLocalFlags(flagsMap);
     }
-  }, [resolvedFlags]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedFlags, catalogData]);
 
   const updateStatus = async (status: "ACTIVE" | "SUSPENDED" | "CANCELLED") => {
     setActionLoading(status);
@@ -396,13 +408,13 @@ export default function TenantDetailPage() {
         <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl max-w-xl">
           <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-1"><Shield className="w-3.5 h-3.5" /> Feature Toggles Control System</h3>
           <div className="divide-y divide-slate-800/60">
-            {FEATURE_FLAGS.map((flag) => {
-              const short = flag.replace("FEATURE_", "").replace(/_/g, " ").toLowerCase();
+            {featureCatalog.map((f) => {
+              const flag = f.name;
               const enabled = !!localFlags[flag];
               return (
                 <div key={flag} className="flex items-center justify-between py-3.5 first:pt-0 last:pb-0">
                   <div>
-                    <p className="text-xs font-bold text-slate-200 capitalize">{short}</p>
+                    <p className="text-xs font-bold text-slate-200">{f.label}</p>
                     <p className="text-[10px] text-slate-600 font-mono mt-0.5">{flag}</p>
                   </div>
                   <button onClick={() => toggleFlag(flag, !enabled)} className={`w-9 h-5 rounded-full relative transition-colors ${enabled ? "bg-orange-500" : "bg-slate-800 border border-slate-700"}`}>

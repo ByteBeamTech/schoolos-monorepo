@@ -12,7 +12,9 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface FlagDef {
-  id:                string;
+  id?:               string;  // NOTE: /flags/admin/all does not provide this -- it's the
+                               // static flag-definitions.ts catalog, not a DB-joined record.
+                               // Use `name` (always present, unique) for keys/identity instead.
   name:              string;
   label:             string;
   description:       string;
@@ -20,8 +22,13 @@ interface FlagDef {
   defaultValue:      boolean;
   allowedTiers:      string[];
   tenantControllable: boolean;
-  overrides:         Override[];
-  _count:            { overrideRequests: number };
+  overrides?:        Override[]; // NOTE: not provided by /flags/admin/all today -- see the
+                                  // guard comment at the render site. Would need a real
+                                  // backend aggregation (flags joined with their active
+                                  // FeatureFlagOverride rows) to populate this correctly.
+  _count?:           { overrideRequests: number }; // NOTE: also not provided today, unused
+                                                     // in render currently -- flagged so a
+                                                     // future caller doesn't assume it exists.
 }
 
 interface Override {
@@ -449,10 +456,10 @@ export default function FeatureFlagsPage() {
             {fLoading ? [...Array(6)].map((_, i) => (
               <div key={i} className="h-16 bg-slate-800 rounded-xl animate-pulse" />
             )) : filteredFlags.map(flag => (
-              <div key={flag.id} className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+              <div key={flag.name} className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
                 <div
                   className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-slate-800/30 transition-colors"
-                  onClick={() => setExpanded(expanded === flag.id ? null : flag.id)}
+                  onClick={() => setExpanded(expanded === flag.name ? null : flag.name)}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -467,27 +474,34 @@ export default function FeatureFlagsPage() {
                     <p className="text-xs text-slate-500 mt-0.5 font-mono">{flag.name}</p>
                   </div>
                   <div className="flex items-center gap-4 flex-shrink-0">
-                    {flag.overrides.length > 0 && (
-                      <span className="text-xs text-amber-400">{flag.overrides.length} override{flag.overrides.length > 1 ? "s" : ""}</span>
+                    {/* BUG FIX (crash: "Application error", TypeError on undefined.length):
+                        /flags/admin/all returns the static flag catalog, which has no
+                        `overrides` field -- that requires a real per-flag override
+                        aggregation this endpoint doesn't do today. Defaulting to []
+                        stops the crash and degrades gracefully (no override count/list
+                        shown) rather than pretending this data exists. Flagged as a
+                        real gap needing backend work, not fully solved here. */}
+                    {(flag.overrides ?? []).length > 0 && (
+                      <span className="text-xs text-amber-400">{(flag.overrides ?? []).length} override{(flag.overrides ?? []).length > 1 ? "s" : ""}</span>
                     )}
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                       flag.defaultValue ? "bg-emerald-500/10 text-emerald-400" : "bg-slate-700 text-slate-400"
                     }`}>
                       default: {flag.defaultValue ? "ON" : "OFF"}
                     </span>
-                    {expanded === flag.id ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+                    {expanded === flag.name ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
                   </div>
                 </div>
 
-                {expanded === flag.id && (
+                {expanded === flag.name && (
                   <div className="border-t border-slate-800 px-5 py-4">
                     <p className="text-xs text-slate-500 mb-4">{flag.description}</p>
-                    {flag.overrides.length === 0 ? (
-                      <p className="text-xs text-slate-600">No active overrides — all tenants use the default value.</p>
+                    {(flag.overrides ?? []).length === 0 ? (
+                      <p className="text-xs text-slate-600">No active overrides — all tenants use the default value. (Note: this endpoint doesn't return per-flag override data yet, so this may be inaccurate -- check a tenant's own Feature Flags tab for its real override state.)</p>
                     ) : (
                       <div className="space-y-2">
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Active overrides</p>
-                        {flag.overrides.map(ov => (
+                        {(flag.overrides ?? []).map(ov => (
                           <div key={ov.id} className="flex items-center gap-3 bg-slate-800/50 rounded-lg px-4 py-2.5">
                             <span className="text-xs text-slate-400 font-mono">{ov.targetType}</span>
                             <span className="text-xs text-slate-300 font-mono truncate flex-1">{ov.targetId}</span>
