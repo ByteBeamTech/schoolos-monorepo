@@ -398,10 +398,23 @@ export default function ApprovalInboxPage() {
   const [myOnly,       setMyOnly]       = useState(false);
 
   const url = `/flags/requests?status=${statusFilter}${myOnly ? "&myRequests=true" : ""}&limit=50`;
-  const { data, loading, refetch } = useApi<{ data: OverrideRequest[]; meta: any }>(url, [statusFilter, myOnly]);
+  // BUG FIX (found via real usage: sidebar badge showed "Pending (1)" and
+  // the summary panel's own "Pending: 1" count were both correct, but the
+  // main list always showed "No pending requests" -- a real, inconsistent-
+  // looking data bug). Root cause: GET /flags/requests's service method
+  // (getAllRequests) returns { items, total, page, limit }, but this page
+  // was typed and coded for { data, meta } -- a different, more common
+  // REST pagination shape that this specific endpoint doesn't use. Every
+  // `data?.data` access silently evaluated to undefined -> [], and
+  // `data?.meta?.total` to undefined -> 0, regardless of how many requests
+  // actually existed. The badge/summary "Pending: 1" numbers were correct
+  // the whole time because they come from a different endpoint
+  // (/flags/requests/pending, which does return {count, requests}
+  // directly) -- only this list's own response was being misread.
+  const { data, loading, refetch } = useApi<{ items: OverrideRequest[]; total: number; page: number; limit: number }>(url, [statusFilter, myOnly]);
   const { data: pending }          = useApi<{ count: number }>("/flags/requests/pending");
 
-  const requests = data?.data ?? [];
+  const requests = data?.items ?? [];
   const pending_count = pending?.count ?? 0;
 
   return (
@@ -478,7 +491,7 @@ export default function ApprovalInboxPage() {
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">Summary</p>
             {[
               { label: "Pending",  value: pending_count,           color: "text-amber-400"  },
-              { label: "Total",    value: data?.meta?.total ?? 0,  color: "text-white"      },
+              { label: "Total",    value: data?.total ?? 0,  color: "text-white"      },
             ].map(({ label, value, color }) => (
               <div key={label} className="flex justify-between py-2 border-b border-slate-800 last:border-0">
                 <span className="text-xs text-slate-500">{label}</span>
