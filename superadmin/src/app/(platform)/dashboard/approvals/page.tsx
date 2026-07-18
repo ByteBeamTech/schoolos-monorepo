@@ -20,6 +20,7 @@ interface OverrideRequest {
   targetName:     string | null;
   isEnabled:      boolean;
   requestedBy:    string;
+  requestedByName?: string | null; // UX fix: backend now resolves this when available
   requestedAt:    string;
   requestReason:  string;
   activationMode: string;
@@ -29,9 +30,11 @@ interface OverrideRequest {
   activatesAt:    string | null;
   status:         string;
   approvedBy:     string | null;
+  approvedByName?: string | null; // UX fix: backend now resolves this when available
   approvedAt:     string | null;
   approverNote:   string | null;
   rejectedBy:     string | null;
+  rejectedByName?: string | null; // UX fix: backend now resolves this when available
   rejectedAt:     string | null;
   rejectionReason: string | null;
   revokedAt:      string | null;
@@ -75,7 +78,7 @@ function LifecycleTimeline({ req }: { req: OverrideRequest }) {
     {
       label:     "Requested",
       time:      req.requestedAt,
-      actor:     req.requestedBy,
+      actor:     req.requestedByName ?? req.requestedBy,
       done:      true,
       color:     "bg-blue-500",
       detail:    req.requestReason,
@@ -83,7 +86,7 @@ function LifecycleTimeline({ req }: { req: OverrideRequest }) {
     {
       label:     req.status === "REJECTED" ? "Rejected" : req.approvedAt ? "Approved" : "Awaiting approval",
       time:      req.approvedAt ?? req.rejectedAt ?? null,
-      actor:     req.approvedBy ?? req.rejectedBy ?? null,
+      actor:     req.approvedByName ?? req.rejectedByName ?? req.approvedBy ?? req.rejectedBy,
       done:      !!req.approvedAt || !!req.rejectedAt,
       color:     req.rejectedAt ? "bg-red-500" : req.approvedAt ? "bg-emerald-500" : "bg-slate-700",
       detail:    req.approverNote ?? req.rejectionReason ?? null,

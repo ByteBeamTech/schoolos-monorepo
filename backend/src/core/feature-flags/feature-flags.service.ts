@@ -462,6 +462,43 @@ export class FeatureFlagService {
     });
   }
 
+  // UX FIX (found via real usage: Approvals page's lifecycle timeline
+  // showed raw backend user IDs like "by cmqw13ruf0002dyi36t2soz0c"
+  // instead of a human name). Root cause: requestedBy/approvedBy/
+  // rejectedBy/cancelledBy/revokedBy are all plain String columns on
+  // FeatureFlagOverrideRequest -- no Prisma relation to User exists to
+  // `include`. Rather than a schema migration (relation + FK, more
+  // invasive for a display-only need), this batch-resolves the actor IDs
+  // actually present in a given result set via one extra query, and
+  // attaches a `<field>Name` alongside each raw id -- frontend can prefer
+  // the resolved name and fall back to the id if a user was deleted.
+  private async enrichActorNames<T extends Record<string, any>>(requests: T[]): Promise<T[]> {
+    const actorFields = ['requestedBy', 'approvedBy', 'rejectedBy', 'cancelledBy', 'revokedBy'];
+    const ids = new Set<string>();
+    for (const r of requests) {
+      for (const f of actorFields) {
+        if (r[f]) ids.add(r[f]);
+      }
+    }
+    if (ids.size === 0) return requests;
+
+    const users = await this.prisma.user.findMany({
+      where:  { id: { in: [...ids] } },
+      select: { id: true, firstName: true, lastName: true, email: true },
+    });
+    const nameById = new Map(
+      users.map(u => [u.id, `${u.firstName} ${u.lastName}`.trim() || u.email]),
+    );
+
+    return requests.map(r => {
+      const enriched: any = { ...r };
+      for (const f of actorFields) {
+        if (r[f]) enriched[`${f}Name`] = nameById.get(r[f]) ?? r[f]; // fallback: raw id if user was deleted
+      }
+      return enriched;
+    });
+  }
+
   async getAllRequests(query: {
     status?: string; flagName?: string; targetId?: string; requestedBy?: string; page: number; limit: number;
   }) {
@@ -482,15 +519,16 @@ export class FeatureFlagService {
       this.prisma.featureFlagOverrideRequest.count({ where }),
     ]);
 
-    return { items, total, page: query.page, limit: query.limit };
+    return { items: await this.enrichActorNames(items), total, page: query.page, limit: query.limit };
   }
 
   async getPendingRequests() {
-    return this.prisma.featureFlagOverrideRequest.findMany({
+    const requests = await this.prisma.featureFlagOverrideRequest.findMany({
       where:   { status: 'PENDING' },
       include: { flag: true },
       orderBy: { requestedAt: 'asc' },
     });
+    return this.enrichActorNames(requests);
   }
 
   async rejectRequest(dto: { requestId: string; rejectedBy: string; rejectionReason: string; tenantId: string }) {
