@@ -66,11 +66,24 @@ export default function SupportPage() {
   const list = Array.isArray(tickets) ? tickets : [];
 
   // Notify when a genuinely new ticket appears in the current filtered
-  // list (poll-driven). `knownTicketIds` starts null so the very first
-  // load just establishes the baseline silently -- no toast for tickets
-  // that already existed when the page opened, only ones that show up
-  // after.
+  // list (poll/socket-driven). `knownTicketIds` starts null so the very
+  // first load just establishes the baseline silently -- no toast for
+  // tickets that already existed when the page opened, only ones that
+  // show up after.
   const knownTicketIds = useRef<Set<string> | null>(null);
+
+  // BUG FIX (found via real usage: clicking any stat card with a nonzero
+  // value toasted "New ticket" once per ticket in the newly-filtered
+  // list). Root cause: this effect only watched `tickets`, so switching
+  // filters (e.g. OPEN -> CLOSED) changed `tickets` to a completely
+  // different set, and every ticket in it looked "new" against a
+  // baseline built from the PREVIOUS filter's results -- none of those
+  // IDs existed in the old baseline, so every single one triggered a
+  // toast. Fixed by resetting the baseline (silently, no toast) whenever
+  // the filter itself changes, so only genuine new arrivals within the
+  // *same* filter ever notify.
+  useEffect(() => { knownTicketIds.current = null; }, [statusFilter, slaFilter, priorityFilter]);
+
   useEffect(() => {
     if (!Array.isArray(tickets)) return;
     if (knownTicketIds.current) {
