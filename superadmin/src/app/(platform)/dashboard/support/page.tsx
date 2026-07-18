@@ -1,9 +1,10 @@
 "use client";
-import { useState }      from "react";
+import { useState, useEffect, useRef } from "react";
 import { useApi }         from "@/lib/hooks";
 import { api }            from "@/lib/api";
 import { PageHeader }     from "@/components/ui/page-header";
 import { Badge }          from "@/components/ui/badge";
+import { useToast }       from "@/components/ui/use-toast";
 import { MessageSquare, AlertCircle, Clock, CheckCircle, AlertTriangle, Zap } from "lucide-react";
 
 const STATUS_COLORS: Record<string, any> = {
@@ -27,17 +28,69 @@ export default function SupportPage() {
   const [reply,         setReply]         = useState("");
   const [sending,       setSending]       = useState(false);
   const [runningCheck,  setRunningCheck]  = useState(false);
+  const { toast } = useToast();
 
-  const { data: stats }                     = useApi<any>("/support/admin/stats");
+  // FEATURE ADDED (was missing entirely): no notification, and neither the
+  // ticket list nor an open ticket's messages refreshed on their own --
+  // a new ticket or a school's reply only showed up after a manual page
+  // reload. Polling reuses the same opt-in mechanism built for the
+  // sidebar's pending-count badge (UI-0.5) -- pauses while the tab is
+  // hidden, refetches immediately on focus, so it doesn't poll uselessly
+  // in a background tab. List/stats poll every 20s (moderate -- ticket
+  // volume doesn't need faster); the open ticket's own messages poll
+  // every 8s (tighter, since this is what someone is actively watching
+  // and waiting on a reply for).
+  const { data: stats }                     = useApi<any>("/support/admin/stats", [], { pollInterval: 20000 });
   const { data: tickets, loading, refetch } = useApi<any[]>(
     `/support/admin/tickets?status=${statusFilter}${slaFilter ? "&slaBreached=true" : ""}`,
-    [statusFilter, slaFilter]
+    [statusFilter, slaFilter],
+    { pollInterval: 20000 }
   );
   const { data: ticket, refetch: refetchTicket } = useApi<any>(
-    selected ? `/support/admin/tickets/${selected}` : "", [selected]
+    selected ? `/support/admin/tickets/${selected}` : "", [selected],
+    { pollInterval: 8000 }
   );
 
   const list = Array.isArray(tickets) ? tickets : [];
+
+  // Notify when a genuinely new ticket appears in the current filtered
+  // list (poll-driven). `knownTicketIds` starts null so the very first
+  // load just establishes the baseline silently -- no toast for tickets
+  // that already existed when the page opened, only ones that show up
+  // after.
+  const knownTicketIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!Array.isArray(tickets)) return;
+    if (knownTicketIds.current) {
+      for (const t of tickets) {
+        if (!knownTicketIds.current.has(t.id)) {
+          toast({ description: `New ticket: ${t.title} — ${t.tenant?.name ?? "unknown school"}` });
+        }
+      }
+    }
+    knownTicketIds.current = new Set(tickets.map((t: any) => t.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tickets]);
+
+  // Reset the message-count baseline whenever a *different* ticket is
+  // selected, so switching tickets never fires a false "new message"
+  // toast just because the newly-opened ticket happens to have more
+  // messages than whatever was previously selected.
+  const lastMessageCount = useRef<number | null>(null);
+  useEffect(() => { lastMessageCount.current = null; }, [selected]);
+
+  // Notify when a new message appears on the currently-open ticket
+  // (poll-driven) -- e.g. the school replied while a superadmin was
+  // reading it.
+  useEffect(() => {
+    if (!ticket?.messages) return;
+    const count = ticket.messages.length;
+    if (lastMessageCount.current !== null && count > lastMessageCount.current) {
+      toast({ description: `New message on ${ticket.ticketNumber ?? "this ticket"}` });
+    }
+    lastMessageCount.current = count;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket]);
 
   const sendReply = async () => {
     if (!reply.trim() || !selected) return;
