@@ -90,12 +90,29 @@ export default function SupportPage() {
   useEffect(() => { lastMessageCount.current = null; }, [selected]);
 
   // Notify when a new message appears on the currently-open ticket
-  // (poll-driven) -- e.g. the school replied while a superadmin was
-  // reading it.
+  // (poll/socket-driven) -- e.g. the school replied while a superadmin
+  // was reading it.
+  //
+  // BUG FIX (found via real usage): this used to fire on ANY message-
+  // count increase, including the superadmin's OWN reply -- sending a
+  // message through this same panel calls refetchTicket() on success,
+  // which increased the count and toasted "New message" right back at
+  // the person who just sent it. Fixed by only toasting when the
+  // *latest* message's senderRole isn't SUPER_ADMIN -- i.e. only notify
+  // about messages that came from the school side, not our own replies.
+  // (Known limitation, acceptable tradeoff: if a *different* superadmin
+  // replies to the same ticket while this one is watching, it's also
+  // suppressed -- rare enough not to be worth a per-user sender check
+  // here.)
   useEffect(() => {
     if (!ticket?.messages) return;
     const count = ticket.messages.length;
-    if (lastMessageCount.current !== null && count > lastMessageCount.current) {
+    const latest = ticket.messages[ticket.messages.length - 1];
+    if (
+      lastMessageCount.current !== null &&
+      count > lastMessageCount.current &&
+      latest?.senderRole !== "SUPER_ADMIN"
+    ) {
       toast({ description: `New message on ${ticket.ticketNumber ?? "this ticket"}` });
     }
     lastMessageCount.current = count;
