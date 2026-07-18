@@ -98,6 +98,24 @@ export class SupportController {
   @ApiOperation({ summary: 'Ticket stats with SLA breach count' })
   stats() { return this.svc.stats(); }
 
+  // BUG FIX (found via real usage: clicking a ticket in the Support page's
+  // list never loaded the detail panel -- "Select a ticket to view"
+  // persisted forever). Root cause: the frontend already called
+  // GET /support/admin/tickets/:id, but this route never existed --
+  // only the tenant-facing GET tickets/:id (scoped to the caller's own
+  // tenantId) did, which a superadmin viewing an arbitrary tenant's
+  // ticket can't use. The service method (getById) already accepted an
+  // optional tenantId and correctly skips tenant-scoping when omitted --
+  // no service change needed, just this missing route.
+  @Get('admin/tickets/:id')
+  @SuperadminRoute()
+  @UseGuards(JwtSuperadminGuard, RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Get any ticket by id, across all tenants (superadmin)' })
+  getOneAdmin(@Param('id') id: string) {
+    return this.svc.getById(id);
+  }
+
   @Patch('admin/tickets/:id')
   @SuperadminRoute()
   @UseGuards(JwtSuperadminGuard, RolesGuard)
