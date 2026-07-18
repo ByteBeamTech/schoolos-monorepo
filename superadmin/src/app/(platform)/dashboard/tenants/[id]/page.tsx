@@ -182,18 +182,24 @@ export default function TenantDetailPage() {
   const [reasonImpersonateInput, setReasonImpersonateInput] = useState("");
   const [isImpersonatingMode, setIsImpersonatingMode] = useState(false);
 
+  // BUG FOUND (post SA-2/UI-0.5, via real usage): this tab was reading
+  // `tenant.featureFlags` for initial toggle state, but onboarding.service.ts's
+  // getTenant() never `include`s that relation -- it's always undefined, so
+  // this effect's body never ran and every toggle showed a meaningless
+  // hardcoded default instead of real state. Fixed by loading the actual
+  // resolved flag map from the already-correct, already-tested (COMM-006A)
+  // core/feature-flags endpoint instead -- GET /flags/admin/tenant/:tenantId
+  // returns Record<string, boolean>, an exact shape match for localFlags,
+  // no transformation needed.
+  const { data: resolvedFlags } = useApi<Record<string, boolean>>(`/flags/admin/tenant/${id}`);
+
   useEffect(() => {
-    const tenantObj = tenant as any;
-    if (tenantObj?.featureFlags) {
+    if (resolvedFlags) {
       const flagsMap: Record<string, boolean> = {};
-      FEATURE_FLAGS.forEach(flag => {
-        flagsMap[flag] = Array.isArray(tenantObj.featureFlags) 
-          ? tenantObj.featureFlags.includes(flag) 
-          : !!tenantObj.featureFlags[flag];
-      });
+      FEATURE_FLAGS.forEach(flag => { flagsMap[flag] = !!resolvedFlags[flag]; });
       setLocalFlags(flagsMap);
     }
-  }, [tenant]);
+  }, [resolvedFlags]);
 
   const updateStatus = async (status: "ACTIVE" | "SUSPENDED" | "CANCELLED") => {
     setActionLoading(status);
@@ -247,17 +253,33 @@ export default function TenantDetailPage() {
     }
   };
 
+  // BUG FOUND (post SA-2/UI-0.5, via real usage -- "Rollback triggered:
+  // Core transaction failed" 500 in the browser). Root cause:
+  // tenant-admin.controller.ts's toggleFeature() does
+  // `prisma.tenant.update({ data: { [feature]: status } })`, treating
+  // `feature` as a literal Tenant model column name. That endpoint was
+  // built for real Tenant boolean fields, but this UI was feeding it
+  // FeatureFlag catalog names (FEATURE_AI_SMART_REMINDERS etc.), which
+  // aren't Tenant columns at all -- Prisma rejects the write, the
+  // transaction rolls back, every toggle click failed the same way.
+  // Fixed by calling core/feature-flags's already-correct, already-tested
+  // (COMM-006A) superadmin override endpoint instead -- same shape the
+  // tenant self-service toggle route (PATCH /flags/tenant/toggle) already
+  // uses internally (targetType: 'TENANT', targetId, isEnabled).
   const toggleFlag = async (flag: string, enabled: boolean) => {
     setLocalFlags(prev => ({ ...prev, [flag]: enabled }));
     try {
-      await api.patch(`/tenant-admin/${id}/toggle-feature`, {
-        feature: flag,
-        value: enabled,
+      await api.post(`/flags/override`, {
+        flagName:   flag,
+        targetType: "TENANT",
+        targetId:   id,
+        isEnabled:  enabled,
+        reason:     "Toggled by superadmin via Tenant Detail",
       });
       toast({ description: `Feature toggled successfully: ${flag}` });
       refetch();
     } catch (e: any) {
-      toast({ description: "Rollback triggered: Core transaction failed.", variant: "destructive" });
+      toast({ description: e.message || "Failed to toggle feature.", variant: "destructive" });
       setLocalFlags(prev => ({ ...prev, [flag]: !enabled }));
     }
   };
