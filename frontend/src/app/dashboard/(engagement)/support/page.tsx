@@ -23,6 +23,7 @@ import { EmptyState }   from "@/components/ui/empty-state";
 import { useApi }       from "@/lib/hooks";
 import { apiClient }    from "@/lib/api";
 import { useSocketEvent } from "@/lib/use-socket";
+import { notifyTab }      from "@/lib/tab-attention";
 import type { BadgeVariant }
 from "@/components/ui/badge";
 import {
@@ -114,6 +115,7 @@ export default function SupportPage() {
     if (payload?.ticketId === selected) fetchTicket(selected);
     refetch();
     toast.info(`New reply on ${payload?.ticketNumber ?? "your ticket"}`);
+    notifyTab("New reply");
   });
 
   // Scroll thread to bottom when new messages arrive

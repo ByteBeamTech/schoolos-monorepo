@@ -9,6 +9,7 @@ import { useSAStore } from "@/lib/store";
 // focus, which lib/use-api.ts's SWR-based version did not do.
 import { useApi } from "@/lib/hooks";
 import { useSocketEvent } from "@/lib/use-socket";
+import { notifyTab } from "@/lib/tab-attention";
 import {
   LayoutDashboard, Building2, CreditCard, ShieldAlert,
   Settings, Inbox, LogOut, Shield, Zap, ChevronRight, BarChart3,
@@ -30,7 +31,7 @@ export function PlatformLayout({ children }: { children: React.ReactNode }) {
 const { data: pendingData, loading, refetch: refetchPending } = useApi<any>('/flags/requests/pending', [], { pollInterval: 30000 });
 // REALTIME: immediate badge update instead of waiting up to 30s. Poll
 // interval above stays as a fallback.
-useSocketEvent("flags:new-request",     () => refetchPending());
+useSocketEvent("flags:new-request",     () => { refetchPending(); notifyTab("New approval request"); });
 useSocketEvent("flags:request-updated", () => refetchPending());
 
 // Defensive Logic: पहले check करो कि count सीधा मिल रहा है या 'data' ऑब्जेक्ट के अंदर

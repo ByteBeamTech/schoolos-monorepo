@@ -6,6 +6,7 @@ import { PageHeader }     from "@/components/ui/page-header";
 import { Badge }          from "@/components/ui/badge";
 import { useToast }       from "@/components/ui/use-toast";
 import { useSocketEvent } from "@/lib/use-socket";
+import { notifyTab }      from "@/lib/tab-attention";
 import { MessageSquare, AlertCircle, Clock, CheckCircle, AlertTriangle, Zap } from "lucide-react";
 
 const STATUS_COLORS: Record<string, any> = {
@@ -75,6 +76,7 @@ export default function SupportPage() {
       for (const t of tickets) {
         if (!knownTicketIds.current.has(t.id)) {
           toast({ description: `New ticket: ${t.title} — ${t.tenant?.name ?? "unknown school"}` });
+          notifyTab("New ticket");
         }
       }
     }
@@ -114,6 +116,7 @@ export default function SupportPage() {
       latest?.senderRole !== "SUPER_ADMIN"
     ) {
       toast({ description: `New message on ${ticket.ticketNumber ?? "this ticket"}` });
+      notifyTab("New message");
     }
     lastMessageCount.current = count;
     // eslint-disable-next-line react-hooks/exhaustive-deps
