@@ -4,7 +4,9 @@
  *
  * FIXES vs original:
  *  1. Removed dead apiFetch / authHeaders — only apiClient used
- *  2. Poll active ticket every 20s so new SA replies appear automatically
+ *  2. Poll active ticket every 45s as a FALLBACK (was the primary path at
+ *     20s; realtime socket events are now primary -- see the
+ *     school-side activation commit that added use-socket.ts)
  *  3. Reopen logic: RESOLVED/CLOSED ticket gets status back to OPEN on school reply
  *     (calls PATCH /support/tickets/:id/reopen before POST messages)
  *  4. Message thread fills parent flex height — no nested double-scroll
@@ -20,6 +22,7 @@ import { Badge }        from "@/components/ui/badge";
 import { EmptyState }   from "@/components/ui/empty-state";
 import { useApi }       from "@/lib/hooks";
 import { apiClient }    from "@/lib/api";
+import { useSocketEvent } from "@/lib/use-socket";
 import type { BadgeVariant }
 from "@/components/ui/badge";
 import {
@@ -88,13 +91,30 @@ export default function SupportPage() {
     fetchTicket(selected);
   }, [selected, fetchTicket]);
 
-  // Poll the open ticket every 20 s — surfaces SA replies without page reload
+  // Poll the open ticket every 45s as a FALLBACK only -- realtime socket
+  // events (wired below) are the primary delivery path now. Kept as a
+  // fallback rather than removed, same rationale as the superadmin side:
+  // a dropped/failed socket should still self-heal within a bounded
+  // time instead of going silent indefinitely.
   useEffect(() => {
     if (pollRef.current) clearInterval(pollRef.current);
     if (!selected) return;
-    pollRef.current = setInterval(() => fetchTicket(selected), 20_000);
+    pollRef.current = setInterval(() => fetchTicket(selected), 45_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [selected, fetchTicket]);
+
+  // REALTIME: primary delivery path. Notify + refresh when a superadmin
+  // replies. No self-notification risk to guard against here (unlike the
+  // earlier bug fixed on the superadmin side): the backend only emits
+  // this event to a tenant's own room when senderRole === 'SUPER_ADMIN'
+  // (a school's own sent message goes to emitToAdmins instead, never
+  // back to its own tenant room) -- so this handler only ever fires here
+  // for messages that genuinely came from a superadmin.
+  useSocketEvent("support:new-message", (payload: any) => {
+    if (payload?.ticketId === selected) fetchTicket(selected);
+    refetch();
+    toast.info(`New reply on ${payload?.ticketNumber ?? "your ticket"}`);
+  });
 
   // Scroll thread to bottom when new messages arrive
   useEffect(() => {
