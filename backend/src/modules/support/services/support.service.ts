@@ -5,14 +5,8 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { QUEUE_NAMES }   from '../../../infra/queue/queue.module';
 import { CreateTicketDto, UpdateTicketDto, AddMessageDto } from '../dto/support.dto';
 import { RealtimeGateway } from '../../../core/realtime/realtime.gateway';
-
-// SLA response + resolution times in minutes
-const SLA_POLICY: Record<string, { responseMin: number; resolutionMin: number }> = {
-  CRITICAL: { responseMin:  60,   resolutionMin:  240  },  // 1h response, 4h resolve
-  HIGH:     { responseMin:  240,  resolutionMin:  480  },  // 4h response, 8h resolve
-  MEDIUM:   { responseMin:  480,  resolutionMin:  1440 },  // 8h response, 24h resolve
-  LOW:      { responseMin:  1440, resolutionMin:  4320 },  // 24h response, 72h resolve
-};
+import { PlatformConfigService } from '../../../core/platform-config/platform-config.service';
+import { DEFAULT_SLA_POLICY, PLATFORM_CONFIG_KEYS, SlaPolicyMap } from '../../../core/sla-policy.constants';
 
 // Superadmin email for SLA breach alerts — configurable via env
 const SUPPORT_ALERT_EMAIL = process.env.SUPPORT_ALERT_EMAIL ?? 'support@schoolos.com';
@@ -26,6 +20,7 @@ export class SupportService {
     @InjectQueue(QUEUE_NAMES.NOTIFICATIONS)
     private readonly notifQueue: Queue,
     private readonly realtime: RealtimeGateway,
+    private readonly platformConfig: PlatformConfigService,
   ) {}
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -36,8 +31,18 @@ export class SupportService {
     return `TKT-${year}-${String(count + 1).padStart(5, '0')}`;
   }
 
-  private computeSLADates(priority: string, from: Date = new Date()) {
-    const policy = SLA_POLICY[priority] ?? SLA_POLICY.MEDIUM;
+  // SETTINGS FEATURE: SLA_POLICY used to be a hardcoded const right here
+  // (response/resolution minutes per priority, never configurable).
+  // Now reads from PlatformConfig via the new Settings page's SLA
+  // section (see superadmin.controller.ts's GET/PATCH config/sla-policy
+  // routes), falling back to the same factory defaults
+  // (DEFAULT_SLA_POLICY, now shared with that controller so both stay in
+  // sync) if nothing has been saved yet -- so this is a strict behavior
+  // upgrade, not a change, until someone actually edits the Settings UI.
+  private async computeSLADates(priority: string, from: Date = new Date()) {
+    const saved  = await this.platformConfig.get<SlaPolicyMap>(PLATFORM_CONFIG_KEYS.SLA_POLICY);
+    const table  = saved ?? DEFAULT_SLA_POLICY;
+    const policy = table[priority as keyof SlaPolicyMap] ?? table.MEDIUM;
     return {
       slaResponseDueAt:   new Date(from.getTime() + policy.responseMin   * 60000),
       slaResolutionDueAt: new Date(from.getTime() + policy.resolutionMin * 60000),
@@ -81,7 +86,7 @@ export class SupportService {
   async create(tenantId: string, dto: CreateTicketDto, createdBy: string) {
     const ticketNumber = await this.generateTicketNumber(tenantId);
     const priority     = dto.priority ?? 'MEDIUM';
-    const slaDates     = this.computeSLADates(priority);
+    const slaDates     = await this.computeSLADates(priority);
 
     const ticket = await this.prisma.supportTicket.create({
       data: {
@@ -219,7 +224,7 @@ export class SupportService {
       data.priority = dto.priority;
       // Recompute SLA dates if priority changed and ticket not resolved
       if (!['RESOLVED','CLOSED'].includes(ticket.status)) {
-        const slaDates = this.computeSLADates(dto.priority, ticket.createdAt);
+        const slaDates = await this.computeSLADates(dto.priority, ticket.createdAt);
         data.slaResponseDueAt   = slaDates.slaResponseDueAt;
         data.slaResolutionDueAt = slaDates.slaResolutionDueAt;
         // Reset breach flags when priority is manually changed
@@ -394,7 +399,7 @@ export class SupportService {
         updates.priority         = newPriority as any;
 
         // Recompute SLA from now with new priority
-        const slaDates = this.computeSLADates(newPriority, now);
+        const slaDates = await this.computeSLADates(newPriority, now);
         updates.slaResponseDueAt   = slaDates.slaResponseDueAt;
         updates.slaResolutionDueAt = slaDates.slaResolutionDueAt;
         updates.slaResponseBreached  = false;
@@ -455,7 +460,7 @@ export class SupportService {
     // Idempotent — if already open, return as-is
     if (!['RESOLVED', 'CLOSED'].includes(ticket.status)) return ticket;
 
-    const sla = this.computeSLADates(ticket.priority, new Date());
+    const sla = await this.computeSLADates(ticket.priority, new Date());
 
     return this.prisma.supportTicket.update({
       where: { id },

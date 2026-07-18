@@ -2,11 +2,13 @@
 // FULL REPLACEMENT — adds impersonate + knowledge routes that were missing
 import { SuperadminRoute } from '../../core/auth/decorators/superadmin-route.decorator';
 import {
-  Controller, Get, Post, Body, Param, Query,
-  UseGuards, HttpCode, HttpStatus,
+  Controller, Get, Post, Patch, Body, Param, Query,
+  UseGuards, HttpCode, HttpStatus, BadRequestException,
 }  from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { SuperadminService }    from './superadmin.service';
+import { PlatformConfigService } from '../../core/platform-config/platform-config.service';
+import { DEFAULT_SLA_POLICY, PLATFORM_CONFIG_KEYS, SlaPolicyMap } from '../../core/sla-policy.constants';
 import { JwtSuperadminGuard }   from '../../core/auth/guards/jwt-superadmin.guard';
 import { RolesGuard }           from '../../core/roles/roles.guard';
 import { Roles }                from '../../core/roles/roles.decorator';
@@ -20,7 +22,10 @@ import { SuperadminUser }       from '../../core/auth/guards/jwt-superadmin.stra
 @Roles('SUPER_ADMIN')
 @Controller('superadmin')
 export class SuperadminController {
-  constructor(private readonly svc: SuperadminService) {}
+  constructor(
+    private readonly svc: SuperadminService,
+    private readonly config: PlatformConfigService,
+  ) {}
 
   // ── Analytics ─────────────────────────────────────────────────────────────
   //
@@ -140,5 +145,43 @@ getTenants(
       maxStudents:        maxStudents        ? parseInt(maxStudents)        : undefined,
       trialExpiringDays:  trialExpiringDays  ? parseInt(trialExpiringDays)  : undefined,
     });
+  }
+
+  // ── SLA Settings ─────────────────────────────────────────────────────────
+  // Backs the Settings page's new SLA section. SLA_POLICY previously lived
+  // as a hardcoded const in support.service.ts -- now configurable via
+  // PlatformConfig, falling back to the same factory defaults
+  // (DEFAULT_SLA_POLICY) if nothing has been saved yet.
+
+  @Get('config/sla-policy')
+  @ApiOperation({ summary: 'Get current SLA response/resolution policy (or factory defaults if unset)' })
+  async getSlaPolicy() {
+    const saved = await this.config.get<SlaPolicyMap>(PLATFORM_CONFIG_KEYS.SLA_POLICY);
+    return { policy: saved ?? DEFAULT_SLA_POLICY, isDefault: !saved };
+  }
+
+  @Patch('config/sla-policy')
+  @ApiOperation({ summary: 'Update SLA response/resolution policy' })
+  async updateSlaPolicy(
+    @Body() body: SlaPolicyMap,
+    @CurrentUser() user: SuperadminUser,
+  ) {
+    // Basic shape/sanity validation -- every priority present, both
+    // fields positive integers. Not exhaustive DTO validation (no
+    // class-validator decorators wired for this route yet), but enough
+    // to stop obviously broken input (negative minutes, missing
+    // priorities) from silently corrupting every future ticket's SLA
+    // dates.
+    for (const key of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const) {
+      const entry = body?.[key];
+      if (!entry || !Number.isFinite(entry.responseMin) || !Number.isFinite(entry.resolutionMin)
+          || entry.responseMin <= 0 || entry.resolutionMin <= 0) {
+        throw new BadRequestException(
+          `Invalid SLA policy for ${key}: responseMin and resolutionMin must both be positive numbers.`,
+        );
+      }
+    }
+    await this.config.set(PLATFORM_CONFIG_KEYS.SLA_POLICY, body, user.id);
+    return { ok: true, policy: body };
   }
 }

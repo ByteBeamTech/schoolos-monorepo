@@ -1,0 +1,20 @@
+// core/platform-config.prisma
+//
+// Generic key-value store for platform-wide superadmin-configurable
+// settings. Added to back the SLA Settings feature (support.service.ts's
+// SLA_POLICY was previously hardcoded, not configurable at all) --
+// chosen as a generic table rather than a dedicated model per setting,
+// since the Settings page's own placeholder text already named several
+// future config needs (region control, gateway config, platform-wide
+// toggles) that won't all share SLA policy's shape. A JSON value column
+// means adding a new setting type later doesn't need a new migration.
+
+model PlatformConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("platform_config")
+}
