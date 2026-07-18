@@ -14,6 +14,7 @@ import { EVENTS }         from '../events/events.constants';
 import { ALL_FLAGS }      from './flag-definitions';
 import { QUEUE_NAMES }    from '../../infra/queue/queue.module';
 import * as crypto        from 'crypto';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export interface FlagContext {
   tenantId:    string;
@@ -49,9 +50,13 @@ export class FeatureFlagService {
     private readonly prisma:     PrismaService,
     private readonly redis:      RedisService,
     private readonly audit:      AuditService,
-    private readonly emitter:    EventEmitter2,
+    private readonly emitter:    EventEmitter2, // NOTE: injected but never called anywhere in
+                                                 // this file -- found during the realtime-gateway
+                                                 // activation, flagged as a separate dormant-
+                                                 // infrastructure cleanup candidate, not fixed here.
     @InjectQueue(QUEUE_NAMES.NOTIFICATIONS)
     private readonly notifQueue: Queue,
+    private readonly realtime:   RealtimeGateway,
   ) {}
 
   // ── Public evaluation API ──────────────────────────────────────────────────
@@ -307,6 +312,11 @@ export class FeatureFlagService {
     });
 
     await this.invalidateCache(request.targetType, request.targetId);
+
+    // REALTIME: notify connected superadmins so the Approvals list
+    // updates without waiting for the next poll tick.
+    this.realtime.emitToAdmins('flags:request-updated', { id: request.id, status: 'APPROVED' });
+
     return updated;
   }
 
@@ -444,7 +454,7 @@ export class FeatureFlagService {
       );
     }
 
-    return this.prisma.featureFlagOverrideRequest.create({
+    const request = await this.prisma.featureFlagOverrideRequest.create({
       data: {
         flagId:                       flag.id,
         targetType:                   dto.targetType as any,
@@ -460,6 +470,18 @@ export class FeatureFlagService {
         autoRevokeIfNotUpgradedDays:  dto.autoRevokeIfNotUpgradedDays ?? null,
       },
     });
+
+    // REALTIME: notify connected superadmins immediately instead of them
+    // finding out on the next poll tick.
+    this.realtime.emitToAdmins('flags:new-request', {
+      id:         request.id,
+      flagName:   dto.flagName,
+      targetType: dto.targetType,
+      targetId:   dto.targetId,
+      isEnabled:  request.isEnabled,
+    });
+
+    return request;
   }
 
   // UX FIX (found via real usage: Approvals page's lifecycle timeline
@@ -554,6 +576,7 @@ export class FeatureFlagService {
 
     // No cache invalidation: a PENDING->REJECTED request never had an
     // active FeatureFlagOverride, so no evaluated flag result changes.
+    this.realtime.emitToAdmins('flags:request-updated', { id: updated.id, status: 'REJECTED' });
     return updated;
   }
 
@@ -570,6 +593,7 @@ export class FeatureFlagService {
       }),
     ]);
 
+    this.realtime.emitToAdmins('flags:request-updated', { id: updated.id, status: 'CANCELLED' });
     return updated; // same no-cache-invalidation rationale as rejectRequest
   }
 
@@ -597,6 +621,7 @@ export class FeatureFlagService {
 
     const [updated] = await this.prisma.$transaction(ops);
     await this.invalidateCache(request.targetType, request.targetId);
+    this.realtime.emitToAdmins('flags:request-updated', { id: updated.id, status: 'REVOKED' });
     return updated;
   }
 

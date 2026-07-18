@@ -4,6 +4,7 @@ import { Queue }         from 'bull';
 import { PrismaService } from '@infra/database/prisma.service';
 import { QUEUE_NAMES }   from '../../../infra/queue/queue.module';
 import { CreateTicketDto, UpdateTicketDto, AddMessageDto } from '../dto/support.dto';
+import { RealtimeGateway } from '../../../core/realtime/realtime.gateway';
 
 // SLA response + resolution times in minutes
 const SLA_POLICY: Record<string, { responseMin: number; resolutionMin: number }> = {
@@ -24,6 +25,7 @@ export class SupportService {
     private readonly prisma: PrismaService,
     @InjectQueue(QUEUE_NAMES.NOTIFICATIONS)
     private readonly notifQueue: Queue,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -115,6 +117,17 @@ export class SupportService {
     );
 
     this.logger.log(`Ticket created: ${ticketNumber} [${priority}] | tenant:${tenantId} | SLA response by ${slaDates.slaResponseDueAt.toISOString()}`);
+
+    // REALTIME: notify connected superadmins immediately instead of them
+    // finding out on the next poll tick.
+    this.realtime.emitToAdmins('support:new-ticket', {
+      id:         ticket.id,
+      ticketNumber,
+      title:      dto.title,
+      priority,
+      schoolName: ticket.tenant.name,
+    });
+
     return ticket;
   }
 
@@ -279,6 +292,19 @@ export class SupportService {
     }
 
     await this.prisma.supportTicket.update({ where: { id }, data: ticketUpdate });
+
+    // REALTIME: notify whichever side didn't just send the message.
+    const messagePayload = {
+      ticketId:     id,
+      ticketNumber: ticket.ticketNumber,
+      message:      dto.message.substring(0, 200),
+      senderRole,
+    };
+    if (senderRole === 'SUPER_ADMIN') {
+      if (!dto.isInternal) this.realtime.emitToTenant(ticket.tenantId, 'support:new-message', messagePayload);
+    } else {
+      this.realtime.emitToAdmins('support:new-message', messagePayload);
+    }
 
     return message;
   }

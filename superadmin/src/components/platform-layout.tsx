@@ -8,6 +8,7 @@ import { useSAStore } from "@/lib/store";
 // additionally pauses while the tab is hidden and force-refetches on
 // focus, which lib/use-api.ts's SWR-based version did not do.
 import { useApi } from "@/lib/hooks";
+import { useSocketEvent } from "@/lib/use-socket";
 import {
   LayoutDashboard, Building2, CreditCard, ShieldAlert,
   Settings, Inbox, LogOut, Shield, Zap, ChevronRight, BarChart3,
@@ -26,7 +27,11 @@ export function PlatformLayout({ children }: { children: React.ReactNode }) {
 
 // ─── LIVE DATA FETCHING ───
 // हम 'any' टाइप का उपयोग कर रहे हैं ताकि बैकएंड के अलग-अलग स्ट्रक्चर को हैंडल कर सकें
-const { data: pendingData, loading } = useApi<any>('/flags/requests/pending', [], { pollInterval: 30000 });
+const { data: pendingData, loading, refetch: refetchPending } = useApi<any>('/flags/requests/pending', [], { pollInterval: 30000 });
+// REALTIME: immediate badge update instead of waiting up to 30s. Poll
+// interval above stays as a fallback.
+useSocketEvent("flags:new-request",     () => refetchPending());
+useSocketEvent("flags:request-updated", () => refetchPending());
 
 // Defensive Logic: पहले check करो कि count सीधा मिल रहा है या 'data' ऑब्जेक्ट के अंदर
 const pendingCount = pendingData?.data?.count ?? pendingData?.count ?? 0;

@@ -4,6 +4,7 @@ import { useApi }     from "@/lib/hooks";
 import { api }        from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge }      from "@/components/ui/badge";
+import { useSocketEvent } from "@/lib/use-socket";
 import { formatDate, formatRelative, formatCurrency } from "@/lib/utils";
 import {
   Check, X, Clock, ChevronDown, ChevronUp,
@@ -414,11 +415,17 @@ export default function ApprovalInboxPage() {
   // the whole time because they come from a different endpoint
   // (/flags/requests/pending, which does return {count, requests}
   // directly) -- only this list's own response was being misread.
-  const { data, loading, refetch } = useApi<{ items: OverrideRequest[]; total: number; page: number; limit: number }>(url, [statusFilter, myOnly]);
-  const { data: pending }          = useApi<{ count: number }>("/flags/requests/pending");
+  const { data, loading, refetch } = useApi<{ items: OverrideRequest[]; total: number; page: number; limit: number }>(url, [statusFilter, myOnly], { pollInterval: 45000 });
+  const { data: pending, refetch: refetchPending } = useApi<{ count: number }>("/flags/requests/pending", [], { pollInterval: 45000 });
 
   const requests = data?.items ?? [];
   const pending_count = pending?.count ?? 0;
+
+  // REALTIME: primary delivery path, activated alongside the same
+  // backend gateway wired into the Support page. The 45s poll above is
+  // now a fallback only, in case the socket connection is down.
+  useSocketEvent("flags:new-request",     () => { refetch(); refetchPending(); });
+  useSocketEvent("flags:request-updated", () => { refetch(); refetchPending(); });
 
   return (
     <div>

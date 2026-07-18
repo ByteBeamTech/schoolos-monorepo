@@ -35,6 +35,7 @@ import { ReferralsModule } from './core/referrals/referrals.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { SchoolManagementModule } from './modules/school-management/school-management.module';
 import { FeatureFlagsModule } from './core/feature-flags/feature-flags.module';
+import { RealtimeModule } from './core/realtime/realtime.module';
 import { SaasBillingModule } from './modules/saas-billing/saas-billing.module';
 import { SuperadminModule } from './modules/superadmin/superadmin.module';
 import { TenantsAdminModule } from './modules/tenants/tenants-admin.module';
@@ -111,6 +112,7 @@ import { LicenseModule } from './core/license/license.module';
     NotificationsModule,
     SchoolManagementModule,
     FeatureFlagsModule,
+    RealtimeModule,
     SaasBillingModule,
     SuperadminModule,
     TenantsAdminModule,

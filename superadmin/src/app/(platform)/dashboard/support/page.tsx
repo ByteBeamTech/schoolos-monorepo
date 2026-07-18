@@ -5,6 +5,7 @@ import { api }            from "@/lib/api";
 import { PageHeader }     from "@/components/ui/page-header";
 import { Badge }          from "@/components/ui/badge";
 import { useToast }       from "@/components/ui/use-toast";
+import { useSocketEvent } from "@/lib/use-socket";
 import { MessageSquare, AlertCircle, Clock, CheckCircle, AlertTriangle, Zap } from "lucide-react";
 
 const STATUS_COLORS: Record<string, any> = {
@@ -30,26 +31,35 @@ export default function SupportPage() {
   const [runningCheck,  setRunningCheck]  = useState(false);
   const { toast } = useToast();
 
-  // FEATURE ADDED (was missing entirely): no notification, and neither the
-  // ticket list nor an open ticket's messages refreshed on their own --
-  // a new ticket or a school's reply only showed up after a manual page
-  // reload. Polling reuses the same opt-in mechanism built for the
-  // sidebar's pending-count badge (UI-0.5) -- pauses while the tab is
-  // hidden, refetches immediately on focus, so it doesn't poll uselessly
-  // in a background tab. List/stats poll every 20s (moderate -- ticket
-  // volume doesn't need faster); the open ticket's own messages poll
-  // every 8s (tighter, since this is what someone is actively watching
-  // and waiting on a reply for).
-  const { data: stats }                     = useApi<any>("/support/admin/stats", [], { pollInterval: 20000 });
+  // Polling reuses the same opt-in mechanism built for the sidebar's
+  // pending-count badge (UI-0.5) -- pauses while the tab is hidden,
+  // refetches immediately on focus. Now that the realtime gateway is
+  // active (see useSocketEvent wiring below), these intervals are a
+  // FALLBACK, not the primary delivery path -- kept moderate/loose
+  // rather than removed entirely, so a dropped socket connection
+  // (backend restart, proxy hiccup, reconnect delay) still self-heals
+  // within a bounded time instead of going silent indefinitely.
+  const { data: stats }                     = useApi<any>("/support/admin/stats", [], { pollInterval: 45000 });
   const { data: tickets, loading, refetch } = useApi<any[]>(
     `/support/admin/tickets?status=${statusFilter}${slaFilter ? "&slaBreached=true" : ""}`,
     [statusFilter, slaFilter],
-    { pollInterval: 20000 }
+    { pollInterval: 45000 }
   );
   const { data: ticket, refetch: refetchTicket } = useApi<any>(
     selected ? `/support/admin/tickets/${selected}` : "", [selected],
-    { pollInterval: 8000 }
+    { pollInterval: 25000 }
   );
+
+  // REALTIME: primary delivery path. These just trigger the existing
+  // refetch()/refetchTicket() -- the diffing/toast logic below already
+  // handles notification display correctly regardless of whether the
+  // underlying data changed because of a socket ping or a poll tick, so
+  // there's no separate/duplicate toast logic needed here.
+  useSocketEvent("support:new-ticket", () => refetch());
+  useSocketEvent("support:new-message", (payload: any) => {
+    if (payload?.ticketId === selected) refetchTicket();
+    refetch(); // keep list ordering/unread-style signals fresh too
+  });
 
   const list = Array.isArray(tickets) ? tickets : [];
 
