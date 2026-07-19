@@ -442,7 +442,7 @@ export class FeatureFlagService {
       entityType: 'FeatureFlagOverrideRequest',
       entityId:   request.id,
       before:     { status: 'PENDING' },
-      after:      { status: 'APPROVED', flagName: request.flag.name, approverNote: params.approverNote, expiresAt },
+      after:      { status: 'APPROVED', flagName: request.flag.name, approverNote: params.approverNote, expiresAt: expiresAt ? expiresAt.toISOString() : null },
     });
 
     // REALTIME: notify connected superadmins so the Approvals list
