@@ -436,7 +436,9 @@ export class FeatureFlagService {
     await this.invalidateCache(request.targetType, request.targetId);
 
     await this.audit.logUpdate({
-      tenantId:   params.tenantId,
+      // params.tenantId (user.tenantId) is always undefined for superadmin
+      // callers -- see the note in createOverrideRequest() above.
+      tenantId:   request.targetType === 'TENANT' ? request.targetId : await this.getPlatformTenantId(),
       actorId:    params.approvedBy,
       actorRole:  params.approverRole as any,
       entityType: 'FeatureFlagOverrideRequest',
@@ -609,7 +611,16 @@ export class FeatureFlagService {
     });
 
     await this.audit.logCreate({
-      tenantId:   dto.requestedByTenantId,
+      // dto.requestedByTenantId comes from the controller's user.tenantId --
+      // for superadmin-originated calls this is always undefined
+      // (JwtSuperadminStrategy's SuperadminUser type has no tenantId field
+      // at all, unlike the tenant-facing AuthenticatedUser -- confirmed via
+      // server-side testing: Prisma's `connect: { id: undefined }` throws).
+      // Deriving from the request's own target is both a working fix and
+      // more semantically correct -- this audit entry belongs to the
+      // tenant the override affects, not whatever tenant (if any) the
+      // acting user happens to belong to.
+      tenantId:   dto.targetType === 'TENANT' ? dto.targetId : await this.getPlatformTenantId(),
       actorId:    dto.requestedBy,
       entityType: 'FeatureFlagOverrideRequest',
       entityId:   request.id,
@@ -724,7 +735,9 @@ export class FeatureFlagService {
     ]);
 
     await this.audit.logUpdate({
-      tenantId:   dto.tenantId,
+      // dto.tenantId (user.tenantId) is always undefined for superadmin
+      // callers -- see the note in createOverrideRequest() above.
+      tenantId:   request.targetType === 'TENANT' ? request.targetId : await this.getPlatformTenantId(),
       actorId:    dto.rejectedBy,
       entityType: 'FeatureFlagOverrideRequest',
       entityId:   dto.requestId,
@@ -752,7 +765,7 @@ export class FeatureFlagService {
     ]);
 
     await this.audit.logUpdate({
-      tenantId:   dto.tenantId,
+      tenantId:   request.targetType === 'TENANT' ? request.targetId : await this.getPlatformTenantId(),
       actorId:    dto.cancelledBy,
       entityType: 'FeatureFlagOverrideRequest',
       entityId:   dto.requestId,
@@ -790,7 +803,7 @@ export class FeatureFlagService {
     await this.invalidateCache(request.targetType, request.targetId);
 
     await this.audit.logUpdate({
-      tenantId:   dto.tenantId,
+      tenantId:   request.targetType === 'TENANT' ? request.targetId : await this.getPlatformTenantId(),
       actorId:    dto.revokedBy,
       entityType: 'FeatureFlagOverrideRequest',
       entityId:   dto.requestId,
