@@ -7,6 +7,11 @@ import { CouponsController } from './coupons.controller';
 import { CouponsService } from './coupons.service';
 import { PlatformNotificationController } from './platform-notification.controller';
 import { PlatformNotificationService } from './platform-notification.service';
+import { PlatformUsersController } from './controllers/platform-users.controller';
+import { PlatformUsersService } from './services/platform-users.service';
+import { PlatformInvitationsController } from './controllers/platform-invitations.controller';
+import { InvitationAcceptController } from './controllers/invitation-accept.controller';
+import { PlatformInvitationsService } from './services/platform-invitations.service';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ComplianceModule } from '../../core/compliance/compliance.module';
 
@@ -21,7 +26,13 @@ import { ComplianceModule } from '../../core/compliance/compliance.module';
       inject: [ConfigService],
     }),
   ],
-  providers:   [SuperadminService, CouponsService, PlatformNotificationService,],
-  controllers: [SuperadminController, CouponsController, PlatformNotificationController,],
+  providers:   [
+    SuperadminService, CouponsService, PlatformNotificationService,
+    PlatformUsersService, PlatformInvitationsService,
+  ],
+  controllers: [
+    SuperadminController, CouponsController, PlatformNotificationController,
+    PlatformUsersController, PlatformInvitationsController, InvitationAcceptController,
+  ],
 })
 export class SuperadminModule {}

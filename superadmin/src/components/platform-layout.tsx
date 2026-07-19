@@ -15,7 +15,7 @@ import {
   Settings, Inbox, LogOut, Shield, Zap, ChevronRight, BarChart3,
   TrendingUp, Heart, FlaskConical, Megaphone, Users,
   Gift, MessageSquare, Tag, Monitor, Network, Star,
-  KeyRound,
+  KeyRound, UserCog, MailPlus, Laptop, History,
 } from "lucide-react";
 
 export function PlatformLayout({ children }: { children: React.ReactNode }) {
@@ -80,6 +80,15 @@ const pendingCount = pendingData?.data?.count ?? pendingData?.count ?? 0;
         { href: "/dashboard/support", label: "Customer Success", icon: Users },
         { href: "/dashboard/nps", label: "NPS", icon: Star },
         { href: "/dashboard/monitoring", label: "Monitoring", icon: Monitor },
+      ],
+    },
+    {
+      group: "Administration",
+      items: [
+        { href: "/dashboard/admin/users", label: "Users", icon: UserCog },
+        { href: "/dashboard/admin/invitations", label: "Invitations", icon: MailPlus },
+        { href: "/dashboard/admin/sessions", label: "Sessions", icon: Laptop },
+        { href: "/dashboard/admin/login-history", label: "Login History", icon: History },
       ],
     },
     {
