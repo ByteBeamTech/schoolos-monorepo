@@ -421,9 +421,31 @@ export class FeatureFlagService {
       : null;
 
     const [updated] = await this.prisma.$transaction(async (tx) => {
+      // FOUND DURING SERVER-SIDE VERIFICATION (COMM-006B): the update
+      // branch of this upsert never set requestId -- only the create
+      // branch did. Pre-existing bug (this upsert's shape predates
+      // COMM-006B; only expiresAt was added here). Harmless as long as a
+      // flag+target combination is only ever approved once before its
+      // override is deleted (revoke/expiry), but when a second request for
+      // the same flag+target gets approved while the first override row
+      // still exists, the upsert hits the update branch and the override
+      // silently kept pointing at the FIRST request forever -- breaking
+      // cleanupExpiredOverrides()'s ability to mark the right request
+      // EXPIRED. Confirmed live: after several approvals against the same
+      // flag+target, FeatureFlagOverride.requestId still referenced the
+      // very first one despite expiresAt correctly reflecting the latest.
+      //
+      // Deeper question this surfaces, NOT fixed here (flagging instead,
+      // same as the grace-period write-path and SCHEDULED-timing gaps):
+      // should createOverrideRequest() also block a new request for a
+      // flag+target that already has an APPROVED, still-active request
+      // (today only PENDING duplicates are blocked)? Right now approving a
+      // second request for the same target silently orphans the first
+      // one's status at APPROVED with no override behind it anymore. Worth
+      // its own ticket.
       const ov = await tx.featureFlagOverride.upsert({
         where:  { flagId_targetType_targetId: { flagId: request.flagId, targetType: request.targetType, targetId: request.targetId } },
-        update: { isEnabled: request.isEnabled, reason: `Approved: ${request.id}`, createdBy: params.approvedBy, expiresAt },
+        update: { isEnabled: request.isEnabled, reason: `Approved: ${request.id}`, createdBy: params.approvedBy, expiresAt, requestId: request.id },
         create: { flagId: request.flagId, targetType: request.targetType, targetId: request.targetId, isEnabled: request.isEnabled, reason: `Approved: ${request.id}`, createdBy: params.approvedBy, requestId: request.id, expiresAt },
       });
       const req = await tx.featureFlagOverrideRequest.update({
