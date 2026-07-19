@@ -38,7 +38,18 @@ enum OverrideRequestStatus {
   APPROVED
   REJECTED
   CANCELLED
+  // COMM-006B investigation (Phase-0's original ACTIVE/EXPIRED question):
+  // confirmed via repo-wide grep that no code path -- live or the dead
+  // feature-flag.entity.ts that was removed in this PR -- ever produces
+  // ACTIVE. Genuinely unused. Not removed here: enum-value removal needs
+  // its own migration + deploy coordination, and COMM-006B's objective is
+  // completing behavior, not a schema cleanup pass. Deferred to a future
+  // schema-cleanup ticket.
   ACTIVE
+  // EXPIRED: previously also unproduced (same investigation). Now real --
+  // see FeatureFlagService.cleanupExpiredOverrides(), which sets this on
+  // the parent FeatureFlagOverrideRequest when its FeatureFlagOverride
+  // passes expiresAt (non-UPGRADE_GATED only).
   EXPIRED
   REVOKED
 }

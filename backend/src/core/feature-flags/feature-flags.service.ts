@@ -5,6 +5,7 @@ import {
   NotFoundException, BadRequestException,
 } from '@nestjs/common';
 import { EventEmitter2 }  from '@nestjs/event-emitter';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectQueue }    from '@nestjs/bull';
 import { Queue }          from 'bull';
 import { PrismaService } from '@infra/database/prisma.service';
@@ -195,6 +196,19 @@ export class FeatureFlagService {
 
   // ── Cache invalidation (O(1) via version bump) ────────────────────────────
 
+  // AuditLog.tenantId is a real FK to Tenant.id, not the 'schoolos-platform'
+  // slug -- non-TENANT-targeted overrides (GLOBAL/ROLE/USER/BRANCH) need the
+  // actual platform tenant row's id for audit entries. Resolved lazily and
+  // cached on the instance since this rarely changes and the cron sub-steps
+  // above may call it repeatedly in one run.
+  private platformTenantId: string | null = null;
+  private async getPlatformTenantId(): Promise<string> {
+    if (this.platformTenantId) return this.platformTenantId;
+    const tenant = await this.prisma.tenant.findUnique({ where: { slug: 'schoolos-platform' } });
+    this.platformTenantId = tenant?.id ?? 'schoolos-platform'; // fallback keeps audit non-fatal if platform tenant row is ever missing
+    return this.platformTenantId;
+  }
+
   private async invalidateCache(targetType: string, targetId: string): Promise<void> {
     if (targetType === 'TENANT') {
       await this.incrementTenantFlagVersion(targetId);
@@ -209,10 +223,30 @@ export class FeatureFlagService {
   }
 
   // ── Orchestrator: Batch-optimised (N+1 fixed) ────────────────────────────
-
-  async processSchedules(): Promise<{ executed: number; revoked: number; slaBreaches: number }> {
+  //
+  // COMM-006B: this method previously existed but was never invoked from
+  // anywhere in the app (no @Cron, no manual call site) -- "built but never
+  // wired," same shape as the realtime gateway and EventEmitter2 findings
+  // (see v14 handoff §3). Wired here via @Cron so the UPGRADE_GATED
+  // auto-revoke and FeatureFlagSchedule execution logic it already
+  // contained actually runs, and so the new cleanupExpiredOverrides() step
+  // (added below, COMM-006B item 2) runs too. Split into named sub-methods
+  // rather than left as one growing method, per code review.
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async processSchedules(): Promise<{ executed: number; revoked: number; expired: number; slaBreaches: number }> {
     const now = new Date();
-    let executed = 0, revoked = 0, slaBreaches = 0;
+
+    const revoked  = await this.processUpgradeSchedules(now);
+    const executed = await this.executeScheduledFlags(now);
+    const expired  = await this.cleanupExpiredOverrides(now);
+
+    return { executed, revoked, expired, slaBreaches: 0 };
+  }
+
+  // ── Sub-step: UPGRADE_GATED auto-revoke ───────────────────────────────────
+
+  private async processUpgradeSchedules(now: Date): Promise<number> {
+    let revoked = 0;
 
     const upgradeGated = await this.prisma.featureFlagOverrideRequest.findMany({
       where: {
@@ -224,39 +258,60 @@ export class FeatureFlagService {
       include: { flag: true, createdOverride: true },
     });
 
-    if (upgradeGated.length > 0) {
-      const tenantIds = [...new Set(upgradeGated.map(r => r.targetId))];
-      const subs = await this.prisma.tenantSubscription.findMany({
-        where:   { tenantId: { in: tenantIds }, status: 'ACTIVE' },
-        include: { plan: true },
-      });
+    if (upgradeGated.length === 0) return 0;
 
-      const subMap = new Map(subs.map(s => [s.tenantId, s]));
+    const tenantIds = [...new Set(upgradeGated.map(r => r.targetId))];
+    const subs = await this.prisma.tenantSubscription.findMany({
+      where:   { tenantId: { in: tenantIds }, status: 'ACTIVE' },
+      include: { plan: true },
+    });
 
-      for (const req of upgradeGated) {
-        const deadline = new Date(req.approvedAt!.getTime() + (req.autoRevokeIfNotUpgradedDays! * 86_400_000));
-        if (now < deadline) continue;
+    const subMap = new Map(subs.map(s => [s.tenantId, s]));
 
-        const sub     = subMap.get(req.targetId);
-        const flagDef = ALL_FLAGS.find(f => f.name === req.flag.name);
-        const upgraded = sub && flagDef && (
-          flagDef.allowedTiers === null ||
-          flagDef.allowedTiers.includes((sub as any).plan.tier)
-        );
+    for (const req of upgradeGated) {
+      const deadline = new Date(req.approvedAt!.getTime() + (req.autoRevokeIfNotUpgradedDays! * 86_400_000));
+      if (now < deadline) continue;
 
-        if (!upgraded) {
-          if (req.createdOverride) {
-            await this.prisma.featureFlagOverride.delete({ where: { id: req.createdOverride.id } });
-          }
-          await this.prisma.featureFlagOverrideRequest.update({
-            where: { id: req.id },
-            data:  { status: 'REVOKED', revokedAt: now, revokeReason: 'Auto-revoked: no upgrade within period' },
-          });
-          await this.invalidateCache(req.targetType, req.targetId);
-          revoked++;
+      const sub     = subMap.get(req.targetId);
+      const flagDef = ALL_FLAGS.find(f => f.name === req.flag.name);
+      const upgraded = sub && flagDef && (
+        flagDef.allowedTiers === null ||
+        flagDef.allowedTiers.includes((sub as any).plan.tier)
+      );
+
+      if (!upgraded) {
+        if (req.createdOverride) {
+          await this.prisma.featureFlagOverride.delete({ where: { id: req.createdOverride.id } });
         }
+        await this.prisma.featureFlagOverrideRequest.update({
+          where: { id: req.id },
+          data:  { status: 'REVOKED', revokedAt: now, revokeReason: 'Auto-revoked: no upgrade within period' },
+        });
+        await this.audit.logUpdate({
+          tenantId:   req.targetType === 'TENANT' ? req.targetId : await this.getPlatformTenantId(),
+          // No human actor for this transition -- it's system/cron-triggered.
+          // actorRole is a UserRole column (no SYSTEM value exists on that
+          // enum); left null here, matching the convention used elsewhere
+          // for system-initiated audit entries (e.g. platform-invitations
+          // expiry) rather than writing an invalid enum value.
+          actorId:    undefined,
+          actorRole:  null,
+          entityType: 'FeatureFlagOverrideRequest',
+          entityId:   req.id,
+          before:     { status: 'APPROVED' },
+          after:      { status: 'REVOKED', reason: 'Auto-revoked: no upgrade within period', flagName: req.flag.name },
+        });
+        await this.invalidateCache(req.targetType, req.targetId);
+        revoked++;
       }
     }
+    return revoked;
+  }
+
+  // ── Sub-step: execute due FeatureFlagSchedule rows ────────────────────────
+
+  private async executeScheduledFlags(now: Date): Promise<number> {
+    let executed = 0;
 
     const due = await this.prisma.featureFlagSchedule.findMany({
       where:   { status: 'PENDING', scheduledAt: { lte: now } },
@@ -277,8 +332,61 @@ export class FeatureFlagService {
         await this.prisma.featureFlagSchedule.update({ where: { id: s.id }, data: { status: 'FAILED' } });
       }
     }
+    return executed;
+  }
 
-    return { executed, revoked, slaBreaches };
+  // ── Sub-step: cleanup expired, non-UPGRADE_GATED overrides (COMM-006B) ────
+  //
+  // UPGRADE_GATED overrides are excluded here on purpose -- they don't use
+  // FeatureFlagOverride.expiresAt at all; their lifecycle is entirely driven
+  // by processUpgradeSchedules() above (autoRevokeIfNotUpgradedDays measured
+  // from approvedAt). Handling them here too would be redundant and could
+  // race with that path. Everything else with a past expiresAt (TRIAL
+  // overrides -- see approveRequest()'s new expiresAt computation -- and any
+  // direct/manual override created via setOverride() with an explicit
+  // expiresAt) is in scope.
+  //
+  // Grace period fields (gracePeriodDays/inGracePeriod/graceEndsAt) are read
+  // elsewhere (evaluateAll()) but nothing writes them yet -- that write path
+  // is a separate, not-yet-scoped piece of work (flagged to the person, not
+  // built here). This cleanup step does not touch those fields.
+  private async cleanupExpiredOverrides(now: Date): Promise<number> {
+    let expired = 0;
+
+    const due = await this.prisma.featureFlagOverride.findMany({
+      where: {
+        expiresAt: { lte: now },
+        OR: [
+          { requestId: null },
+          { request: { activationMode: { not: 'UPGRADE_GATED' } } },
+        ],
+      },
+      include: { flag: true, request: true },
+    });
+
+    for (const ov of due) {
+      await this.prisma.featureFlagOverride.delete({ where: { id: ov.id } });
+
+      if (ov.requestId && ov.request) {
+        await this.prisma.featureFlagOverrideRequest.update({
+          where: { id: ov.requestId },
+          data:  { status: 'EXPIRED', revokedAt: now, revokeReason: 'Trial window expired' },
+        });
+        await this.audit.logUpdate({
+          tenantId:   ov.targetType === 'TENANT' ? ov.targetId : await this.getPlatformTenantId(),
+          actorId:    undefined,
+          actorRole:  null, // system/cron-triggered -- see note in processUpgradeSchedules() above
+          entityType: 'FeatureFlagOverrideRequest',
+          entityId:   ov.requestId,
+          before:     { status: ov.request.status },
+          after:      { status: 'EXPIRED', reason: 'Trial window expired', flagName: ov.flag.name },
+        });
+      }
+
+      await this.invalidateCache(ov.targetType, ov.targetId);
+      expired++;
+    }
+    return expired;
   }
 
   // ── Approval workflow ─────────────────────────────────────────────────────
@@ -298,20 +406,44 @@ export class FeatureFlagService {
       throw new BadRequestException('Invalid or already processed request');
     }
 
+    const approvedAt = new Date();
+
+    // COMM-006B: TRIAL requests carry a trialDays count but, before this
+    // change, nothing ever translated it into FeatureFlagOverride.expiresAt
+    // -- the override created below was permanent regardless of
+    // activationMode. Without this, the new cleanup job (see
+    // cleanupExpiredOverrides()) would have nothing to find for TRIAL
+    // overrides. SCHEDULED/activatesAt timing (deferring override creation
+    // itself until activatesAt) is a separate, larger gap -- not addressed
+    // here, flagged as a follow-up, out of COMM-006B's scope.
+    const expiresAt = request.activationMode === 'TRIAL' && request.trialDays
+      ? new Date(approvedAt.getTime() + request.trialDays * 86_400_000)
+      : null;
+
     const [updated] = await this.prisma.$transaction(async (tx) => {
       const ov = await tx.featureFlagOverride.upsert({
         where:  { flagId_targetType_targetId: { flagId: request.flagId, targetType: request.targetType, targetId: request.targetId } },
-        update: { isEnabled: request.isEnabled, reason: `Approved: ${request.id}`, createdBy: params.approvedBy },
-        create: { flagId: request.flagId, targetType: request.targetType, targetId: request.targetId, isEnabled: request.isEnabled, reason: `Approved: ${request.id}`, createdBy: params.approvedBy, requestId: request.id },
+        update: { isEnabled: request.isEnabled, reason: `Approved: ${request.id}`, createdBy: params.approvedBy, expiresAt },
+        create: { flagId: request.flagId, targetType: request.targetType, targetId: request.targetId, isEnabled: request.isEnabled, reason: `Approved: ${request.id}`, createdBy: params.approvedBy, requestId: request.id, expiresAt },
       });
       const req = await tx.featureFlagOverrideRequest.update({
         where: { id: request.id },
-        data:  { status: 'APPROVED', approvedBy: params.approvedBy, approvedAt: new Date(), approverNote: params.approverNote },
+        data:  { status: 'APPROVED', approvedBy: params.approvedBy, approvedAt, approverNote: params.approverNote },
       });
       return [req, ov];
     });
 
     await this.invalidateCache(request.targetType, request.targetId);
+
+    await this.audit.logUpdate({
+      tenantId:   params.tenantId,
+      actorId:    params.approvedBy,
+      actorRole:  params.approverRole as any,
+      entityType: 'FeatureFlagOverrideRequest',
+      entityId:   request.id,
+      before:     { status: 'PENDING' },
+      after:      { status: 'APPROVED', flagName: request.flag.name, approverNote: params.approverNote, expiresAt },
+    });
 
     // REALTIME: notify connected superadmins so the Approvals list
     // updates without waiting for the next poll tick.
@@ -326,10 +458,15 @@ export class FeatureFlagService {
   // results without touching the database -- see ADR-COMM-015 §6.2 for
   // the full history of that finding). This is an operational-tooling
   // repair, not a licensing change -- EntitlementResolver, AccessService,
-  // and commercial/licensing semantics are untouched. Per Phase-0 review:
-  // audit logging (AuditService is already injected but still unused
-  // below) and the expired-override cleanup job are explicitly deferred
-  // to COMM-006B, not bundled in here.
+  // and commercial/licensing semantics are untouched.
+  //
+  // COMM-006B (this PR): audit logging wired on every state change below,
+  // expired-override cleanup added (see cleanupExpiredOverrides(), called
+  // from the now-@Cron-wired processSchedules()), and approveRequest() now
+  // computes expiresAt from trialDays for TRIAL-mode approvals -- without
+  // that, cleanup had nothing to find. Grace-period write-path
+  // (inGracePeriod/graceEndsAt) remains unbuilt -- out of scope here, see
+  // cleanupExpiredOverrides()'s comment.
   //
   // Duplicate-PENDING prevention is a SERVICE-level check (query + reject),
   // not a DB unique constraint -- explicit Phase-0 decision: a constraint
@@ -471,6 +608,20 @@ export class FeatureFlagService {
       },
     });
 
+    await this.audit.logCreate({
+      tenantId:   dto.requestedByTenantId,
+      actorId:    dto.requestedBy,
+      entityType: 'FeatureFlagOverrideRequest',
+      entityId:   request.id,
+      after: {
+        flagName:       dto.flagName,
+        targetType:     dto.targetType,
+        targetId:       dto.targetId,
+        activationMode: dto.activationMode,
+        status:         'PENDING',
+      },
+    });
+
     // REALTIME: notify connected superadmins immediately instead of them
     // finding out on the next poll tick.
     this.realtime.emitToAdmins('flags:new-request', {
@@ -564,15 +715,22 @@ export class FeatureFlagService {
 
     // Transactional per Phase-0 consistency requirement, even though this
     // path only writes one row today -- keeps the same shape as
-    // approveRequest()/cancelRequest()/revokeOverride() so a future
-    // second write (e.g. an audit row in COMM-006B) slots in without
-    // restructuring this method.
+    // approveRequest()/cancelRequest()/revokeOverride().
     const [updated] = await this.prisma.$transaction([
       this.prisma.featureFlagOverrideRequest.update({
         where: { id: dto.requestId },
         data:  { status: 'REJECTED', rejectedBy: dto.rejectedBy, rejectedAt: new Date(), rejectionReason: dto.rejectionReason },
       }),
     ]);
+
+    await this.audit.logUpdate({
+      tenantId:   dto.tenantId,
+      actorId:    dto.rejectedBy,
+      entityType: 'FeatureFlagOverrideRequest',
+      entityId:   dto.requestId,
+      before:     { status: 'PENDING' },
+      after:      { status: 'REJECTED', reason: dto.rejectionReason },
+    });
 
     // No cache invalidation: a PENDING->REJECTED request never had an
     // active FeatureFlagOverride, so no evaluated flag result changes.
@@ -592,6 +750,15 @@ export class FeatureFlagService {
         data:  { status: 'CANCELLED', cancelledBy: dto.cancelledBy, cancelledAt: new Date() },
       }),
     ]);
+
+    await this.audit.logUpdate({
+      tenantId:   dto.tenantId,
+      actorId:    dto.cancelledBy,
+      entityType: 'FeatureFlagOverrideRequest',
+      entityId:   dto.requestId,
+      before:     { status: 'PENDING' },
+      after:      { status: 'CANCELLED' },
+    });
 
     this.realtime.emitToAdmins('flags:request-updated', { id: updated.id, status: 'CANCELLED' });
     return updated; // same no-cache-invalidation rationale as rejectRequest
@@ -621,6 +788,16 @@ export class FeatureFlagService {
 
     const [updated] = await this.prisma.$transaction(ops);
     await this.invalidateCache(request.targetType, request.targetId);
+
+    await this.audit.logUpdate({
+      tenantId:   dto.tenantId,
+      actorId:    dto.revokedBy,
+      entityType: 'FeatureFlagOverrideRequest',
+      entityId:   dto.requestId,
+      before:     { status: 'APPROVED' },
+      after:      { status: 'REVOKED', reason: dto.revokeReason },
+    });
+
     this.realtime.emitToAdmins('flags:request-updated', { id: updated.id, status: 'REVOKED' });
     return updated;
   }
