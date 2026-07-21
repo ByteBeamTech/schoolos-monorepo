@@ -99,7 +99,7 @@ export class InvoiceController {
       branchId,
       classId,
       minDaysOverdue: minDaysOverdue ? parseInt(minDaysOverdue) : undefined,
-    });
+    }, this.access.resolveAuthorizedBranchIds(user));
   }
 
   @Get('stats')

@@ -11,7 +11,7 @@
 import { EventEmitter2 }    from '@nestjs/event-emitter';
 import { EVENTS }            from '../../../../core/events/events.constants';
 import {
-  Injectable, NotFoundException, BadRequestException, Logger,
+  Injectable, NotFoundException, BadRequestException, Logger, ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService }     from '@infra/database/prisma.service';
 import { AuditService }      from '../../../../core/compliance/audit.service';
@@ -275,12 +275,30 @@ export class InvoiceService {
   async getDefaulters(
     tenantId: string,
     filters: { branchId?: string; classId?: string; minDaysOverdue?: number } = {},
+    // FEE-0 / AUTH-054: the client-supplied branchId is a SELECTOR inside the
+    // caller's authorized branch set, never a widener. null = tenant-wide
+    // (AUTH-052/058); [] = nothing (fail closed). A client branchId outside a
+    // restricted caller's set DENIES (403) -- it must not silently fall back
+    // to the caller's own scope or, worse, be honored.
+    authorizedBranchIds?: string[] | null,
   ) {
+    if (
+      filters.branchId &&
+      authorizedBranchIds != null &&
+      !authorizedBranchIds.includes(filters.branchId)
+    ) {
+      throw new ForbiddenException(
+        'Requested branch is outside your authorized scope.',
+      );
+    }
     const now = new Date();
     const where: any = {
       tenantId,
       status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] as any[] },
       dueDate: { lt: now },
+      // Authorization constraint on the invoice's own branch:
+      ...(authorizedBranchIds != null && { branchId: { in: authorizedBranchIds } }),
+      // Pre-existing client narrowing filter (student's branch), unchanged:
       ...(filters.branchId && { student: { branchId: filters.branchId } }),
     };
     const invoices = await this.prisma.invoice.findMany({

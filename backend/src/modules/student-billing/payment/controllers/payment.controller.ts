@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Param, Body, UseGuards }  from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PaymentService }    from '../services/payment.service';
+import { StudentBillingAccessService } from '../../access/student-billing-access.service';
 import { InitiatePaymentDto, VerifyRazorpayPaymentDto, RecordOfflinePaymentDto } from '../../dto/billing.dto';
 import { JwtGuard }          from '../../../../core/auth/guards/jwt.guard';
 import { RolesGuard }        from '../../../../core/roles/roles.guard';
@@ -13,7 +14,10 @@ import { AuthenticatedUser } from '../../../../core/auth/guards/jwt.strategy';
 @UseGuards(JwtGuard, RolesGuard)
 @Controller('billing/payments')
 export class PaymentController {
-  constructor(private readonly service: PaymentService) {}
+  constructor(
+    private readonly service: PaymentService,
+    private readonly access:  StudentBillingAccessService,
+  ) {}
 
   @Post('initiate')
   @Roles('SCHOOL_ADMIN', 'ACCOUNTANT', 'PARENT')
@@ -37,8 +41,19 @@ export class PaymentController {
   }
 
   @Get('invoice/:invoiceId')
+  // FEE-0: was unguarded (AUTH-041 violation -- any authenticated user could
+  // read any invoice's payment history, incl. payer contact details, across
+  // branches). Staff-only + branch-scoped; PARENT payment history is deferred
+  // to the Student Financial Account projection (FEE-4 / AUTH-021) by
+  // explicit decision -- note payment records also carry staff-relevant
+  // gateway metadata that ADR-FEE-001 §7 classifies away from parents.
+  @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Get payment history for invoice' })
   getHistory(@Param('invoiceId') invoiceId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.getPaymentHistory(user.tenantId, invoiceId);
+    return this.service.getPaymentHistory(
+      user.tenantId,
+      invoiceId,
+      this.access.resolveAuthorizedBranchIds(user),
+    );
   }
 }

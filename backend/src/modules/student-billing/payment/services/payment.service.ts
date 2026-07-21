@@ -213,8 +213,22 @@ export class PaymentService {
   }
 
   // ── Payment history ───────────────────────────────────────────────────────
-  async getPaymentHistory(tenantId: string, invoiceId: string) {
-    await this.prisma.invoice.findFirstOrThrow({ where: { id: invoiceId, tenantId } });
+  async getPaymentHistory(
+    tenantId: string,
+    invoiceId: string,
+    // FEE-0: branch scoping per ADR-FEE-002 (null = tenant-wide, [] = nothing,
+    // fail closed). An out-of-branch invoice reads as NotFound (anti-probing).
+    authorizedBranchIds?: string[] | null,
+  ) {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: {
+        id: invoiceId,
+        tenantId,
+        ...(authorizedBranchIds != null && { branchId: { in: authorizedBranchIds } }),
+      },
+      select: { id: true },
+    });
+    if (!invoice) throw new NotFoundException(`Invoice not found: ${invoiceId}`);
     return this.prisma.payment.findMany({ where: { tenantId, invoiceId }, orderBy: { createdAt: 'desc' } });
   }
 }

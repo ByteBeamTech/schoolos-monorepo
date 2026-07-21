@@ -72,10 +72,17 @@ export class DiscountService {
     return discount;
   }
 
-  async findAll(tenantId: string, filters: { studentId?: string; approvalStatus?: string } = {}) {
+  async findAll(
+    tenantId: string,
+    filters: { studentId?: string; approvalStatus?: string } = {},
+    // FEE-0: branch scoping per ADR-FEE-002 (null = tenant-wide, [] = nothing,
+    // fail closed). Same contract as InvoiceService/PaymentService reads.
+    authorizedBranchIds?: string[] | null,
+  ) {
     return this.prisma.discount.findMany({
       where: {
         tenantId,
+        ...(authorizedBranchIds != null && { branchId: { in: authorizedBranchIds } }),
         ...(filters.studentId      && { studentId:      filters.studentId }),
         ...(filters.approvalStatus && { approvalStatus: filters.approvalStatus as any }),
       },
@@ -87,9 +94,18 @@ export class DiscountService {
     });
   }
 
-  async findById(tenantId: string, id: string) {
+  async findById(
+    tenantId: string,
+    id: string,
+    // FEE-0: out-of-branch discounts read as NotFound (anti-probing).
+    authorizedBranchIds?: string[] | null,
+  ) {
     const d = await this.prisma.discount.findFirst({
-      where:   { id, tenantId },
+      where: {
+        id,
+        tenantId,
+        ...(authorizedBranchIds != null && { branchId: { in: authorizedBranchIds } }),
+      },
       include: {
         student:   { select: { firstName: true, lastName: true, admissionNumber: true } },
         approvals: {

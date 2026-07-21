@@ -182,3 +182,61 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
     );
   });
 });
+
+// ── FEE-0 item 1: getPaymentHistory branch scoping ─────────────────────────
+describe('PaymentService.getPaymentHistory — FEE-0 branch scoping', () => {
+  const { Test: T2 } = require('@nestjs/testing');
+  const { NotFoundException } = require('@nestjs/common');
+  let service: any;
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      invoice: { findFirst: jest.fn() },
+      payment: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const module = await T2.createTestingModule({
+      providers: [
+        PaymentService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { logPayment: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: InvoiceService, useValue: {} },
+      ],
+    }).compile();
+    service = module.get(PaymentService);
+  });
+
+  it('restricted callers: invoice lookup itself is constrained to their branch set', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ id: 'inv-1' });
+    await service.getPaymentHistory('t-1', 'inv-1', ['b-1', 'b-2']);
+    expect(prisma.invoice.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'inv-1',
+          tenantId: 't-1',
+          branchId: { in: ['b-1', 'b-2'] },
+        }),
+      }),
+    );
+  });
+
+  it('an out-of-branch invoice reads as NotFound and payment rows are never queried', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(null);
+    await expect(service.getPaymentHistory('t-1', 'inv-x', ['b-1']))
+      .rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.payment.findMany).not.toHaveBeenCalled();
+  });
+
+  it('tenant-wide callers (null) keep tenant-only lookup; empty set fails closed', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ id: 'inv-1' });
+    await service.getPaymentHistory('t-1', 'inv-1', null);
+    expect(prisma.invoice.findFirst.mock.calls[0][0].where.branchId).toBeUndefined();
+
+    prisma.invoice.findFirst.mockResolvedValue(null);
+    await expect(service.getPaymentHistory('t-1', 'inv-1', []))
+      .rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.invoice.findFirst.mock.calls[1][0].where.branchId).toEqual({ in: [] });
+  });
+});

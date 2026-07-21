@@ -85,3 +85,58 @@ describe('InvoiceService — FEE-0 branch scoping', () => {
     });
   });
 });
+
+// ── FEE-0 item 2: getDefaulters() AUTH-054 (intersect, never widen) ─────────
+describe('InvoiceService.getDefaulters — AUTH-054 branch intersection', () => {
+  const { Test: T2 } = require('@nestjs/testing');
+  const { ForbiddenException } = require('@nestjs/common');
+  let service: any;
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = { invoice: { findMany: jest.fn().mockResolvedValue([]) } };
+    const module = await T2.createTestingModule({
+      providers: [
+        InvoiceService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { logCreate: jest.fn(), logUpdate: jest.fn() } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+      ],
+    }).compile();
+    service = module.get(InvoiceService);
+  });
+
+  it('a client branchId outside a restricted caller set DENIES (403) — no silent fallback, no query', async () => {
+    await expect(
+      service.getDefaulters('t-1', { branchId: 'b-other' }, ['b-1']),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.invoice.findMany).not.toHaveBeenCalled();
+  });
+
+  it('a client branchId inside the set selects within it — both constraints present in the query', async () => {
+    await service.getDefaulters('t-1', { branchId: 'b-1' }, ['b-1', 'b-2']);
+    const where = prisma.invoice.findMany.mock.calls[0][0].where;
+    expect(where.branchId).toEqual({ in: ['b-1', 'b-2'] });
+    expect(where.student).toEqual({ branchId: 'b-1' });
+  });
+
+  it('no client branchId: restricted caller is scoped to their whole set', async () => {
+    await service.getDefaulters('t-1', {}, ['b-1', 'b-2']);
+    const where = prisma.invoice.findMany.mock.calls[0][0].where;
+    expect(where.branchId).toEqual({ in: ['b-1', 'b-2'] });
+    expect(where.student).toBeUndefined();
+  });
+
+  it('tenant-wide caller (null) may select any branch as a narrowing filter', async () => {
+    await service.getDefaulters('t-1', { branchId: 'b-77' }, null);
+    const where = prisma.invoice.findMany.mock.calls[0][0].where;
+    expect(where.branchId).toBeUndefined();
+    expect(where.student).toEqual({ branchId: 'b-77' });
+  });
+
+  it('empty authorized set matches nothing (fail closed, AUTH-047)', async () => {
+    await service.getDefaulters('t-1', {}, []);
+    const where = prisma.invoice.findMany.mock.calls[0][0].where;
+    expect(where.branchId).toEqual({ in: [] });
+  });
+});
