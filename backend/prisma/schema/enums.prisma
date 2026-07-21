@@ -286,7 +286,6 @@ enum InvoiceStatus {
   PARTIALLY_PAID
   PAID
   OVERDUE
-  EXPIRED
   CANCELLED
 }
 
