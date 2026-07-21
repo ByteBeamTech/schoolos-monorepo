@@ -6,3 +6,11 @@
   * { box-sizing: border-box; }
   body { font-family: system-ui, -apple-system, sans-serif; }
 }
+
+/* Ported from frontend/src/app/globals.css so the mobile nav drawer here
+   matches the tenant-facing app's motion exactly. */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+.animate-slide-in-left { animation: slideInLeft 0.25s cubic-bezier(0.4,0,0.2,1) forwards; }
