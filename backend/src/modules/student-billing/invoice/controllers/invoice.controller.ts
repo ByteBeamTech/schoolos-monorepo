@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { InvoiceService }    from '../services/invoice.service';
+import { StudentBillingAccessService } from '../../access/student-billing-access.service';
 import { GenerateInvoiceDto, BulkGenerateInvoicesDto } from '../../dto/billing.dto';
 import { JwtGuard }          from '../../../../core/auth/guards/jwt.guard';
 import { RolesGuard }        from '../../../../core/roles/roles.guard';
@@ -27,7 +28,10 @@ class CancelInvoiceDto {
 @UseGuards(JwtGuard, RolesGuard)
 @Controller('billing/invoices')
 export class InvoiceController {
-  constructor(private readonly service: InvoiceService) {}
+  constructor(
+    private readonly service: InvoiceService,
+    private readonly access:  StudentBillingAccessService,
+  ) {}
 
   @Post('generate')
   @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'ACCOUNTANT')
@@ -44,6 +48,11 @@ export class InvoiceController {
   }
 
   @Get()
+  // FEE-0: was unguarded (RolesGuard allows through when no @Roles present —
+  // AUTH-041 violation). Staff-only; PARENT access to invoice history is
+  // deferred to the Student Financial Account projection (FEE-4 / AUTH-021)
+  // by explicit decision.
+  @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'List invoices (paginated)' })
   @ApiQuery({ name: 'studentId',    required: false })
   @ApiQuery({ name: 'status',       required: false })
@@ -63,6 +72,7 @@ export class InvoiceController {
       { studentId, status, academicYear },
       page  ? parseInt(page)  : 1,
       limit ? parseInt(limit) : 20,
+      this.access.resolveAuthorizedBranchIds(user),
     );
   }
 
@@ -104,9 +114,12 @@ export class InvoiceController {
   }
 
   @Get(':id')
+  // FEE-0: was unguarded. Staff-only + branch-scoped; PARENT deferred to
+  // FEE-4 (see findAll note). Out-of-branch IDs read as 404.
+  @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Get invoice by ID (full detail)' })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.findById(user.tenantId, id);
+    return this.service.findById(user.tenantId, id, this.access.resolveAuthorizedBranchIds(user));
   }
 
   @Patch(':id/send')

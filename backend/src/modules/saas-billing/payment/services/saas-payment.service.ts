@@ -59,7 +59,7 @@ export class SaasPaymentService {
     if (invoice.status === 'PAID') {
       throw new ConflictException('Invoice is already paid.');
     }
-    if (invoice.status === 'CANCELLED' || invoice.status === 'EXPIRED') {
+    if (invoice.status === 'CANCELLED' ) {
       throw new BadRequestException(`Cannot create a payment order for a ${invoice.status} invoice.`);
     }
 

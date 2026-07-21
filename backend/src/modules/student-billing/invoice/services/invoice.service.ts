@@ -171,9 +171,15 @@ export class InvoiceService {
     filters: { studentId?: string; status?: string; academicYear?: string } = {},
     page = 1,
     limit = 20,
+    // FEE-0: branch scoping per ADR-FEE-002. null = tenant-wide
+    // (SCHOOL_OWNER/SUPER_ADMIN, unrestricted SCHOOL_ADMIN); string[] =
+    // restricted to those branches; [] matches nothing (fail closed).
+    // undefined kept tenant-wide for internal/staff-guarded callers.
+    authorizedBranchIds?: string[] | null,
   ) {
     const where: any = {
       tenantId,
+      ...(authorizedBranchIds != null && { branchId: { in: authorizedBranchIds } }),
       ...(filters.studentId    && { studentId:    filters.studentId }),
       ...(filters.status       && { status:       filters.status as any }),
       ...(filters.academicYear && { academicYear: filters.academicYear }),
@@ -195,9 +201,19 @@ export class InvoiceService {
   }
 
   // ── Single invoice — full detail ──────────────────────────────────────────
-  async findById(tenantId: string, id: string) {
+  async findById(
+    tenantId: string,
+    id: string,
+    // FEE-0: same branch-scoping contract as findAll(). Out-of-scope reads
+    // are NotFound, not Forbidden, so IDs cannot be probed across branches.
+    authorizedBranchIds?: string[] | null,
+  ) {
     const invoice = await this.prisma.invoice.findFirst({
-      where: { id, tenantId },
+      where: {
+        id,
+        tenantId,
+        ...(authorizedBranchIds != null && { branchId: { in: authorizedBranchIds } }),
+      },
       include: {
         items:    { orderBy: { sortOrder: 'asc' } },
         payments: { orderBy: { createdAt: 'desc' } },

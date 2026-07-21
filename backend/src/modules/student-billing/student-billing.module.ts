@@ -17,13 +17,14 @@ import { RefundService }            from './refund/refund.service';
 import { LateFeeService }           from './late-fee/late-fee.service';
 import { StandardDiscountService }  from './discounts/standard-discount.service';
 import { GatewayFactory }           from './payment/gateway/gateway.factory';
+import { StudentBillingAccessService } from './access/student-billing-access.service';
 import { StorageModule }            from '../../infra/storage/storage.module';
 
 
 @Module({
   imports: [ComplianceModule, StorageModule, AnalyticsModule,],
   providers: [FeePlansService, InvoiceService, PaymentService, DiscountService, ReconciliationService, ReceiptService, RefundService,
-    LateFeeService, StandardDiscountService, GatewayFactory],
+    LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService],
   controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController],
   exports: [FeePlansService, InvoiceService, PaymentService],
 })

@@ -10,6 +10,7 @@ import { EventEmitter2 }   from '@nestjs/event-emitter';
 import { EVENTS }           from '../../../../core/events/events.constants';
 import {
   Injectable, NotFoundException, BadRequestException, Logger, ConflictException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService }    from '@nestjs/config';
 import { PrismaService }    from '@infra/database/prisma.service';
@@ -78,8 +79,28 @@ export class PaymentService {
     });
     if (!payment) throw new NotFoundException('Payment not found.');
 
-    const keySecret = this.config.get<string>('RAZORPAY_STUDENT_KEY_SECRET', '');
-    if (keySecret && !keySecret.includes('xxxxxxxxxx')) {
+    // FEE-0 (Security Hardening): HMAC verification must never be silently
+    // skipped outside development/test. A missing or placeholder secret in any
+    // other environment fails CLOSED — the payment is NOT marked SUCCESS.
+    // Allow-list of environments where the skip is permitted (fail closed on
+    // anything unknown, per ADR-FEE-001's missing-context-denies principle).
+    const keySecret   = this.config.get<string>('RAZORPAY_STUDENT_KEY_SECRET', '');
+    const nodeEnv     = this.config.get<string>('NODE_ENV', 'development');
+    const isConfigured = !!keySecret && !keySecret.includes('xxxxxxxxxx');
+
+    if (!isConfigured) {
+      if (nodeEnv !== 'development' && nodeEnv !== 'test') {
+        this.logger.error(
+          `verifyRazorpay(): RAZORPAY_STUDENT_KEY_SECRET missing or placeholder in NODE_ENV='${nodeEnv}' — refusing to confirm payment ${payment.id} without signature verification.`,
+        );
+        throw new ServiceUnavailableException(
+          'Payment verification is unavailable: payment gateway is not configured. The payment has not been confirmed.',
+        );
+      }
+      this.logger.warn(
+        `verifyRazorpay(): skipping HMAC verification for payment ${payment.id} — gateway secret not configured (permitted in NODE_ENV='${nodeEnv}' only).`,
+      );
+    } else {
       const expected = crypto.createHmac('sha256', keySecret)
         .update(`${dto.razorpayOrderId}|${dto.razorpayPaymentId}`).digest('hex');
       if (expected !== dto.razorpaySignature) {
