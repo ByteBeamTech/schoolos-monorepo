@@ -29,9 +29,28 @@ export class RefundService {
     if (!payment) throw new NotFoundException('Payment not found');
     if (payment.status !== 'SUCCESS') throw new BadRequestException('Only successful payments can be refunded');
 
-    // Calculate already-refunded amount from Refund records (Payment has no refundedAmount field)
+    // Calculate already-refunded amount from Refund records (Payment has no
+    // refundedAmount field).
+    //
+    // FEE-1 CORRECTNESS FIX: this filtered on r.status === 'SUCCESS', which is
+    // NOT a member of RefundStatus (PENDING | COMPLETED | FAILED) and is never
+    // written by this service. The filter therefore matched nothing,
+    // alreadyRefunded was always 0, and maxRefund was always the FULL payment
+    // amount -- so the over-refund guard below was inert. A payment could be
+    // refunded in full repeatedly, sequentially, each call reaching the real
+    // gateway. Same silent-failure class as the REFUND_INITIATED audit value:
+    // a plausible-looking string that matches no enum member.
+    //
+    // PENDING is counted deliberately, not just COMPLETED: a refund that is
+    // in flight has already committed that money. Excluding it would let a
+    // second request pass the guard while the first is still at the gateway.
+    // The trade-off is that a refund stuck in PENDING (e.g. the process died
+    // mid-gateway-call) holds its amount until an operator resolves it --
+    // which is the correct failure direction for money movement.
+    // FAILED is excluded: no money moved.
+    const CONSUMING_REFUND_STATUSES = ['PENDING', 'COMPLETED'];
     const alreadyRefunded = payment.refunds
-      .filter((r: any) => r.status === 'SUCCESS')
+      .filter((r: any) => CONSUMING_REFUND_STATUSES.includes(r.status))
       .reduce((sum: number, r: any) => sum + Number(r.amount), 0);
 
     const maxRefund = Number(payment.amount) - alreadyRefunded;
@@ -96,7 +115,19 @@ export class RefundService {
       tenantId,
       actorId,
       actorRole:  'ACCOUNTANT' as any,
-      action:     'REFUND_INITIATED' as any,
+      // FEE-1 CORRECTNESS FIX: 'REFUND_INITIATED' is not a member of the
+      // AuditAction enum -- Prisma rejected it with
+      // PrismaClientValidationError, which AuditService.log() swallows in its
+      // own try/catch, so every refund silently produced NO audit trail.
+      // REFUND_PROCESSED is the only valid refund action in the enum.
+      //
+      // NOTE: AuditLogParams.action is typed `any`, so neither the old value
+      // nor this one is compile-checked. That untyped interface is the root
+      // cause of this recurring bug class (see RefundService here,
+      // and the handoff notes). Retyping it to AuditAction touches every
+      // audit call site across every module -- out of scope for FEE-1, but
+      // worth its own task.
+      action:     'REFUND_PROCESSED' as any,
       entityType: 'Payment',
       entityId:   dto.paymentId,
       after:      { refundId: refund.id, amount: dto.amount, reason: dto.reason },
