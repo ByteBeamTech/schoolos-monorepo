@@ -50,18 +50,39 @@ export class InvoiceService {
   }
 
   // ── Receipt number — P0 FIX: advisory-lock-safe (was race condition) ──────
-  async generateReceiptNumber(tenantId: string): Promise<string> {
+  /**
+   * @param client Optional transaction client. When the caller is already
+   *   inside a transaction that will INSERT the receipt, it must pass its tx
+   *   here (FEE-1): the advisory lock then belongs to that transaction and is
+   *   held until the insert commits.
+   *
+   *   This matters for correctness, not just tidiness. The number is derived
+   *   from count()+1, so the lock must span count -> insert. When the lock is
+   *   released at the end of a separate numbering transaction (the previous
+   *   behavior), two concurrent payments can both count N and both derive
+   *   N+1 before either row exists -- duplicate receipt numbers. Holding the
+   *   lock in the inserting transaction closes that window.
+   *
+   *   Passing a tx also avoids opening a second connection from inside an
+   *   interactive transaction, which risks exhausting the pool under load.
+   *
+   *   Omitting it preserves the original self-contained behavior for callers
+   *   that only need a number.
+   */
+  async generateReceiptNumber(tenantId: string, client?: any): Promise<string> {
     const year = new Date().getFullYear();
     // Use a different lock key range from invoice (offset by 0x40000000)
     const lockKey = (tenantId
       .split('')
       .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) & 0x7FFFFFFF), 0) + 0x40000000) & 0x7FFFFFFF;
 
-    return this.prisma.$transaction(async (tx) => {
+    const generate = async (tx: any) => {
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock($1)`, lockKey);
       const count = await tx.receipt.count({ where: { tenantId } });
       return `RCP-${year}-${String(count + 1).padStart(5, '0')}`;
-    });
+    };
+
+    return client ? generate(client) : this.prisma.$transaction(generate);
   }
 
   // ── Generate ──────────────────────────────────────────────────────────────

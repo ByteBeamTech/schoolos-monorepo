@@ -109,12 +109,32 @@ export class PaymentService {
       }
     }
 
-    const updated = await this.prisma.payment.update({
-      where: { id: payment.id },
-      data:  { status: 'SUCCESS', gatewayPaymentId: dto.razorpayPaymentId, gatewaySignature: dto.razorpaySignature, paidAt: new Date() },
+    // FEE-1 ATOMICITY: payment confirmation, invoice totals and receipt
+    // creation now commit together or not at all. Previously these were three
+    // independent awaits: a crash between them could leave a SUCCESS payment
+    // against an unpaid invoice, or a paid invoice with no receipt -- money
+    // recorded as received with no consistent record of it.
+    //
+    // The advisory lock also closes the lost-update race between concurrent
+    // payments on the same invoice (a transaction alone would not: under READ
+    // COMMITTED both can read the same paidAmount before either writes).
+    //
+    // Signature verification happens above, deliberately OUTSIDE this
+    // transaction -- an invalid signature must not open one at all.
+    const { updated, receipt } = await this.prisma.$transaction(async (tx: any) => {
+      await tx.$executeRawUnsafe(
+        `SELECT pg_advisory_xact_lock($1)`,
+        this.settlementLockKey(payment.invoiceId),
+      );
+
+      const updated = await tx.payment.update({
+        where: { id: payment.id },
+        data:  { status: 'SUCCESS', gatewayPaymentId: dto.razorpayPaymentId, gatewaySignature: dto.razorpaySignature, paidAt: new Date() },
+      });
+      await this.updateInvoice(tx, tenantId, payment.invoiceId, Number(payment.amount));
+      const receipt = await this.generateReceipt(tx, tenantId, payment.invoiceId, payment.id);
+      return { updated, receipt };
     });
-    await this.updateInvoice(tenantId, payment.invoiceId, Number(payment.amount));
-    const receipt = await this.generateReceipt(tenantId, payment.invoiceId, payment.id);
 
     await this.audit.logPayment({ tenantId, actorId, entityType: 'Payment', entityId: payment.id, paymentStatus: 'success', after: { gatewayPaymentId: dto.razorpayPaymentId } });
     this.emitter.emit(EVENTS.PAYMENT_SUCCESS, {
@@ -123,6 +143,32 @@ export class PaymentService {
       amount: Number(payment.amount), currency: String((payment.invoice as any).currency), method: 'ONLINE',
     });
     return { payment: updated, receipt };
+  }
+
+  /**
+   * LOCK SCOPE
+   * ----------
+   * One advisory transaction lock per Invoice.
+   *
+   * Serializes payment settlement against the SAME invoice, so concurrent
+   * payments cannot both read the invoice's running totals before either
+   * writes them (a lost update, which would under-count paidAmount and could
+   * leave an invoice PARTIALLY_PAID after it was fully paid). Payments on
+   * different invoices never block each other.
+   *
+   * Held only for the settlement transaction and released on commit. No
+   * external call happens inside it -- the Razorpay HMAC check is local
+   * computation performed BEFORE the transaction opens.
+   *
+   * Deterministic 31-bit key (int4-safe), hashed the same way InvoiceService
+   * hashes its numbering-lock keys. The advisory keyspace is shared
+   * process-wide, so a collision with another key costs spurious
+   * serialization, never correctness.
+   */
+  private settlementLockKey(invoiceId: string): number {
+    return invoiceId
+      .split('')
+      .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) & 0x7fffffff), 0);
   }
 
   // ── Record Offline — P0 FIX: idempotent + correct gateway ────────────────
@@ -143,21 +189,31 @@ export class PaymentService {
       }
     }
 
-    const payment = await this.prisma.payment.create({
-      data: {
-        tenantId, invoiceId: dto.invoiceId,
-	branchId: invoice.branchId,
-        // P0 FIX: was hardcoded 'RAZORPAY' — now correctly 'OFFLINE'
-        gateway: 'OFFLINE' as any,
-        amount: dto.amount, currency: invoice.currency, status: 'SUCCESS',
-        paymentMethod:   dto.paymentMethod,
-        gatewayPaymentId: dto.referenceNumber ?? `OFFLINE-${Date.now()}`,
-        paidAt: new Date(),
-      },
-    });
+    // FEE-1 ATOMICITY: see verifyRazorpay -- payment, invoice totals and
+    // receipt commit together, serialized per invoice.
+    const { payment, receipt } = await this.prisma.$transaction(async (tx: any) => {
+      await tx.$executeRawUnsafe(
+        `SELECT pg_advisory_xact_lock($1)`,
+        this.settlementLockKey(dto.invoiceId),
+      );
 
-    await this.updateInvoice(tenantId, dto.invoiceId, dto.amount);
-    const receipt = await this.generateReceipt(tenantId, dto.invoiceId, payment.id);
+      const payment = await tx.payment.create({
+        data: {
+          tenantId, invoiceId: dto.invoiceId,
+          branchId: invoice.branchId,
+          // P0 FIX: was hardcoded 'RAZORPAY' — now correctly 'OFFLINE'
+          gateway: 'OFFLINE' as any,
+          amount: dto.amount, currency: invoice.currency, status: 'SUCCESS',
+          paymentMethod:   dto.paymentMethod,
+          gatewayPaymentId: dto.referenceNumber ?? `OFFLINE-${Date.now()}`,
+          paidAt: new Date(),
+        },
+      });
+
+      await this.updateInvoice(tx, tenantId, dto.invoiceId, dto.amount);
+      const receipt = await this.generateReceipt(tx, tenantId, dto.invoiceId, payment.id);
+      return { payment, receipt };
+    });
 
     await this.audit.logPayment({ tenantId, actorId, entityType: 'Payment', entityId: payment.id, paymentStatus: 'success', after: { method: dto.paymentMethod, amount: dto.amount } });
     this.logger.log(`Offline payment: ₹${dto.amount} ${dto.paymentMethod} | tenant: ${tenantId}`);
@@ -170,8 +226,15 @@ export class PaymentService {
   }
 
   // ── Update invoice amounts (in transaction for safety) ────────────────────
-  private async updateInvoice(tenantId: string, invoiceId: string, amount: number) {
-    await this.prisma.$transaction(async (tx) => {
+  /**
+   * FEE-1: now takes the caller's transaction client instead of opening its
+   * own. Applying a payment is a read-decide-write over the invoice's running
+   * totals; running it in a separate transaction from the payment row's
+   * creation meant a crash between the two could leave a SUCCESS payment
+   * against an invoice that never recorded it.
+   */
+  private async updateInvoice(tx: any, tenantId: string, invoiceId: string, amount: number) {
+    {
       const inv = await tx.invoice.findFirst({ where: { id: invoiceId, tenantId } });
       if (!inv) return;
       const newPaid = Number(inv.paidAmount) + amount;
@@ -186,24 +249,38 @@ export class PaymentService {
           paidAt:     newDue <= 0 ? new Date() : null,
         },
       });
-    });
+    }
   }
 
   // ── Generate receipt — P0 FIX: uses advisory-lock-safe number ────────────
-  private async generateReceipt(tenantId: string, invoiceId: string, paymentId: string) {
-    const existing = await this.prisma.receipt.findFirst({ where: { invoiceId } });
+  /**
+   * FEE-1: now runs inside the caller's settlement transaction, so the receipt
+   * is created atomically with the payment and the invoice update.
+   *
+   * The number is generated with the same tx (see
+   * InvoiceService.generateReceiptNumber) so its advisory lock is held until
+   * this insert commits -- otherwise two concurrent payments can derive the
+   * same receipt number.
+   *
+   * NOTE: the existing-receipt short-circuit below is keyed on invoiceId and
+   * is deliberately UNCHANGED here. Receipt.invoiceId is still @unique, so a
+   * second partial payment on the same invoice returns the FIRST payment's
+   * receipt (wrong amount, wrong payment). Fixing that requires dropping the
+   * unique constraint, i.e. a migration -- the next FEE-1 item. Changing the
+   * lookup before the constraint is dropped would just move the failure from
+   * a wrong row to a unique-violation.
+   */
+  private async generateReceipt(tx: any, tenantId: string, invoiceId: string, paymentId: string) {
+    const existing = await tx.receipt.findFirst({ where: { invoiceId } });
     if (existing) return existing;
 
     // P0 FIX: delegate number generation to InvoiceService which uses advisory lock
-    const receiptNumber = await this.invoiceService.generateReceiptNumber(tenantId);
-    const payment       = await this.prisma.payment.findUnique({ where: { id: paymentId } });
-    
-    const invoice = await this.prisma.invoice.findUnique({
-  where: { id: invoiceId },
-});   
-   
+    const receiptNumber = await this.invoiceService.generateReceiptNumber(tenantId, tx);
+    const payment       = await tx.payment.findUnique({ where: { id: paymentId } });
 
-    return this.prisma.receipt.create({
+    const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
+
+    return tx.receipt.create({
       data: {
         tenantId, branchId: invoice!.branchId,  invoiceId, paymentId, receiptNumber,
         amount:   payment?.amount ?? 0,

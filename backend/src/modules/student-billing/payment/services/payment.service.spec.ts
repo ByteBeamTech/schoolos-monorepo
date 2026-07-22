@@ -57,6 +57,11 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
           Promise.resolve({ ...mockPayment, ...data }),
         ),
       },
+      // FEE-1: settlement (payment + invoice totals + receipt) now runs in one
+      // transaction guarded by a per-invoice advisory lock. The mock hands the
+      // callback this same object as its tx client.
+      $transaction: jest.fn((cb: any) => cb(prisma)),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -238,5 +243,134 @@ describe('PaymentService.getPaymentHistory — FEE-0 branch scoping', () => {
     await expect(service.getPaymentHistory('t-1', 'inv-1', []))
       .rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.invoice.findFirst.mock.calls[1][0].where.branchId).toEqual({ in: [] });
+  });
+});
+
+// ── FEE-1: payment-confirmation atomicity + per-invoice serialization ──────
+describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () => {
+  const { Test: T4 } = require('@nestjs/testing');
+  let service: any;
+  let prisma: any;
+  let invoiceService: any;
+
+  const invoice = { id: 'inv-1', tenantId: 't-1', branchId: 'b-1', studentId: 'stu-1',
+    currency: 'INR', status: 'SENT', totalAmount: 5000, paidAmount: 0, dueAmount: 5000 };
+
+  beforeEach(async () => {
+    prisma = {
+      payment: {
+        // Default null: recordOffline's duplicate-reference probe must find
+        // nothing. The verifyRazorpay block overrides this.
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue({ id: 'pay-1', amount: 1000, currency: 'INR' }),
+        create: jest.fn().mockResolvedValue({ id: 'pay-new' }),
+        update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...mockPayment, ...data })),
+      },
+      invoice: {
+        findFirst: jest.fn().mockResolvedValue({ ...invoice }),
+        findUnique: jest.fn().mockResolvedValue({ ...invoice }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      receipt: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'rcpt-1' }) },
+      $transaction: jest.fn((cb: any) => cb(prisma)),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+    };
+    invoiceService = { generateReceiptNumber: jest.fn().mockResolvedValue('RCP-2026-00001') };
+
+    const module = await T4.createTestingModule({
+      providers: [
+        PaymentService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { logPayment: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn((k: string, d?: string) =>
+            k === 'NODE_ENV' ? 'test' : d) } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: InvoiceService, useValue: invoiceService },
+      ],
+    }).compile();
+    service = module.get(PaymentService);
+  });
+
+  describe('recordOffline', () => {
+    const dto = { invoiceId: 'inv-1', amount: 1000, paymentMethod: 'CASH', referenceNumber: 'REF-1' };
+
+    it('creates payment, updates the invoice and writes the receipt in ONE transaction', async () => {
+      await service.recordOffline('t-1', dto as any, 'actor-1');
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.payment.create).toHaveBeenCalled();
+      expect(prisma.invoice.update).toHaveBeenCalled();
+      expect(prisma.receipt.create).toHaveBeenCalled();
+    });
+
+    it('serializes on the invoice with an advisory lock, taken before the totals are read', async () => {
+      await service.recordOffline('t-1', dto as any, 'actor-1');
+
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        expect.any(Number),
+      );
+      // The lock must precede the invoice read that paidAmount is derived from.
+      const lockOrder = prisma.$executeRawUnsafe.mock.invocationCallOrder[0];
+      const readOrder = prisma.invoice.findFirst.mock.invocationCallOrder.at(-1);
+      expect(lockOrder).toBeLessThan(readOrder);
+    });
+
+    it('derives the lock key from the invoice — payments on different invoices do not serialize', async () => {
+      await service.recordOffline('t-1', dto as any, 'a-1');
+      const keyA = prisma.$executeRawUnsafe.mock.calls[0][1];
+
+      prisma.$executeRawUnsafe.mockClear();
+      prisma.invoice.findFirst.mockResolvedValue({ ...invoice, id: 'inv-2' });
+      await service.recordOffline('t-1', { ...dto, invoiceId: 'inv-2' } as any, 'a-1');
+      const keyB = prisma.$executeRawUnsafe.mock.calls[0][1];
+
+      expect(keyA).not.toEqual(keyB);
+      expect(keyA).toBeGreaterThanOrEqual(0);
+      expect(keyA).toBeLessThanOrEqual(0x7fffffff);
+    });
+
+    it('generates the receipt number with the SAME tx, so its lock spans count -> insert', async () => {
+      await service.recordOffline('t-1', dto as any, 'actor-1');
+      expect(invoiceService.generateReceiptNumber).toHaveBeenCalledWith('t-1', prisma);
+    });
+
+    it('writes nothing when the invoice update fails — the whole settlement rolls back', async () => {
+      prisma.invoice.update.mockRejectedValue(new Error('db down'));
+
+      await expect(service.recordOffline('t-1', dto as any, 'actor-1')).rejects.toThrow('db down');
+      // Receipt creation is downstream of the failure and must not happen.
+      expect(prisma.receipt.create).not.toHaveBeenCalled();
+    });
+
+    it('does not emit PAYMENT_SUCCESS when settlement fails', async () => {
+      prisma.receipt.create.mockRejectedValue(new Error('receipt failed'));
+      const emitter = (service as any).emitter;
+
+      await expect(service.recordOffline('t-1', dto as any, 'actor-1')).rejects.toThrow();
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyRazorpay', () => {
+    beforeEach(() => {
+      prisma.payment.findFirst.mockResolvedValue({ ...mockPayment });
+    });
+
+    it('settles payment, invoice and receipt in ONE locked transaction', async () => {
+      await service.verifyRazorpay(
+        't-1',
+        { razorpayOrderId: 'order_1', razorpayPaymentId: 'rzp_1', razorpaySignature: 'sig' } as any,
+        'actor-1',
+      );
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        expect.any(Number),
+      );
+      expect(prisma.invoice.update).toHaveBeenCalled();
+      expect(prisma.receipt.create).toHaveBeenCalled();
+    });
   });
 });
