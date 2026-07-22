@@ -114,6 +114,12 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const paidAmt   = Number(inv.paidAmount);
   const cur       = inv.currency ?? "INR";
 
+  // FEE-1: the invoice detail endpoint now returns `receipts` (an array, one
+  // per payment) where it previously returned a single `receipt` object.
+  // Defensive default so a cached/older API response cannot crash the page.
+  const receipts: any[] = Array.isArray(inv.receipts) ? inv.receipts : [];
+  const latestReceiptPdfUrl = receipts.find((r: any) => r?.pdfUrl)?.pdfUrl;
+
   return (
     <div className="max-w-4xl">
       {/* Back */}
@@ -162,8 +168,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               <Send className="w-4 h-4" /> Send Invoice
             </button>
           )}
-          {inv.receipt?.pdfUrl && (
-            <a href={inv.receipt.pdfUrl} target="_blank" rel="noopener noreferrer"
+          {/* FEE-1: an invoice now has many receipts (one per payment). The
+              header action prints the most recent one that has a PDF; the
+              sidebar lists them all. */}
+          {latestReceiptPdfUrl && (
+            <a href={latestReceiptPdfUrl} target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm rounded-lg font-medium transition-colors">
               <Printer className="w-4 h-4" /> Print Receipt
             </a>
@@ -315,20 +324,27 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         {/* Sidebar — late fees + receipt + notes */}
         <div className="space-y-5">
           {/* Receipt */}
-          {inv.receipt && (
+          {receipts.length > 0 && (
             <div className="bg-emerald-50 rounded-2xl border border-emerald-100 p-5">
               <div className="flex items-center gap-2 mb-3">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <h3 className="text-sm font-semibold text-emerald-700">Receipt Issued</h3>
+                <h3 className="text-sm font-semibold text-emerald-700">
+                  {receipts.length === 1 ? "Receipt Issued" : `Receipts Issued (${receipts.length})`}
+                </h3>
               </div>
-              <p className="font-mono text-lg font-bold text-emerald-800">{inv.receipt.receiptNumber}</p>
-              <p className="text-xs text-emerald-600 mt-1">{fmt(inv.receipt.amount, cur)} · {fmtDate(inv.receipt.createdAt)}</p>
-              {inv.receipt.pdfUrl && (
-                <a href={inv.receipt.pdfUrl} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 text-xs text-emerald-700 hover:text-emerald-900 font-medium mt-3 transition-colors">
-                  <Download className="w-3.5 h-3.5" /> Download PDF
-                </a>
-              )}
+              {receipts.map((r: any, i: number) => (
+                <div key={r.id ?? r.receiptNumber}
+                  className={i > 0 ? "mt-4 pt-4 border-t border-emerald-100" : ""}>
+                  <p className="font-mono text-lg font-bold text-emerald-800">{r.receiptNumber}</p>
+                  <p className="text-xs text-emerald-600 mt-1">{fmt(r.amount, cur)} · {fmtDate(r.createdAt)}</p>
+                  {r.pdfUrl && (
+                    <a href={r.pdfUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-emerald-700 hover:text-emerald-900 font-medium mt-3 transition-colors">
+                      <Download className="w-3.5 h-3.5" /> Download PDF
+                    </a>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 

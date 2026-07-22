@@ -238,7 +238,10 @@ export class InvoiceService {
       include: {
         items:    { orderBy: { sortOrder: 'asc' } },
         payments: { orderBy: { createdAt: 'desc' } },
-        receipt:  true,
+        // FEE-1: an invoice now has many receipts (one per payment), so this
+        // returns an ARRAY where it previously returned a single object or
+        // null. Ordered newest-first to match the sibling payments include.
+        receipts: { orderBy: { createdAt: 'desc' } },
         lateFees: { orderBy: { appliedAt: 'desc' } },
         student:  { select: { id: true, firstName: true, lastName: true, admissionNumber: true, classId: true } },
       },

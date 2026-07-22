@@ -271,7 +271,12 @@ describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () =
         findUnique: jest.fn().mockResolvedValue({ ...invoice }),
         update: jest.fn().mockResolvedValue({}),
       },
-      receipt: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'rcpt-1' }) },
+      receipt: {
+        // FEE-1: receipt idempotency is keyed on paymentId (Receipt.paymentId
+        // @unique), not invoiceId. Default null = no receipt yet for this payment.
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'rcpt-1' }),
+      },
       $transaction: jest.fn((cb: any) => cb(prisma)),
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
     };
@@ -372,5 +377,159 @@ describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () =
       expect(prisma.invoice.update).toHaveBeenCalled();
       expect(prisma.receipt.create).toHaveBeenCalled();
     });
+  });
+});
+
+// ── FEE-1: receipt ownership is per PAYMENT, not per invoice ───────────────
+// Receipt.invoiceId lost its @unique constraint (migration
+// 20260722020000_receipt_unique_per_payment); Receipt.paymentId keeps it.
+// These tests pin both halves of the resulting rule: a different payment on
+// the same invoice gets its own receipt, and the same payment never gets two.
+describe('PaymentService.generateReceipt — one receipt per payment (FEE-1)', () => {
+  const { Test: T5 } = require('@nestjs/testing');
+  let service: any;
+  let prisma: any;
+  let invoiceService: any;
+
+  const INVOICE = { id: 'inv-1', tenantId: 't-1', branchId: 'b-1', currency: 'INR',
+    status: 'SENT', totalAmount: 5000, paidAmount: 0, dueAmount: 5000 };
+
+  // Minimal in-memory Receipt table so "second payment on the same invoice"
+  // is exercised against real accumulated state rather than a fixed mock.
+  let receipts: any[];
+
+  beforeEach(async () => {
+    receipts = [];
+    let seq = 0;
+
+    prisma = {
+      payment: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockImplementation(({ where }: any) =>
+          Promise.resolve({ id: where.id, amount: 2500, currency: 'INR' })),
+        create: jest.fn().mockImplementation(() =>
+          Promise.resolve({ id: `pay-${++seq}` })),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      invoice: {
+        findFirst: jest.fn().mockResolvedValue({ ...INVOICE }),
+        findUnique: jest.fn().mockResolvedValue({ ...INVOICE }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      receipt: {
+        // Honours the paymentId unique constraint.
+        findUnique: jest.fn().mockImplementation(({ where }: any) =>
+          Promise.resolve(receipts.find((r) => r.paymentId === where.paymentId) ?? null)),
+        create: jest.fn().mockImplementation(({ data }: any) => {
+          if (receipts.some((r) => r.paymentId === data.paymentId)) {
+            throw new Error('Unique constraint failed on Receipt.paymentId');
+          }
+          const row = { id: `rcpt-${receipts.length + 1}`, ...data };
+          receipts.push(row);
+          return Promise.resolve(row);
+        }),
+      },
+      $transaction: jest.fn((cb: any) => cb(prisma)),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+    };
+
+    // Numbering is unchanged by this commit: still delegated to
+    // InvoiceService, still tenant-scoped count()+1, still passed the tx.
+    let receiptNo = 0;
+    invoiceService = {
+      generateReceiptNumber: jest.fn().mockImplementation(() =>
+        Promise.resolve(`RCP-2026-${String(++receiptNo).padStart(5, '0')}`)),
+    };
+
+    const module = await T5.createTestingModule({
+      providers: [
+        PaymentService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { logPayment: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn((k: string, d?: string) =>
+            k === 'NODE_ENV' ? 'test' : d) } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: InvoiceService, useValue: invoiceService },
+      ],
+    }).compile();
+    service = module.get(PaymentService);
+  });
+
+  const offline = (amount: number, ref: string) =>
+    service.recordOffline('t-1', {
+      invoiceId: 'inv-1', amount, paymentMethod: 'CASH', referenceNumber: ref,
+    } as any, 'actor-1');
+
+  it('two partial payments on the SAME invoice each get their own receipt', async () => {
+    await offline(2500, 'REF-1');
+    await offline(2500, 'REF-2');
+
+    expect(receipts).toHaveLength(2);
+    expect(receipts[0].invoiceId).toBe('inv-1');
+    expect(receipts[1].invoiceId).toBe('inv-1');
+    // Distinct payments, distinct receipts — the bug was the second payer
+    // receiving the first payer's receipt.
+    expect(receipts[0].paymentId).not.toBe(receipts[1].paymentId);
+    expect(receipts[0].id).not.toBe(receipts[1].id);
+  });
+
+  it('a third payment on the same invoice also gets its own receipt', async () => {
+    await offline(1000, 'REF-1');
+    await offline(1000, 'REF-2');
+    await offline(1000, 'REF-3');
+
+    expect(receipts).toHaveLength(3);
+    expect(new Set(receipts.map((r) => r.paymentId)).size).toBe(3);
+  });
+
+  it('reprocessing the SAME payment reuses the existing receipt — no duplicate', async () => {
+    await offline(2500, 'REF-1');
+    const [first] = receipts;
+
+    // Same payment id reprocessed (e.g. a retried settlement).
+    const again = await (service as any).generateReceipt(
+      prisma, 't-1', 'inv-1', first.paymentId,
+    );
+
+    expect(again.id).toBe(first.id);
+    expect(receipts).toHaveLength(1);
+    // The unique constraint was never even reached: the lookup short-circuited.
+    expect(prisma.receipt.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('idempotency lookup is keyed on paymentId, not invoiceId', async () => {
+    await offline(2500, 'REF-1');
+
+    expect(prisma.receipt.findUnique).toHaveBeenCalledWith({
+      where: { paymentId: expect.any(String) },
+    });
+    for (const call of prisma.receipt.findUnique.mock.calls) {
+      expect(call[0].where).not.toHaveProperty('invoiceId');
+    }
+  });
+
+  it('receipt numbering behaviour is unchanged: still delegated to InvoiceService with the tx, one number per receipt', async () => {
+    await offline(2500, 'REF-1');
+    await offline(2500, 'REF-2');
+
+    expect(invoiceService.generateReceiptNumber).toHaveBeenCalledTimes(2);
+    for (const call of invoiceService.generateReceiptNumber.mock.calls) {
+      expect(call[0]).toBe('t-1');   // tenant-scoped, as before
+      expect(call[1]).toBe(prisma);  // still passed the transaction client
+    }
+    expect(receipts.map((r) => r.receiptNumber)).toEqual([
+      'RCP-2026-00001',
+      'RCP-2026-00002',
+    ]);
+  });
+
+  it('a reused receipt consumes no receipt number', async () => {
+    await offline(2500, 'REF-1');
+    expect(invoiceService.generateReceiptNumber).toHaveBeenCalledTimes(1);
+
+    await (service as any).generateReceipt(prisma, 't-1', 'inv-1', receipts[0].paymentId);
+
+    // Short-circuit happens before numbering, so no number is burned.
+    expect(invoiceService.generateReceiptNumber).toHaveBeenCalledTimes(1);
   });
 });

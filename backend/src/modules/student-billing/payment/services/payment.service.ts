@@ -262,16 +262,24 @@ export class PaymentService {
    * this insert commits -- otherwise two concurrent payments can derive the
    * same receipt number.
    *
-   * NOTE: the existing-receipt short-circuit below is keyed on invoiceId and
-   * is deliberately UNCHANGED here. Receipt.invoiceId is still @unique, so a
-   * second partial payment on the same invoice returns the FIRST payment's
-   * receipt (wrong amount, wrong payment). Fixing that requires dropping the
-   * unique constraint, i.e. a migration -- the next FEE-1 item. Changing the
-   * lookup before the constraint is dropped would just move the failure from
-   * a wrong row to a unique-violation.
+   * IDEMPOTENCY is keyed on paymentId, which is the receipt's ownership key
+   * (Receipt.paymentId @unique). Reprocessing the SAME payment returns its
+   * existing receipt instead of creating a second one; a DIFFERENT payment
+   * against the same invoice gets its own receipt.
+   *
+   * This was previously keyed on invoiceId, which returned the FIRST payment's
+   * receipt to every later payer on that invoice -- wrong amount, wrong
+   * payment id. That could not be fixed before Receipt.invoiceId's @unique
+   * constraint was dropped (migration 20260722020000_receipt_unique_per_payment),
+   * because the lookup and the constraint encoded the same wrong rule.
+   *
+   * findUnique (not findFirst) is used deliberately: it resolves through the
+   * paymentId unique index, and it will fail to compile if that @unique is
+   * ever removed -- turning IMPLEMENTATION_HANDOFF.md §10's "must be
+   * preserved" into a compile-time guarantee rather than a comment.
    */
   private async generateReceipt(tx: any, tenantId: string, invoiceId: string, paymentId: string) {
-    const existing = await tx.receipt.findFirst({ where: { invoiceId } });
+    const existing = await tx.receipt.findUnique({ where: { paymentId } });
     if (existing) return existing;
 
     // P0 FIX: delegate number generation to InvoiceService which uses advisory lock

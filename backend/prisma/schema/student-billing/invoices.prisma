@@ -25,7 +25,13 @@ model Invoice {
   items          InvoiceItem[]
   lateFees       LateFee[]
   payments       Payment[]
-  receipt        Receipt?
+  // FEE-1: an invoice may have MANY receipts -- one per payment. This was
+  // Receipt? (one-to-one), the back-relation of Receipt.invoiceId @unique.
+  // Both sides of a Prisma relation declare its arity, so dropping that
+  // @unique without changing this side is a schema validation error (P1012),
+  // not merely a style mismatch. Named `receipts` to match the plural list
+  // relations alongside it (items, lateFees, payments).
+  receipts       Receipt[]
 
   @@unique([tenantId, branchId, invoiceNumber])
   @@index([tenantId, branchId])

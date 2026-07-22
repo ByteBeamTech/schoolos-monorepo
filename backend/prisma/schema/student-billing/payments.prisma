@@ -35,7 +35,12 @@ model Receipt {
   id             String    @id @default(cuid())
   tenantId       String
   branchId       String
-  invoiceId      String    @unique
+  // FEE-1: invoiceId is deliberately NOT unique. The correct ownership rule is
+  // one receipt per PAYMENT; one receipt per INVOICE made it impossible to
+  // receipt a second payment against the same invoice (instalments / partial
+  // payments). paymentId @unique is the real invariant and must be preserved
+  // (IMPLEMENTATION_HANDOFF.md §10).
+  invoiceId      String
   paymentId      String    @unique
   receiptNumber  String
   amount         Decimal   @db.Decimal(12, 2)
@@ -51,6 +56,10 @@ model Receipt {
   @@unique([tenantId, branchId, receiptNumber])
   @@index([tenantId])
   @@index([tenantId, branchId])
+  // Replaces the lookup path the dropped unique index used to provide:
+  // "all receipts for this invoice" is a real query (Receipt.invoice relation,
+  // and receipt listing per invoice).
+  @@index([invoiceId])
 }
 
 model Refund {
