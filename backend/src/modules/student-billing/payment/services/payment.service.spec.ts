@@ -533,3 +533,156 @@ describe('PaymentService.generateReceipt — one receipt per payment (FEE-1)', (
     expect(invoiceService.generateReceiptNumber).toHaveBeenCalledTimes(1);
   });
 });
+
+// ── FEE-1: offline payment idempotency (IMM-017/018) ──────────────────────
+// gatewayPaymentId is the payment's idempotency key, backed by a UNIQUE index
+// on (tenantId, invoiceId, gatewayPaymentId). The OFFLINE-${Date.now()}
+// fallback is gone: without a supplied reference the key is derived from the
+// payment's own business content, so a retry produces the SAME key.
+describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
+  const { Test: T6 } = require('@nestjs/testing');
+  let service: any;
+  let prisma: any;
+
+  const INVOICE = { id: 'inv-1', tenantId: 't-1', branchId: 'b-1', currency: 'INR',
+    status: 'SENT', totalAmount: 5000, paidAmount: 0, dueAmount: 5000 };
+
+  function p2002() {
+    const e: any = new Error('Unique constraint failed');
+    e.code = 'P2002';
+    e.meta = { target: ['tenantId', 'invoiceId', 'gatewayPaymentId'] };
+    return e;
+  }
+
+  beforeEach(async () => {
+    prisma = {
+      payment: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue({ id: 'pay-1', amount: 1000, currency: 'INR' }),
+        create: jest.fn().mockResolvedValue({ id: 'pay-new' }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      invoice: {
+        findFirst: jest.fn().mockResolvedValue({ ...INVOICE }),
+        findUnique: jest.fn().mockResolvedValue({ ...INVOICE }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      receipt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'rcpt-1' }) },
+      $transaction: jest.fn((cb: any) => cb(prisma)),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const module = await T6.createTestingModule({
+      providers: [
+        PaymentService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { logPayment: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn((k: string, d?: string) => (k === 'NODE_ENV' ? 'test' : d)) } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: InvoiceService, useValue: { generateReceiptNumber: jest.fn().mockResolvedValue('RCP-2026-00001') } },
+      ],
+    }).compile();
+    service = module.get(PaymentService);
+  });
+
+  const dto = (over: any = {}) => ({
+    invoiceId: 'inv-1', amount: 1000, paymentMethod: 'CASH', ...over,
+  });
+
+  describe('key derivation', () => {
+    it('uses the cashier-supplied reference verbatim when present', async () => {
+      await service.recordOffline('t-1', dto({ referenceNumber: 'CHQ-4471' }), 'a-1');
+      expect(prisma.payment.create.mock.calls[0][0].data.gatewayPaymentId).toBe('CHQ-4471');
+    });
+
+    it('trims a supplied reference so whitespace cannot defeat the constraint', async () => {
+      await service.recordOffline('t-1', dto({ referenceNumber: '  CHQ-4471  ' }), 'a-1');
+      expect(prisma.payment.create.mock.calls[0][0].data.gatewayPaymentId).toBe('CHQ-4471');
+    });
+
+    it('derives a DETERMINISTIC key when no reference is supplied — never a timestamp', async () => {
+      const first = (service as any).offlinePaymentReference('t-1', dto());
+      const second = (service as any).offlinePaymentReference('t-1', dto());
+
+      expect(first).toBe(second);              // stable across calls
+      expect(first).toMatch(/^OFF-[0-9a-f]{32}$/);
+      expect(first).not.toMatch(/\d{13}/);     // no Date.now() epoch embedded
+    });
+
+    it('different amount, method, invoice or tenant produce different keys', async () => {
+      const base = (service as any).offlinePaymentReference('t-1', dto());
+      expect((service as any).offlinePaymentReference('t-1', dto({ amount: 1001 }))).not.toBe(base);
+      expect((service as any).offlinePaymentReference('t-1', dto({ paymentMethod: 'CHEQUE' }))).not.toBe(base);
+      expect((service as any).offlinePaymentReference('t-1', dto({ invoiceId: 'inv-2' }))).not.toBe(base);
+      expect((service as any).offlinePaymentReference('t-2', dto())).not.toBe(base);
+    });
+  });
+
+  describe('retry paths', () => {
+    it('a sequential retry returns the recorded payment instead of creating a second', async () => {
+      const recorded = { id: 'pay-1', amount: 1000, receipt: { id: 'rcpt-1' } };
+      prisma.payment.findFirst.mockResolvedValue(recorded);
+
+      const result = await service.recordOffline('t-1', dto({ referenceNumber: 'CHQ-1' }), 'a-1');
+
+      expect(result.payment).toBe(recorded);
+      expect(result.receipt).toBe(recorded.receipt);
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+      expect(prisma.invoice.update).not.toHaveBeenCalled();   // not credited twice
+    });
+
+    it('the retry check runs BEFORE the due-amount validation', async () => {
+      // The first payment already consumed the due amount, so validation would
+      // reject the retry with "exceeds due" if it ran first.
+      prisma.invoice.findFirst.mockResolvedValue({ ...INVOICE, dueAmount: 0, status: 'PAID' });
+      prisma.payment.findFirst.mockResolvedValue({ id: 'pay-1', receipt: { id: 'rcpt-1' } });
+
+      const result = await service.recordOffline('t-1', dto({ referenceNumber: 'CHQ-1' }), 'a-1');
+      expect(result.payment.id).toBe('pay-1');
+    });
+
+    it('a CONCURRENT retry that reaches the insert is resolved by the unique index (P2002)', async () => {
+      // Fast path sees nothing (the winner has not committed yet), the insert
+      // then collides; the winner's record is returned.
+      const winner = { id: 'pay-winner', receipt: { id: 'rcpt-9' } };
+      prisma.payment.findFirst
+        .mockResolvedValueOnce(null)      // fast path: not yet visible
+        .mockResolvedValueOnce(winner);   // after the collision
+      prisma.payment.create.mockRejectedValue(p2002());
+
+      const result = await service.recordOffline('t-1', dto({ referenceNumber: 'CHQ-1' }), 'a-1');
+
+      expect(result.payment).toBe(winner);
+      expect(result.receipt).toBe(winner.receipt);
+    });
+
+    it('a P2002 with no recoverable winner is rethrown, never swallowed', async () => {
+      prisma.payment.findFirst.mockResolvedValue(null);
+      prisma.payment.create.mockRejectedValue(p2002());
+
+      await expect(service.recordOffline('t-1', dto(), 'a-1')).rejects.toMatchObject({ code: 'P2002' });
+    });
+
+    it('a non-unique-violation error is rethrown untouched', async () => {
+      prisma.payment.create.mockRejectedValue(new Error('db down'));
+      await expect(service.recordOffline('t-1', dto(), 'a-1')).rejects.toThrow('db down');
+    });
+  });
+
+  describe('normal recording is unaffected', () => {
+    it('records a first-time payment and credits the invoice once', async () => {
+      const result = await service.recordOffline('t-1', dto({ referenceNumber: 'CHQ-1' }), 'a-1');
+
+      expect(prisma.payment.create).toHaveBeenCalledTimes(1);
+      expect(prisma.invoice.update).toHaveBeenCalledTimes(1);
+      expect(result.receipt).toEqual({ id: 'rcpt-1' });
+    });
+
+    it('still rejects an over-payment on a genuinely new reference', async () => {
+      await expect(
+        service.recordOffline('t-1', dto({ amount: 99999, referenceNumber: 'CHQ-2' }), 'a-1'),
+      ).rejects.toThrow(/exceeds due/);
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+  });
+});

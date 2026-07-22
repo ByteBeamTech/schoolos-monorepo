@@ -24,6 +24,13 @@ model Payment {
   receipt          Receipt?
   refunds          Refund[]
 
+  // FEE-1 (IMM-017/018): idempotency for payment recording. gatewayPaymentId
+  // holds the payment's external identity -- the gateway payment id online, a
+  // stable derived-or-supplied reference offline -- so the same logical
+  // payment can only be recorded once per invoice. NULL is permitted many
+  // times (Postgres does not treat NULLs as equal), which is required because
+  // an online payment has no gatewayPaymentId until it is verified.
+  @@unique([tenantId, invoiceId, gatewayPaymentId])
   @@index([tenantId])
   @@index([tenantId, branchId])
   @@index([invoiceId])

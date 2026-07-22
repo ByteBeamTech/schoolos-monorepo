@@ -9,7 +9,7 @@
 import { EventEmitter2 }   from '@nestjs/event-emitter';
 import { EVENTS }           from '../../../../core/events/events.constants';
 import {
-  Injectable, NotFoundException, BadRequestException, Logger, ConflictException,
+  Injectable, NotFoundException, BadRequestException, Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService }    from '@nestjs/config';
@@ -171,49 +171,123 @@ export class PaymentService {
       .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) & 0x7fffffff), 0);
   }
 
+  /**
+   * Stable idempotency key for an offline payment (FEE-1, IMM-017/018).
+   *
+   * A cashier-supplied reference (cheque number, receipt book number, bank
+   * transaction id) is authoritative when present: it is the real-world
+   * identity of the payment, and it is stable across retries by definition.
+   *
+   * When absent, the key is DERIVED FROM THE REQUEST'S BUSINESS CONTENT so
+   * that the same logical payment always produces the same key. It replaces
+   * `OFFLINE-${Date.now()}`, which made every call unique and therefore made
+   * the record un-deduplicable: a double-submitted cash payment was recorded
+   * twice and the invoice over-credited.
+   *
+   * The business DATE is part of the material. That is not a timestamp in the
+   * `Date.now()` sense -- it does not change between a submission and its
+   * retry -- but it does distinguish an identical payment made on a different
+   * day, which is a genuinely different payment (a parent paying the same cash
+   * amount in April and again in May must produce two records).
+   *
+   * TRADE-OFF, deliberate and documented: two genuinely distinct payments with
+   * the SAME invoice, amount, method and date, submitted WITHOUT a reference,
+   * are indistinguishable from a retry and collapse into one record. Recording
+   * both requires a reference number -- which is what a receipt book or cheque
+   * number is for. Intent lives with the caller; no server-side derivation can
+   * recover it.
+   */
+  private offlinePaymentReference(tenantId: string, dto: RecordOfflinePaymentDto): string {
+    const supplied = dto.referenceNumber?.trim();
+    if (supplied) return supplied;
+
+    const businessDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const material = [
+      tenantId,
+      dto.invoiceId,
+      Number(dto.amount).toFixed(2),
+      dto.paymentMethod ?? '',
+      businessDate,
+    ].join('|');
+    const digest = crypto.createHash('sha256').update(material).digest('hex').slice(0, 32);
+    return `OFF-${digest}`;
+  }
+
+  /** Prisma unique-constraint violation. */
+  private isUniqueViolation(err: any): boolean {
+    return err?.code === 'P2002';
+  }
+
+  /** The already-recorded payment for an idempotency key, with its receipt. */
+  private async findRecordedOfflinePayment(tenantId: string, invoiceId: string, reference: string) {
+    return this.prisma.payment.findFirst({
+      where:   { tenantId, invoiceId, gatewayPaymentId: reference },
+      include: { receipt: true },
+    });
+  }
+
   // ── Record Offline — P0 FIX: idempotent + correct gateway ────────────────
   async recordOffline(tenantId: string, dto: RecordOfflinePaymentDto, actorId: string) {
+    const reference = this.offlinePaymentReference(tenantId, dto);
+
+    // Idempotent fast path. Deliberately BEFORE the due-amount validation:
+    // the first attempt already reduced dueAmount, so a retry would otherwise
+    // be rejected with "amount exceeds due" instead of returning the payment
+    // it already made. Correctness does not rest on this read -- the unique
+    // index does; this only avoids a pointless failed insert.
+    const alreadyRecorded = await this.findRecordedOfflinePayment(tenantId, dto.invoiceId, reference);
+    if (alreadyRecorded) {
+      this.logger.warn(`Offline payment retry ignored (already recorded): ref=${reference} payment=${alreadyRecorded.id}`);
+      return { payment: alreadyRecorded, receipt: alreadyRecorded.receipt };
+    }
+
     const invoice = await this.prisma.invoice.findFirst({ where: { id: dto.invoiceId, tenantId } });
     if (!invoice) throw new NotFoundException(`Invoice not found: ${dto.invoiceId}`);
     if (invoice.status === 'PAID') throw new BadRequestException('Invoice already paid.');
     if (dto.amount > Number(invoice.dueAmount)) throw new BadRequestException(`Amount ₹${dto.amount} exceeds due ₹${invoice.dueAmount}`);
 
-    // P0 FIX: idempotency — if referenceNumber provided, check for duplicate
-    if (dto.referenceNumber) {
-      const existing = await this.prisma.payment.findFirst({
-        where: { tenantId, invoiceId: dto.invoiceId, gatewayPaymentId: dto.referenceNumber, status: 'SUCCESS' },
-      });
-      if (existing) {
-        this.logger.warn(`Duplicate offline payment rejected: ref=${dto.referenceNumber}`);
-        throw new ConflictException(`Payment with reference ${dto.referenceNumber} already recorded for this invoice.`);
-      }
-    }
-
     // FEE-1 ATOMICITY: see verifyRazorpay -- payment, invoice totals and
     // receipt commit together, serialized per invoice.
-    const { payment, receipt } = await this.prisma.$transaction(async (tx: any) => {
-      await tx.$executeRawUnsafe(
-        `SELECT pg_advisory_xact_lock($1)`,
-        this.settlementLockKey(dto.invoiceId),
-      );
+    let settled: { payment: any; receipt: any };
+    try {
+      settled = await this.prisma.$transaction(async (tx: any) => {
+        await tx.$executeRawUnsafe(
+          `SELECT pg_advisory_xact_lock($1)`,
+          this.settlementLockKey(dto.invoiceId),
+        );
 
-      const payment = await tx.payment.create({
-        data: {
-          tenantId, invoiceId: dto.invoiceId,
-          branchId: invoice.branchId,
-          // P0 FIX: was hardcoded 'RAZORPAY' — now correctly 'OFFLINE'
-          gateway: 'OFFLINE' as any,
-          amount: dto.amount, currency: invoice.currency, status: 'SUCCESS',
-          paymentMethod:   dto.paymentMethod,
-          gatewayPaymentId: dto.referenceNumber ?? `OFFLINE-${Date.now()}`,
-          paidAt: new Date(),
-        },
+        const payment = await tx.payment.create({
+          data: {
+            tenantId, invoiceId: dto.invoiceId,
+            branchId: invoice.branchId,
+            // P0 FIX: was hardcoded 'RAZORPAY' — now correctly 'OFFLINE'
+            gateway: 'OFFLINE' as any,
+            amount: dto.amount, currency: invoice.currency, status: 'SUCCESS',
+            paymentMethod:   dto.paymentMethod,
+            gatewayPaymentId: reference,
+            paidAt: new Date(),
+          },
+        });
+
+        await this.updateInvoice(tx, tenantId, dto.invoiceId, dto.amount);
+        const receipt = await this.generateReceipt(tx, tenantId, dto.invoiceId, payment.id);
+        return { payment, receipt };
       });
-
-      await this.updateInvoice(tx, tenantId, dto.invoiceId, dto.amount);
-      const receipt = await this.generateReceipt(tx, tenantId, dto.invoiceId, payment.id);
-      return { payment, receipt };
-    });
+    } catch (err: any) {
+      // The unique index on (tenantId, invoiceId, gatewayPaymentId) is the
+      // authoritative guard: it catches the concurrent retry that slipped past
+      // the fast path above. The whole transaction rolled back, so the invoice
+      // was not credited twice; return the record the winning attempt made.
+      if (this.isUniqueViolation(err)) {
+        const winner = await this.findRecordedOfflinePayment(tenantId, dto.invoiceId, reference);
+        if (winner) {
+          this.logger.warn(`Offline payment retry collided at the unique index: ref=${reference} payment=${winner.id}`);
+          return { payment: winner, receipt: winner.receipt };
+        }
+      }
+      throw err;
+    }
+    const { payment, receipt } = settled;
 
     await this.audit.logPayment({ tenantId, actorId, entityType: 'Payment', entityId: payment.id, paymentStatus: 'success', after: { method: dto.paymentMethod, amount: dto.amount } });
     this.logger.log(`Offline payment: ₹${dto.amount} ${dto.paymentMethod} | tenant: ${tenantId}`);
