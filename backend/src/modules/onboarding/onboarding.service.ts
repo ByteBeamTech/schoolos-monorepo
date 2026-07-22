@@ -5,6 +5,7 @@ import { PrismaService } from '@infra/database/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { OnboardTenantDto } from './onboarding.dto';
 import { LicenseBuilder } from '@core/license/license-builder.service';
+import { DiscountCategoryProvisioningService } from '../student-billing/discounts/services/discount-category-provisioning.service';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -15,6 +16,9 @@ export class OnboardingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly licenseBuilder: LicenseBuilder,
+    // Branch defaults are owned by the module that owns the entity: finance
+    // master data is provisioned by student-billing, not written here.
+    private readonly discountCategories: DiscountCategoryProvisioningService,
   ) {}
 
   // ── Validate slug uniqueness (real-time check) ────────────────────────────
@@ -134,6 +138,12 @@ await tx.userBranch.create({
     isActive: true,
   },
 });
+
+// 2C. Provision the branch's default finance configuration.
+// Inside this transaction on purpose: a branch must never exist without
+// its discount categories, because DiscountService.create() resolves
+// against them and refuses to create them on demand.
+await this.discountCategories.provisionForBranch(tx, tenant.id, primaryBranch.id);
 
       // 3. Create subscription
       // PR-2 (COMM-004 gap fill): capture an immutable snapshot of the plan's

@@ -6,6 +6,7 @@ import { PrismaService } from '@infra/database/prisma.service';
 
 import { AuditService } from '@core/compliance/audit.service';
 import { EntitlementResolver } from '@core/license/entitlement-resolver.service';
+import { DiscountCategoryProvisioningService } from '../student-billing/discounts/services/discount-category-provisioning.service';
 import { Prisma, UserRole, Currency } from '@prisma/client';
 import {
   UpdateSchoolProfileDto,
@@ -31,6 +32,8 @@ export class SchoolManagementService {
     private readonly prisma: PrismaService,
     private readonly audit:  AuditService,
     private readonly entitlementResolver: EntitlementResolver,
+    // Branch defaults are owned by the module that owns the entity.
+    private readonly discountCategories: DiscountCategoryProvisioningService,
   ) {}
 
   private async resolveTenant(tenantId: string) {
@@ -92,19 +95,32 @@ export class SchoolManagementService {
     const existing = await this.prisma.branch.findFirst({ where: { tenantId, name: dto.name } });
     if (existing) throw new ConflictException(`Branch "${dto.name}" already exists.`);
 
-    const branch = await this.prisma.branch.create({
-      data: {
-        tenantId,
-        name:       dto.name,
-        branchCode: dto.code      ?? null,
-        address:    dto.address   ?? null,
-        city:       dto.city      ?? null,
-        phone:      dto.phone     ?? null,
-        email:      dto.email     ?? null,
-        principal:  dto.principal ?? null,
-        isActive:   true,
-      },
+    // Branch + its default configuration are created atomically: a branch must
+    // never exist without its discount categories, because
+    // DiscountService.create() resolves against them and refuses to create
+    // them on demand. Previously this was a bare create(); the transaction is
+    // new here for exactly that reason.
+    const branch = await this.prisma.$transaction(async (tx: any) => {
+      const created = await tx.branch.create({
+        data: {
+          tenantId,
+          name:       dto.name,
+          branchCode: dto.code      ?? null,
+          address:    dto.address   ?? null,
+          city:       dto.city      ?? null,
+          phone:      dto.phone     ?? null,
+          email:      dto.email     ?? null,
+          principal:  dto.principal ?? null,
+          isActive:   true,
+        },
+      });
+      await this.discountCategories.provisionForBranch(tx, tenantId, created.id);
+      return created;
     });
+
+    // Audit is written after the transaction commits, matching this service's
+    // existing pattern (AuditService.log() swallows its own failures, so
+    // including it in the transaction would add no atomicity guarantee).
     await this.audit.logCreate({ tenantId, actorId, entityType: 'Branch', entityId: branch.id, after: { name: branch.name } });
     return branch;
   }

@@ -15,6 +15,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { OnboardingService } from './onboarding.service';
 import { PrismaService } from '@infra/database/prisma.service';
 import { LicenseBuilder } from '@core/license/license-builder.service';
+import { DiscountCategoryProvisioningService } from '../student-billing/discounts/services/discount-category-provisioning.service';
 
 describe('OnboardingService', () => {
   let service: OnboardingService;
@@ -67,6 +68,10 @@ describe('OnboardingService', () => {
     regenerateForTenant: jest.fn(),
   };
 
+  const mockDiscountCategoryProvisioning = {
+    provisionForBranch: jest.fn().mockResolvedValue({ created: 6, skipped: 0 }),
+  };
+
   const baseDto = {
     schoolName: 'Test School',
     slug: 'test-school',
@@ -82,6 +87,7 @@ describe('OnboardingService', () => {
         OnboardingService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: LicenseBuilder, useValue: mockLicenseBuilder },
+        { provide: DiscountCategoryProvisioningService, useValue: mockDiscountCategoryProvisioning },
       ],
     }).compile();
 
@@ -123,6 +129,29 @@ describe('OnboardingService', () => {
   });
 
   describe('onboardTenant', () => {
+    // FEE-1: the primary branch must never exist without its default discount
+    // categories -- DiscountService.create() resolves against them and refuses
+    // to create them on demand.
+    it('should provision the primary branch default discount categories inside the same transaction', async () => {
+      await service.onboardTenant(baseDto as any, 'super-admin-1');
+
+      expect(mockDiscountCategoryProvisioning.provisionForBranch).toHaveBeenCalledWith(
+        mockPrismaService, // the `tx` -- same object the mock $transaction hands back
+        mockTenant.id,
+        mockPrimaryBranch.id,
+      );
+    });
+
+    it('should fail the whole onboarding transaction if category provisioning fails', async () => {
+      mockDiscountCategoryProvisioning.provisionForBranch.mockRejectedValueOnce(
+        new Error('provisioning failed'),
+      );
+
+      await expect(
+        service.onboardTenant(baseDto as any, 'super-admin-1'),
+      ).rejects.toThrow('provisioning failed');
+    });
+
     it('should generate a License row synchronously with generationReason=ONBOARDING_TRIAL, inside the same transaction', async () => {
       const result = await service.onboardTenant(baseDto as any, 'super-admin-1');
 
