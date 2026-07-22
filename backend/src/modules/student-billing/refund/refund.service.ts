@@ -10,6 +10,13 @@ export interface InitiateRefundDto {
   reason:    string;
 }
 
+/**
+ * Refund statuses that have already committed money and therefore consume the
+ * refundable balance. RefundStatus is PENDING | COMPLETED | FAILED; FAILED is
+ * excluded because no money moved.
+ */
+const CONSUMING_REFUND_STATUSES = ['PENDING', 'COMPLETED'];
+
 @Injectable()
 export class RefundService {
   private readonly logger = new Logger(RefundService.name);
@@ -20,64 +27,115 @@ export class RefundService {
     private readonly config:  ConfigService,
   ) {}
 
+  /**
+   * LOCK SCOPE
+   * ----------
+   * One advisory transaction lock per Payment.
+   *
+   * Guarantees that only one refund reservation for the SAME payment can
+   * execute concurrently. Refunds against different payments never block each
+   * other, and no other operation in the system takes this lock -- the
+   * protected aggregate is the Payment's refundable balance (the payment row
+   * plus its Refund children), nothing wider.
+   *
+   * The lock is held only for validation + reservation (Phase 1) and is
+   * released when that transaction commits -- deliberately NOT across the
+   * gateway call.
+   *
+   * Deterministic 31-bit key (int4-safe for pg_advisory_xact_lock), hashed the
+   * same way InvoiceService hashes its numbering-lock keys: reusing the
+   * codebase's established concurrency primitive rather than introducing a
+   * second one. Note the keyspace is shared process-wide, so a collision with
+   * another advisory lock key would only cost spurious serialization, never
+   * correctness.
+   */
+  private lockKeyFor(paymentId: string): number {
+    return paymentId
+      .split('')
+      .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) & 0x7fffffff), 0);
+  }
+
   async initiate(tenantId: string, dto: InitiateRefundDto, actorId: string) {
-    const payment = await this.prisma.payment.findFirst({
-      where:   { id: dto.paymentId, tenantId },
-      include: { invoice: true, refunds: true },
+    // ── Phase 1 (transactional): serialize, validate, reserve ──────────────
+    //
+    // FEE-1 CONCURRENCY FIX: read-decide-write previously spanned separate
+    // statements with no transaction and no lock, so two concurrent requests
+    // could both read the same refund history, both pass the over-refund
+    // guard, and both create a refund -- refunding more than was paid.
+    //
+    // A transaction alone does NOT fix this: under Postgres' default READ
+    // COMMITTED isolation both transactions can read before either commits.
+    // pg_advisory_xact_lock keyed on the payment serializes refund attempts
+    // for THAT payment (and only that payment -- refunds against other
+    // payments are unaffected). The lock is transaction-scoped and released
+    // on commit. Same primitive InvoiceService already uses for numbering.
+    //
+    // The PENDING refund row created here is the reservation: because PENDING
+    // counts toward alreadyRefunded, a second request entering this block
+    // sees it and is rejected.
+    const { refund, payment } = await this.prisma.$transaction(async (tx: any) => {
+      await tx.$executeRawUnsafe(
+        `SELECT pg_advisory_xact_lock($1)`,
+        this.lockKeyFor(dto.paymentId),
+      );
+
+      const payment = await tx.payment.findFirst({
+        where:   { id: dto.paymentId, tenantId },
+        include: { invoice: true, refunds: true },
+      });
+
+      if (!payment) throw new NotFoundException('Payment not found');
+      if (payment.status !== 'SUCCESS' && payment.status !== 'PARTIALLY_REFUNDED') {
+        throw new BadRequestException('Only successful payments can be refunded');
+      }
+
+      // Calculate already-refunded amount from Refund records (Payment has no
+      // refundedAmount field).
+      //
+      // PENDING is counted deliberately, not just COMPLETED: an in-flight
+      // refund has already committed that money. Excluding it would let a
+      // second request pass the guard while the first is still at the
+      // gateway. Trade-off accepted: a refund stuck in PENDING (process died
+      // mid-gateway-call) holds its amount until an operator resolves it --
+      // the correct failure direction for money movement.
+      // FAILED is excluded: no money moved.
+      const alreadyRefunded = payment.refunds
+        .filter((r: any) => CONSUMING_REFUND_STATUSES.includes(r.status))
+        .reduce((sum: number, r: any) => sum + Number(r.amount), 0);
+
+      const maxRefund = Number(payment.amount) - alreadyRefunded;
+      if (dto.amount > maxRefund) {
+        throw new BadRequestException(`Refund amount ${dto.amount} exceeds available ${maxRefund}`);
+      }
+
+      const refund = await tx.refund.create({
+        data: {
+          tenantId,
+          branchId:    payment.branchId,
+          paymentId:   dto.paymentId,
+          amount:      dto.amount,
+          reason:      dto.reason,
+          status:      'PENDING',
+          gateway:     payment.gateway,  // required field — copy from payment
+          initiatedBy: actorId,
+        },
+      });
+
+      return { refund, payment };
     });
 
-    if (!payment) throw new NotFoundException('Payment not found');
-    if (payment.status !== 'SUCCESS') throw new BadRequestException('Only successful payments can be refunded');
-
-    // Calculate already-refunded amount from Refund records (Payment has no
-    // refundedAmount field).
+    // ── Phase 2: gateway call, deliberately OUTSIDE any transaction ────────
     //
-    // FEE-1 CORRECTNESS FIX: this filtered on r.status === 'SUCCESS', which is
-    // NOT a member of RefundStatus (PENDING | COMPLETED | FAILED) and is never
-    // written by this service. The filter therefore matched nothing,
-    // alreadyRefunded was always 0, and maxRefund was always the FULL payment
-    // amount -- so the over-refund guard below was inert. A payment could be
-    // refunded in full repeatedly, sequentially, each call reaching the real
-    // gateway. Same silent-failure class as the REFUND_INITIATED audit value:
-    // a plausible-looking string that matches no enum member.
-    //
-    // PENDING is counted deliberately, not just COMPLETED: a refund that is
-    // in flight has already committed that money. Excluding it would let a
-    // second request pass the guard while the first is still at the gateway.
-    // The trade-off is that a refund stuck in PENDING (e.g. the process died
-    // mid-gateway-call) holds its amount until an operator resolves it --
-    // which is the correct failure direction for money movement.
-    // FAILED is excluded: no money moved.
-    const CONSUMING_REFUND_STATUSES = ['PENDING', 'COMPLETED'];
-    const alreadyRefunded = payment.refunds
-      .filter((r: any) => CONSUMING_REFUND_STATUSES.includes(r.status))
-      .reduce((sum: number, r: any) => sum + Number(r.amount), 0);
-
-    const maxRefund = Number(payment.amount) - alreadyRefunded;
-    if (dto.amount > maxRefund) {
-      throw new BadRequestException(`Refund amount ${dto.amount} exceeds available ${maxRefund}`);
-    }
-
-    // Refund schema: id, tenantId, paymentId, amount, reason, status, gatewayRefundId, gateway, initiatedBy, processedAt
-    // No currency or failureReason fields on Refund
-    const refund = await this.prisma.refund.create({
-      data: {
-        tenantId,
-	branchId: payment.branchId,
-        paymentId:   dto.paymentId,
-        amount:      dto.amount,
-        reason:      dto.reason,
-        status:      'PENDING',
-        gateway:     payment.gateway,  // required field — copy from payment
-        initiatedBy: actorId,
-      },
-    });
-
+    // Never hold a database transaction (and its advisory lock) open across a
+    // network call to a payment provider: it pins a connection and blocks
+    // every other refund on this payment for the duration of an external
+    // round trip, which may hang until timeout.
     let gatewayRefundId = '';
     try {
       gatewayRefundId = await this.processGatewayRefund(payment, dto.amount);
     } catch (err: any) {
-      // No failureReason field on Refund — use notes via reason update
+      // No failureReason field on Refund — record the cause in reason.
+      // Releases the reservation: FAILED does not count toward alreadyRefunded.
       await this.prisma.refund.update({
         where: { id: refund.id },
         data:  { status: 'FAILED', reason: `${dto.reason} | FAILED: ${err.message}` },
@@ -85,32 +143,59 @@ export class RefundService {
       throw new BadRequestException(`Gateway refund failed: ${err.message}`);
     }
 
-    await this.prisma.refund.update({
-      where: { id: refund.id },
-      data:  { status: 'COMPLETED', gatewayRefundId, processedAt: new Date() },
-    });
-
-    // Update payment status based on refund totals
-    const newTotalRefunded = alreadyRefunded + dto.amount;
-    const isFullRefund     = newTotalRefunded >= Number(payment.amount);
-    await this.prisma.payment.update({
-      where: { id: dto.paymentId },
-      data:  { status: isFullRefund ? 'REFUNDED' : 'PARTIALLY_REFUNDED' },
-    });
-
-    // Reopen invoice if fully refunded
-    if (isFullRefund) {
-      await this.prisma.invoice.update({
-        where: { id: payment.invoiceId },
-        data: {
-          status:     'SENT',
-          paidAmount: 0,
-          dueAmount:  payment.invoice.totalAmount,
-          paidAt:     null,
-        },
+    // ── Phase 3 (transactional): settle ────────────────────────────────────
+    //
+    // Refund completion, payment status and invoice reopening move together
+    // or not at all. Previously these were three independent writes: a crash
+    // between them could leave a COMPLETED refund against a payment still
+    // marked SUCCESS, or a fully-refunded payment against a PAID invoice.
+    //
+    // Totals are recomputed from the database inside this transaction rather
+    // than carried over from Phase 1, so the payment's status reflects
+    // committed state at settlement time.
+    const settled = await this.prisma.$transaction(async (tx: any) => {
+      const completedRefund = await tx.refund.update({
+        where: { id: refund.id },
+        data:  { status: 'COMPLETED', gatewayRefundId, processedAt: new Date() },
       });
-    }
 
+      const completed = await tx.refund.findMany({
+        where:  { paymentId: dto.paymentId, status: 'COMPLETED' },
+        select: { amount: true },
+      });
+      const totalRefunded = completed.reduce(
+        (sum: number, r: any) => sum + Number(r.amount),
+        0,
+      );
+      const isFullRefund = totalRefunded >= Number(payment.amount);
+
+      await tx.payment.update({
+        where: { id: dto.paymentId },
+        data:  { status: isFullRefund ? 'REFUNDED' : 'PARTIALLY_REFUNDED' },
+      });
+
+      // Reopen invoice if fully refunded
+      if (isFullRefund) {
+        await tx.invoice.update({
+          where: { id: payment.invoiceId },
+          data: {
+            status:     'SENT',
+            paidAmount: 0,
+            dueAmount:  payment.invoice.totalAmount,
+            paidAt:     null,
+          },
+        });
+      }
+
+      return { completedRefund, isFullRefund };
+    });
+
+    // NOTE (IMM-022/023): this audit write is still outside the settlement
+    // transaction, because AuditService.log() writes through its own injected
+    // PrismaService and cannot join a caller's transaction. Making financial
+    // audit entries transactional requires AuditService to accept a
+    // transaction client -- a cross-cutting change to a core service used by
+    // every module, deliberately not bundled into this refund fix.
     await this.audit.log({
       tenantId,
       actorId,
@@ -121,12 +206,11 @@ export class RefundService {
       // own try/catch, so every refund silently produced NO audit trail.
       // REFUND_PROCESSED is the only valid refund action in the enum.
       //
-      // NOTE: AuditLogParams.action is typed `any`, so neither the old value
+      // NOTE: AuditLogParams.action is typed 'any', so neither the old value
       // nor this one is compile-checked. That untyped interface is the root
-      // cause of this recurring bug class (see RefundService here,
-      // and the handoff notes). Retyping it to AuditAction touches every
-      // audit call site across every module -- out of scope for FEE-1, but
-      // worth its own task.
+      // cause of this recurring bug class. Retyping it to AuditAction touches
+      // every audit call site across every module -- out of scope for FEE-1,
+      // but worth its own task.
       action:     'REFUND_PROCESSED' as any,
       entityType: 'Payment',
       entityId:   dto.paymentId,
@@ -134,7 +218,7 @@ export class RefundService {
     });
 
     this.logger.log(`Refund processed: ${refund.id} amount=${dto.amount} gateway=${gatewayRefundId}`);
-    return { refund: { ...refund, gatewayRefundId } };
+    return { refund: { ...settled.completedRefund, gatewayRefundId } };
   }
 
   private async processGatewayRefund(payment: any, amount: number): Promise<string> {
