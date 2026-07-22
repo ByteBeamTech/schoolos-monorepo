@@ -33,13 +33,60 @@ export class DiscountService {
       select: { id: true },
     });
 
+    // FEE-1: resolve the branch's DiscountCategory row.
+    //
+    // dto.category is a CODE from the DiscountCategory enum in billing.dto.ts
+    // ('SIBLING', 'MERIT', ...). Discount.categoryId is a foreign key to
+    // DiscountCategory.id (a cuid). Previously the code string was assigned
+    // straight to the FK column, so every discount creation failed on a
+    // foreign-key violation.
+    //
+    // Categories are branch-managed CONFIGURATION, provisioned when a branch
+    // is created (and backfilled for pre-existing branches). This resolves an
+    // existing row and REJECTS when absent -- it must never create one:
+    // financial master data is not created as a side effect of a transactional
+    // write.
+    const category = await this.prisma.discountCategory.findUnique({
+      where: { branchId_code: { branchId: student.branchId, code: dto.category } },
+      select: { id: true, isActive: true },
+    });
+
+    if (!category) {
+      // Reaching this means the branch was never provisioned -- a
+      // configuration gap, not a client error in the usual sense. Named
+      // explicitly so the operator knows which branch and code to fix, and
+      // pointed at the remedy.
+      throw new BadRequestException(
+        `Discount category '${dto.category}' is not configured for this branch. ` +
+          `Run the discount-category backfill for branch ${student.branchId}, ` +
+          `or create the category before issuing discounts.`,
+      );
+    }
+
+    // BUSINESS RULE (explicit, not an implementation detail): a
+    // DiscountCategory must BOTH exist AND be active for a discount to be
+    // created against it. Either condition failing rejects the request.
+    //
+    // Do not relax this to a bare existence check. When category
+    // administration lands (FEE-2), an administrator disabling a category
+    // must actually stop new discounts from using it -- otherwise isActive is
+    // a misleading no-op that shows "disabled" in the UI while discounts keep
+    // being issued. Existing discounts already issued under a category are
+    // unaffected: this rule governs creation only, never retroactive
+    // invalidation of occurred facts (ADR-FEE-003 IMM-001).
+    if (!category.isActive) {
+      throw new BadRequestException(
+        `Discount category '${dto.category}' is disabled for this branch and cannot be used for new discounts.`,
+      );
+    }
+
     const discount = await (this.prisma as any).discount.create({
       data: {
         tenantId,
         branchId:       student.branchId,           // P0 FIX: was undefined
         studentId:      dto.studentId,
         academicYearId: currentSession?.id ?? 'default',
-        categoryId:     dto.category as any,        // maps to DiscountCategory enum value
+        categoryId:     category.id,                // resolved FK, never the raw code
         type:           dto.type      as any,
         value:          dto.value,
         appliedAmount:  dto.value,                  // snapshot — will be recalculated on invoice generate
