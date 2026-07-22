@@ -11,7 +11,7 @@
 import { EventEmitter2 }    from '@nestjs/event-emitter';
 import { EVENTS }            from '../../../../core/events/events.constants';
 import {
-  Injectable, NotFoundException, BadRequestException, Logger, ForbiddenException,
+  Injectable, NotFoundException, BadRequestException, ConflictException, Logger, ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService }     from '@infra/database/prisma.service';
 import { AuditService }      from '../../../../core/compliance/audit.service';
@@ -251,10 +251,36 @@ export class InvoiceService {
   }
 
   // ── Send ──────────────────────────────────────────────────────────────────
+  /**
+   * FEE-1 CONCURRENCY: the DRAFT check is the WHERE clause of the update
+   * itself (compare-and-swap), not a preceding read. Two concurrent sends can
+   * no longer both observe DRAFT and both proceed -- and, importantly, the
+   * INVOICE_SENT event can no longer be emitted twice for one invoice, which
+   * would have produced duplicate notifications to the parent.
+   *
+   * The read after a failed swap only explains the failure; it does not
+   * participate in the decision.
+   */
   async send(tenantId: string, id: string, actorId: string) {
-    const invoice = await this.findById(tenantId, id);
-    if (invoice.status !== 'DRAFT') throw new BadRequestException(`Invoice is already ${invoice.status}.`);
-    const updated = await this.prisma.invoice.update({ where: { id }, data: { status: 'SENT' } });
+    const updated = await this.prisma.$transaction(async (tx: any) => {
+      const { count } = await tx.invoice.updateMany({
+        where: { id, tenantId, status: 'DRAFT' },
+        data:  { status: 'SENT' },
+      });
+
+      if (count === 0) {
+        const current = await tx.invoice.findFirst({
+          where:  { id, tenantId },
+          select: { status: true },
+        });
+        if (!current) throw new NotFoundException(`Invoice not found: ${id}`);
+        throw new ConflictException(`Invoice is already ${current.status}.`);
+      }
+
+      // Post-write read: the event payload and return value need the full row.
+      return tx.invoice.findFirst({ where: { id, tenantId } });
+    });
+
     this.emitter.emit(EVENTS.INVOICE_SENT, {
       tenantId, invoiceId: updated.id, studentId: updated.studentId,
       invoiceNumber: updated.invoiceNumber, totalAmount: updated.totalAmount, dueDate: updated.dueDate,
@@ -264,22 +290,64 @@ export class InvoiceService {
   }
 
   // ── Cancel — P0 FIX: missing entirely ────────────────────────────────────
+  /**
+   * FEE-1 CONCURRENCY: every precondition is expressed in the WHERE clause of
+   * the update itself (compare-and-swap) -- including "has no successful
+   * payment", as a relation filter, so a payment that succeeds concurrently
+   * cannot slip past a check that was made moments earlier. Previously all
+   * three guards were evaluated against a prior read.
+   *
+   * Reads happen only AFTER a failed swap, to reproduce the specific,
+   * actionable message the caller used to get. They do not participate in the
+   * decision. Classification of the failure:
+   *   - row gone            -> NotFound (unchanged)
+   *   - successful payments -> BadRequest (a business rule, not a race;
+   *                            deliberately NOT a conflict)
+   *   - status ineligible   -> Conflict (someone else moved it)
+   */
   async cancel(tenantId: string, id: string, reason: string, actorId: string) {
-    const invoice = await this.findById(tenantId, id);
-    if (invoice.status === 'PAID') throw new BadRequestException('Cannot cancel a paid invoice.');
-    if (invoice.status === 'CANCELLED') throw new BadRequestException('Invoice is already cancelled.');
-    const successPayments = invoice.payments.filter((p: any) => p.status === 'SUCCESS');
-    if (successPayments.length) throw new BadRequestException('Cannot cancel an invoice with successful payments. Issue a refund first.');
+    const { updated, previousStatus } = await this.prisma.$transaction(async (tx: any) => {
+      // Prior status is needed for the audit trail only. It is read inside the
+      // transaction, and the swap below -- not this value -- is what authorizes
+      // the cancellation, so a stale read cannot weaken the guard.
+      const before = await tx.invoice.findFirst({
+        where:  { id, tenantId },
+        select: { status: true },
+      });
 
-    const updated = await this.prisma.invoice.update({
-      where: { id },
-      data:  { status: 'CANCELLED', notes: reason, dueAmount: 0 },
+      const { count } = await tx.invoice.updateMany({
+        where: {
+          id,
+          tenantId,
+          status:   { notIn: ['PAID', 'CANCELLED'] as any[] },
+          payments: { none: { status: 'SUCCESS' as any } },
+        },
+        data: { status: 'CANCELLED', notes: reason, dueAmount: 0 },
+      });
+
+      if (count === 0) {
+        const current = await tx.invoice.findFirst({
+          where:   { id, tenantId },
+          select:  { status: true, payments: { where: { status: 'SUCCESS' as any }, select: { id: true } } },
+        });
+        if (!current) throw new NotFoundException(`Invoice not found: ${id}`);
+        if (current.payments.length) {
+          throw new BadRequestException('Cannot cancel an invoice with successful payments. Issue a refund first.');
+        }
+        if (current.status === 'PAID')      throw new ConflictException('Cannot cancel a paid invoice.');
+        if (current.status === 'CANCELLED') throw new ConflictException('Invoice is already cancelled.');
+        throw new ConflictException(`Invoice could not be cancelled; its state changed concurrently (now ${current.status}).`);
+      }
+
+      const updated = await tx.invoice.findFirst({ where: { id, tenantId } });
+      return { updated, previousStatus: before?.status };
     });
+
     await this.audit.logUpdate({
       tenantId, actorId, entityType: 'Invoice', entityId: id,
-      before: { status: invoice.status }, after: { status: 'CANCELLED', reason },
+      before: { status: previousStatus }, after: { status: 'CANCELLED', reason },
     });
-    this.logger.log(`Invoice cancelled: ${invoice.invoiceNumber} reason="${reason}" by ${actorId}`);
+    this.logger.log(`Invoice cancelled: ${updated.invoiceNumber} reason="${reason}" by ${actorId}`);
     return updated;
   }
 

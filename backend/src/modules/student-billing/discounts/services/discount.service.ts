@@ -2,7 +2,7 @@
 // FULL REPLACEMENT
 // P0 FIX: branchId was undefined in DiscountApproval.create() — derived from student now
 
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }  from '../../../../core/compliance/audit.service';
 import { CreateDiscountDto, ApproveDiscountDto, RejectDiscountDto } from '../../dto/billing.dto';
@@ -167,15 +167,47 @@ export class DiscountService {
     return d;
   }
 
+  /**
+   * FEE-1 CONCURRENCY: the PENDING check is the WHERE clause of the update
+   * itself (compare-and-swap), not a preceding read.
+   *
+   * Previously this read the discount, checked approvalStatus, then updated --
+   * a read-decide-write with nothing between the read and the write. Two
+   * approvers, or an approver and a rejecter, could both observe PENDING and
+   * both proceed; the second write simply overwrote the first, and BOTH wrote
+   * DiscountApproval decision rows. The status guard cannot be lost this way:
+   * the row only transitions if it is still PENDING at the moment of the
+   * write, so exactly one caller can win.
+   *
+   * The three writes now share one transaction, so an approved discount can
+   * never be left with a PENDING approval row.
+   *
+   * A read happens only AFTER a failed swap, purely to explain WHY it failed
+   * (missing row vs already decided). It does not participate in the decision,
+   * so it cannot reintroduce the race.
+   */
   async approve(tenantId: string, id: string, dto: ApproveDiscountDto, actorId: string) {
-    const d = await this.findById(tenantId, id);
-    if (d.approvalStatus !== 'PENDING') throw new BadRequestException(`Discount is already ${d.approvalStatus}.`);
+    await this.prisma.$transaction(async (tx: any) => {
+      const { count } = await tx.discount.updateMany({
+        where: { id, tenantId, approvalStatus: 'PENDING' },
+        data:  { approvalStatus: 'APPROVED' },
+      });
 
-    await this.prisma.discount.update({ where: { id }, data: { approvalStatus: 'APPROVED' } });
-    await this.prisma.discountApproval.updateMany({
-      where: { discountId: id, status: 'PENDING' },
-      data:  { approverId: actorId, status: 'APPROVED', approvalNote: dto.approvalNote, decidedAt: new Date() },
+      if (count === 0) {
+        const current = await tx.discount.findFirst({
+          where:  { id, tenantId },
+          select: { approvalStatus: true },
+        });
+        if (!current) throw new NotFoundException(`Discount not found: ${id}`);
+        throw new ConflictException(`Discount is already ${current.approvalStatus}.`);
+      }
+
+      await tx.discountApproval.updateMany({
+        where: { discountId: id, status: 'PENDING' },
+        data:  { approverId: actorId, status: 'APPROVED', approvalNote: dto.approvalNote, decidedAt: new Date() },
+      });
     });
+
     await this.audit.logUpdate({
       tenantId, actorId, entityType: 'Discount', entityId: id,
       before: { approvalStatus: 'PENDING' }, after: { approvalStatus: 'APPROVED' },
@@ -184,15 +216,29 @@ export class DiscountService {
     return this.findById(tenantId, id);
   }
 
+  /** FEE-1 CONCURRENCY: compare-and-swap, exactly as approve() -- see its note. */
   async reject(tenantId: string, id: string, dto: RejectDiscountDto, actorId: string) {
-    const d = await this.findById(tenantId, id);
-    if (d.approvalStatus !== 'PENDING') throw new BadRequestException(`Discount is already ${d.approvalStatus}.`);
+    await this.prisma.$transaction(async (tx: any) => {
+      const { count } = await tx.discount.updateMany({
+        where: { id, tenantId, approvalStatus: 'PENDING' },
+        data:  { approvalStatus: 'REJECTED' },
+      });
 
-    await this.prisma.discount.update({ where: { id }, data: { approvalStatus: 'REJECTED' } });
-    await this.prisma.discountApproval.updateMany({
-      where: { discountId: id, status: 'PENDING' },
-      data:  { approverId: actorId, status: 'REJECTED', approvalNote: dto.rejectionNote, decidedAt: new Date() },
+      if (count === 0) {
+        const current = await tx.discount.findFirst({
+          where:  { id, tenantId },
+          select: { approvalStatus: true },
+        });
+        if (!current) throw new NotFoundException(`Discount not found: ${id}`);
+        throw new ConflictException(`Discount is already ${current.approvalStatus}.`);
+      }
+
+      await tx.discountApproval.updateMany({
+        where: { discountId: id, status: 'PENDING' },
+        data:  { approverId: actorId, status: 'REJECTED', approvalNote: dto.rejectionNote, decidedAt: new Date() },
+      });
     });
+
     await this.audit.logUpdate({
       tenantId, actorId, entityType: 'Discount', entityId: id,
       before: { approvalStatus: 'PENDING' }, after: { approvalStatus: 'REJECTED' },
