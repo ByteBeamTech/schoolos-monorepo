@@ -139,4 +139,95 @@ describe('InvoiceService', () => {
     await svc.generate('t-1', { studentId: 'stu-1', feePlanId: 'plan-1', dueDate: '2025-04-30' }, 'actor-1');
     expect(emitter.emit).toHaveBeenCalledWith('invoice.generated', expect.any(Object));
   });
+
+  // ── P0: getStats() branch scoping + collectedAmount fix ──────────────────
+  describe('getStats', () => {
+    it('passes tenantId-only filters through when authorizedBranchIds is omitted (backward compatible)', async () => {
+      (prisma.invoice.aggregate as jest.Mock).mockResolvedValue({ _sum: { totalAmount: 0, paidAmount: 0 }, _count: 0 });
+      (prisma.invoice.count as jest.Mock).mockResolvedValue(0);
+
+      await service.getStats('t-1');
+
+      const aggCall = (prisma.invoice.aggregate as jest.Mock).mock.calls[0][0];
+      expect(aggCall.where).toEqual({ tenantId: 't-1' });
+    });
+
+    it('scopes every query to the caller\'s authorized branches when restricted', async () => {
+      (prisma.invoice.aggregate as jest.Mock).mockResolvedValue({ _sum: { totalAmount: 0, paidAmount: 0 }, _count: 0 });
+      (prisma.invoice.count as jest.Mock).mockResolvedValue(0);
+
+      await service.getStats('t-1', undefined, ['b-1', 'b-2']);
+
+      const calls = [
+        ...(prisma.invoice.aggregate as jest.Mock).mock.calls.map((c) => c[0].where),
+        ...(prisma.invoice.count as jest.Mock).mock.calls.map((c) => c[0].where),
+      ];
+      for (const where of calls) {
+        expect(where.branchId).toEqual({ in: ['b-1', 'b-2'] });
+      }
+    });
+
+    it('tenant-wide callers (null) see no branch filter at all', async () => {
+      (prisma.invoice.aggregate as jest.Mock).mockResolvedValue({ _sum: { totalAmount: 0, paidAmount: 0 }, _count: 0 });
+      (prisma.invoice.count as jest.Mock).mockResolvedValue(0);
+
+      await service.getStats('t-1', undefined, null);
+
+      const aggCall = (prisma.invoice.aggregate as jest.Mock).mock.calls[0][0];
+      expect(aggCall.where.branchId).toBeUndefined();
+    });
+
+    it('collectedAmount sums paidAmount across ALL matching invoices, not just status=PAID', async () => {
+      // Two calls to aggregate: [0] totals (totalAmount + count), [1] collected (paidAmount, unrestricted by status).
+      (prisma.invoice.aggregate as jest.Mock)
+        .mockResolvedValueOnce({ _sum: { totalAmount: 50000 }, _count: 5 })
+        .mockResolvedValueOnce({ _sum: { paidAmount: 32000 } }); // includes PARTIALLY_PAID invoices
+      (prisma.invoice.count as jest.Mock).mockResolvedValue(0);
+
+      const stats = await service.getStats('t-1');
+
+      expect(stats.collectedAmount).toBe(32000);
+      // The second aggregate call (the one collectedAmount comes from) must
+      // carry NO status restriction -- that was the bug.
+      const collectedCall = (prisma.invoice.aggregate as jest.Mock).mock.calls[1][0];
+      expect(collectedCall.where.status).toBeUndefined();
+    });
+
+    it('paidCount is still the count of fully PAID invoices, queried separately', async () => {
+      (prisma.invoice.aggregate as jest.Mock).mockResolvedValue({ _sum: { totalAmount: 0, paidAmount: 0 }, _count: 0 });
+      (prisma.invoice.count as jest.Mock)
+        .mockResolvedValueOnce(7)  // paidCount
+        .mockResolvedValueOnce(2)  // overdueCount
+        .mockResolvedValueOnce(1); // draftCount
+
+      const stats = await service.getStats('t-1');
+
+      expect(stats.paidCount).toBe(7);
+      expect((prisma.invoice.count as jest.Mock).mock.calls[0][0].where.status).toBe('PAID');
+    });
+  });
+
+  // ── P0: findOverdue() branch scoping ──────────────────────────────────────
+  describe('findOverdue', () => {
+    it('applies no branch filter when authorizedBranchIds is omitted (backward compatible)', async () => {
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([]);
+      await service.findOverdue('t-1');
+      const call = (prisma.invoice.findMany as jest.Mock).mock.calls[0][0];
+      expect(call.where.branchId).toBeUndefined();
+    });
+
+    it('restricts to the given branches when authorizedBranchIds is a set', async () => {
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([]);
+      await service.findOverdue('t-1', ['b-1']);
+      const call = (prisma.invoice.findMany as jest.Mock).mock.calls[0][0];
+      expect(call.where.branchId).toEqual({ in: ['b-1'] });
+    });
+
+    it('fails closed: an empty authorized set filters to nothing', async () => {
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([]);
+      await service.findOverdue('t-1', []);
+      const call = (prisma.invoice.findMany as jest.Mock).mock.calls[0][0];
+      expect(call.where.branchId).toEqual({ in: [] });
+    });
+  });
 });

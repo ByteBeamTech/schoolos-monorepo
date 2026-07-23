@@ -352,9 +352,17 @@ export class InvoiceService {
   }
 
   // ── Overdue list ──────────────────────────────────────────────────────────
-  async findOverdue(tenantId: string) {
+  // P0 FIX: was tenant-only, no branch scoping -- inconsistent with every
+  // other read in this service (findAll, getDefaulters, findById). A
+  // branch-restricted caller could see every overdue invoice tenant-wide.
+  async findOverdue(tenantId: string, authorizedBranchIds?: string[] | null) {
     return this.prisma.invoice.findMany({
-      where: { tenantId, status: { in: ['SENT', 'PARTIALLY_PAID'] as any[] }, dueDate: { lt: new Date() } },
+      where: {
+        tenantId,
+        status:  { in: ['SENT', 'PARTIALLY_PAID'] as any[] },
+        dueDate: { lt: new Date() },
+        ...(authorizedBranchIds != null && { branchId: { in: authorizedBranchIds } }),
+      },
       include: {
         student: { select: { id: true, firstName: true, lastName: true, admissionNumber: true, classId: true } },
         lateFees: { where: { status: 'ACTIVE' as any }, take: 1 },
@@ -431,19 +439,45 @@ export class InvoiceService {
   }
 
   // ── Stats ─────────────────────────────────────────────────────────────────
-  async getStats(tenantId: string, academicYear?: string) {
-    const where: any = { tenantId, ...(academicYear && { academicYear }) };
-    const [total, paid, overdue, draft] = await Promise.all([
+  /**
+   * P0 FIX (two bugs, same method):
+   *
+   * 1. No branch scoping. Every other read here (findAll, getDefaulters,
+   *    findById) takes authorizedBranchIds and filters by it per ADR-FEE-002;
+   *    this one didn't, so a branch-restricted caller saw tenant-wide totals.
+   *
+   * 2. collectedAmount only summed paidAmount from invoices with
+   *    status === 'PAID', silently dropping every PARTIALLY_PAID invoice's
+   *    collected amount. A school with a lot of instalment payments would see
+   *    collectedAmount under-reported by the full partially-paid total. Fixed
+   *    by summing paidAmount across ALL invoices matching the filter --
+   *    paidAmount is already the running total regardless of status, so no
+   *    status restriction belongs on this aggregate. paidCount (the count of
+   *    fully PAID invoices) is now a separate query so this fix doesn't lose
+   *    that stat.
+   */
+  async getStats(
+    tenantId:            string,
+    academicYear?:       string,
+    authorizedBranchIds?: string[] | null,
+  ) {
+    const where: any = {
+      tenantId,
+      ...(academicYear && { academicYear }),
+      ...(authorizedBranchIds != null && { branchId: { in: authorizedBranchIds } }),
+    };
+    const [total, collected, paidCount, overdue, draft] = await Promise.all([
       this.prisma.invoice.aggregate({ where, _sum: { totalAmount: true }, _count: true }),
-      this.prisma.invoice.aggregate({ where: { ...where, status: 'PAID' }, _sum: { paidAmount: true }, _count: true }),
+      this.prisma.invoice.aggregate({ where, _sum: { paidAmount: true } }),
+      this.prisma.invoice.count({ where: { ...where, status: 'PAID' } }),
       this.prisma.invoice.count({ where: { ...where, status: { in: ['SENT', 'PARTIALLY_PAID'] as any[] }, dueDate: { lt: new Date() } } }),
       this.prisma.invoice.count({ where: { ...where, status: 'DRAFT' } }),
     ]);
     return {
       totalInvoices: total._count,
       totalAmount:     Number(total._sum.totalAmount ?? 0),
-      collectedAmount: Number(paid._sum.paidAmount ?? 0),
-      overdueCount: overdue, draftCount: draft, paidCount: paid._count,
+      collectedAmount: Number(collected._sum.paidAmount ?? 0),
+      overdueCount: overdue, draftCount: draft, paidCount,
     };
   }
 }

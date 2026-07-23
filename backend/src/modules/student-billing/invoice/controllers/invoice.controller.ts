@@ -80,7 +80,7 @@ export class InvoiceController {
   @Roles('SUPER_ADMIN','SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'List overdue invoices' })
   findOverdue(@CurrentUser() user: AuthenticatedUser) {
-    return this.service.findOverdue(user.tenantId);
+    return this.service.findOverdue(user.tenantId, this.access.resolveAuthorizedBranchIds(user));
   }
 
   @Get('defaulters')
@@ -110,7 +110,7 @@ export class InvoiceController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('academicYear') academicYear?: string,
   ) {
-    return this.service.getStats(user.tenantId, academicYear);
+    return this.service.getStats(user.tenantId, academicYear, this.access.resolveAuthorizedBranchIds(user));
   }
 
   @Get(':id')
