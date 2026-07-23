@@ -7,7 +7,25 @@ export class AnalyticsService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async getOverview(tenantId: string) {
+  /**
+   * P0 FIX: no branch scoping at all. Every other read across this module
+   * (invoice findAll/getDefaulters/findById/getStats/findOverdue) filters by
+   * authorizedBranchIds per ADR-FEE-002; this dashboard endpoint didn't, so a
+   * branch-restricted caller (PRINCIPAL/ACCOUNTANT mapped to one branch) saw
+   * tenant-wide financial totals -- a cross-branch data leak within the same
+   * tenant. Every sub-query below now takes the same optional branch filter.
+   *
+   * The late-fee figures here (lateFeeCollected/lateFeeWaived/
+   * lateFeeOutstanding) were also structurally wrong before the P0 fix to
+   * LateFeeService.allocatePayment()/waiveLateFee(): paidAmount/amountWaived
+   * were never written anywhere, so this aggregate always summed zeros. No
+   * change needed in the aggregate itself -- it was already summing the
+   * right fields, just from data nothing ever populated. It is correct now
+   * that those fields are written.
+   */
+  async getOverview(tenantId: string, authorizedBranchIds?: string[] | null) {
+    const branchFilter = authorizedBranchIds != null ? { branchId: { in: authorizedBranchIds } } : {};
+
     const [
       invoices,
       payments,
@@ -17,7 +35,7 @@ export class AnalyticsService {
       overdueInvoices,
     ] = await Promise.all([
       this.prisma.invoice.aggregate({
-        where: { tenantId },
+        where: { tenantId, ...branchFilter },
         _sum: {
           totalAmount: true,
           paidAmount: true,
@@ -29,6 +47,7 @@ export class AnalyticsService {
         where: {
           tenantId,
           status: 'SUCCESS',
+          ...branchFilter,
         },
         _sum: {
           amount: true,
@@ -39,6 +58,7 @@ export class AnalyticsService {
         where: {
           tenantId,
           status: 'COMPLETED',
+          ...branchFilter,
         },
         _sum: {
           amount: true,
@@ -50,6 +70,7 @@ export class AnalyticsService {
           tenantId,
           isActive: true,
           approvalStatus: 'APPROVED',
+          ...branchFilter,
         },
         _sum: {
           appliedAmount: true,
@@ -59,6 +80,7 @@ export class AnalyticsService {
       (this.prisma as any).lateFee.aggregate({
         where: {
           tenantId,
+          ...branchFilter,
         },
         _sum: {
           amount: true,
@@ -71,6 +93,7 @@ export class AnalyticsService {
         where: {
           tenantId,
           status: 'OVERDUE',
+          ...branchFilter,
         },
       }),
     ]);
