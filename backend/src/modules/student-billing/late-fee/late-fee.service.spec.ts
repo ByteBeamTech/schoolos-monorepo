@@ -5,6 +5,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@infra/database/prisma.service';
+import { AuditService } from '../../../core/compliance/audit.service';
 import { LateFeeService } from './late-fee.service';
 
 describe('LateFeeService.allocatePayment', () => {
@@ -49,7 +50,11 @@ describe('LateFeeService.allocatePayment', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [LateFeeService, { provide: PrismaService, useValue: {} }],
+      providers: [
+        LateFeeService,
+        { provide: PrismaService, useValue: {} },
+        { provide: AuditService, useValue: { logUpdate: jest.fn() } },
+      ],
     }).compile();
     service = module.get(LateFeeService);
   });
@@ -137,5 +142,165 @@ describe('LateFeeService.allocatePayment', () => {
       service.allocatePayment(tx, 't-1', 'inv-1', 'pay-1', 100),
     ).resolves.toBeUndefined();
     expect(tx.lateFee.update).not.toHaveBeenCalled();
+  });
+});
+
+// The other half of the P0 fix: a late fee's schema always modelled a waiver
+// (amountWaived, waivedAt/By, status WAIVED) but nothing ever wrote to it, and
+// waiving a fee must also give back what applyLateFees() added to the
+// invoice's own dueAmount/totalAmount -- otherwise "waived" is cosmetic.
+describe('LateFeeService.waiveLateFee', () => {
+  const { NotFoundException, BadRequestException } = require('@nestjs/common');
+
+  let service: LateFeeService;
+  let prisma: any;
+  let fee: any;
+  let invoice: any;
+  let audit: any;
+
+  beforeEach(async () => {
+    fee = {
+      id: 'lf-1', tenantId: 't-1', invoiceId: 'inv-1',
+      status: 'ACTIVE', amount: 100, paidAmount: 0, amountWaived: 0,
+      reason: null,
+    };
+    invoice = {
+      id: 'inv-1', tenantId: 't-1', status: 'OVERDUE',
+      totalAmount: 1100, dueAmount: 1100, paidAt: null,
+    };
+    audit = { logUpdate: jest.fn() };
+
+    prisma = {
+      lateFee: {
+        findFirst: jest.fn().mockImplementation(() => Promise.resolve({ ...fee })),
+        update: jest.fn().mockImplementation(({ data }: any) => {
+          Object.assign(fee, data);
+          return Promise.resolve({ ...fee });
+        }),
+      },
+      invoice: {
+        findFirst: jest.fn().mockImplementation(() => Promise.resolve({ ...invoice })),
+        update: jest.fn().mockImplementation(({ data }: any) => {
+          Object.assign(invoice, data);
+          return Promise.resolve({ ...invoice });
+        }),
+      },
+      $transaction: jest.fn((cb: any) => cb(prisma)),
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LateFeeService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: audit },
+      ],
+    }).compile();
+    service = module.get(LateFeeService);
+  });
+
+  it('rejects a zero or negative amount before touching the database', async () => {
+    await expect(service.waiveLateFee('t-1', 'lf-1', 0, 'actor-1', 'goodwill')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.waiveLateFee('t-1', 'lf-1', -5, 'actor-1', 'goodwill')).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('404s when the fee does not exist in this tenant', async () => {
+    prisma.lateFee.findFirst.mockResolvedValue(null);
+    await expect(service.waiveLateFee('t-1', 'missing', 10, 'actor-1', 'x')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rejects waiving a fee that is not ACTIVE', async () => {
+    fee.status = 'PAID';
+    await expect(service.waiveLateFee('t-1', 'lf-1', 10, 'actor-1', 'x')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects a waiver larger than the outstanding balance', async () => {
+    fee.amount = 100; fee.paidAmount = 60; fee.amountWaived = 0; // 40 outstanding
+    await expect(service.waiveLateFee('t-1', 'lf-1', 41, 'actor-1', 'x')).rejects.toThrow(/exceeds outstanding/);
+  });
+
+  it('a full waiver marks the fee WAIVED and stamps waiver metadata', async () => {
+    fee.amount = 100;
+    const { lateFee: result } = await service.waiveLateFee('t-1', 'lf-1', 100, 'actor-1', 'goodwill gesture');
+
+    expect(result.amountWaived).toBe(100);
+    expect(result.finalAmount).toBe(0);
+    expect(result.status).toBe('WAIVED');
+    expect(result.waivedById).toBe('actor-1');
+    expect(result.reason).toBe('goodwill gesture');
+    expect(result.waivedAt).toBeInstanceOf(Date);
+  });
+
+  it('a partial waiver leaves the fee ACTIVE with the remainder still outstanding', async () => {
+    fee.amount = 100;
+    const { lateFee: result } = await service.waiveLateFee('t-1', 'lf-1', 30, 'actor-1', 'partial goodwill');
+
+    expect(result.amountWaived).toBe(30);
+    expect(result.finalAmount).toBe(70);
+    expect(result.status).toBe('ACTIVE');
+  });
+
+  it('a second partial waiver stacks on top of the first, never exceeding the total', async () => {
+    fee.amount = 100; fee.amountWaived = 30;
+    const { lateFee: result } = await service.waiveLateFee('t-1', 'lf-1', 70, 'actor-1', 'clear the rest');
+
+    expect(result.amountWaived).toBe(100);
+    expect(result.status).toBe('WAIVED');
+  });
+
+  it('accounts for prior payments when computing outstanding for the guard', async () => {
+    fee.amount = 100; fee.paidAmount = 50; // only 50 left to waive
+    await expect(service.waiveLateFee('t-1', 'lf-1', 51, 'actor-1', 'x')).rejects.toThrow(/exceeds outstanding/);
+    await expect(service.waiveLateFee('t-1', 'lf-1', 50, 'actor-1', 'x')).resolves.toBeDefined();
+  });
+
+  it('reduces the invoice dueAmount and totalAmount by the waived amount', async () => {
+    await service.waiveLateFee('t-1', 'lf-1', 40, 'actor-1', 'x');
+    expect(invoice.dueAmount).toBe(1060);
+    expect(invoice.totalAmount).toBe(1060);
+  });
+
+  it('flips the invoice to PAID when the waiver clears the remaining due amount', async () => {
+    invoice.totalAmount = 100; invoice.dueAmount = 100;
+    fee.amount = 100;
+    await service.waiveLateFee('t-1', 'lf-1', 100, 'actor-1', 'clear it out');
+
+    expect(invoice.dueAmount).toBe(0);
+    expect(invoice.status).toBe('PAID');
+    expect(invoice.paidAt).toBeInstanceOf(Date);
+  });
+
+  it('never lets the invoice dueAmount go negative', async () => {
+    invoice.dueAmount = 20; // less than the fee being waived, shouldn't happen but must not corrupt data
+    fee.amount = 40;
+    await service.waiveLateFee('t-1', 'lf-1', 40, 'actor-1', 'x');
+    expect(invoice.dueAmount).toBe(0);
+  });
+
+  it('takes the per-invoice advisory lock inside the transaction', async () => {
+    await service.waiveLateFee('t-1', 'lf-1', 10, 'actor-1', 'x');
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('pg_advisory_xact_lock'),
+      expect.any(Number),
+    );
+  });
+
+  it('writes an audit entry through the same transaction', async () => {
+    await service.waiveLateFee('t-1', 'lf-1', 10, 'actor-1', 'goodwill');
+    expect(audit.logUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 't-1', actorId: 'actor-1', entityType: 'LateFee', entityId: 'lf-1',
+      }),
+      prisma, // the tx client, not a fresh connection
+    );
+  });
+
+  it('everything commits or rolls back together', async () => {
+    prisma.invoice.update.mockRejectedValue(new Error('db down'));
+    await expect(service.waiveLateFee('t-1', 'lf-1', 10, 'actor-1', 'x')).rejects.toThrow('db down');
+    // The whole mock transaction ran inline (cb(prisma)), so a rejected
+    // invoice.update propagates and the caller must treat it as a full
+    // rollback -- nothing here silently swallows it.
   });
 });

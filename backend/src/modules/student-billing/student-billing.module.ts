@@ -15,6 +15,7 @@ import { ReconciliationService }    from './reconciliation/reconciliation.servic
 import { ReceiptService }           from './receipt/receipt.service';
 import { RefundService }            from './refund/refund.service';
 import { LateFeeService }           from './late-fee/late-fee.service';
+import { LateFeeController }        from './late-fee/late-fee.controller';
 import { StandardDiscountService }  from './discounts/standard-discount.service';
 import { GatewayFactory }           from './payment/gateway/gateway.factory';
 import { StudentBillingAccessService } from './access/student-billing-access.service';
@@ -26,7 +27,7 @@ import { StorageModule }            from '../../infra/storage/storage.module';
   imports: [ComplianceModule, StorageModule, AnalyticsModule,],
   providers: [FeePlansService, InvoiceService, PaymentService, DiscountService, ReconciliationService, ReceiptService, RefundService,
     LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService, DiscountCategoryProvisioningService],
-  controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController],
+  controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController, LateFeeController],
   // DiscountCategoryProvisioningService is exported so the branch-creation
   // paths (OnboardingService, SchoolManagementService) can provision a new
   // branch's default categories inside their own transaction, without

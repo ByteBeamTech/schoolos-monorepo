@@ -1,6 +1,7 @@
 // modules/student-billing/late-fee/late-fee.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
+import { AuditService } from '../../../core/compliance/audit.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
 export interface LateFeeConfig {
@@ -23,7 +24,10 @@ const DEFAULT_CONFIG: LateFeeConfig = {
 export class LateFeeService {
   private readonly logger = new Logger(LateFeeService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit:  AuditService,
+  ) {}
 
   calculateLateFee(
     dueAmount: number,
@@ -229,5 +233,122 @@ await this.prisma.lateFee.create({
 
       remaining -= allocated;
     }
+  }
+
+  /**
+   * LOCK SCOPE
+   * ----------
+   * One advisory transaction lock per Invoice, same key derivation as
+   * RefundService.lockKeyFor() / PaymentService.settlementLockKey() (this
+   * codebase's established per-aggregate concurrency primitive -- no shared
+   * abstraction was introduced for it, per the FEE-1 decision record, so each
+   * caller that needs it keeps its own small copy).
+   *
+   * A waiver mutates Invoice.dueAmount/totalAmount, the same fields a
+   * concurrent payment settlement mutates. Without this lock, a waiver
+   * running concurrently with a payment on the same invoice could read the
+   * invoice's totals before the other writes them -- a lost update, same
+   * failure class FEE-1 fixed for payments and refunds.
+   */
+  private lockKeyFor(invoiceId: string): number {
+    return invoiceId
+      .split('')
+      .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) & 0x7fffffff), 0);
+  }
+
+  /**
+   * Waive some or all of the outstanding (uncollected, unwaived) balance of
+   * one late fee, and reduce the parent invoice's dueAmount/totalAmount by
+   * the same amount -- mirroring how applyLateFees() ADDED the fee to both
+   * fields when it was charged. Without this second half, waiving a fee on
+   * paper would not actually reduce what the student owes.
+   *
+   * A late fee can be partially waived more than once (e.g. two separate
+   * staff decisions), as long as cumulative paidAmount + amountWaived never
+   * exceeds amount -- enforced below, the same "cannot exceed the
+   * collectible total" shape as RefundService's over-refund guard.
+   *
+   * Only ACTIVE fees are waivable. A fee already PAID has nothing left to
+   * waive; WAIVED/REVERSED are terminal. This is a business-rule choice, not
+   * a technical constraint -- revisit if partial-fee correction after full
+   * payment becomes a real workflow.
+   */
+  async waiveLateFee(
+    tenantId:  string,
+    lateFeeId: string,
+    amount:    number,
+    actorId:   string,
+    reason:    string,
+  ): Promise<{ lateFee: any }> {
+    if (amount <= 0) {
+      throw new BadRequestException('Waiver amount must be positive.');
+    }
+
+    const result = await this.prisma.$transaction(async (tx: any) => {
+      const fee = await tx.lateFee.findFirst({ where: { id: lateFeeId, tenantId } });
+      if (!fee) throw new NotFoundException(`Late fee not found: ${lateFeeId}`);
+      if (fee.status !== 'ACTIVE') {
+        throw new BadRequestException(`Only an ACTIVE late fee can be waived (current status: ${fee.status}).`);
+      }
+
+      const outstanding = Number(fee.amount) - Number(fee.paidAmount) - Number(fee.amountWaived);
+      if (amount > outstanding) {
+        throw new BadRequestException(`Waiver amount ${amount} exceeds outstanding ${outstanding}.`);
+      }
+
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock($1)`, this.lockKeyFor(fee.invoiceId));
+
+      const newWaived    = Number(fee.amountWaived) + amount;
+      const finalAmount  = Math.max(0, Number(fee.amount) - Number(fee.paidAmount) - newWaived);
+      const isSettled    = finalAmount <= 0;
+
+      const updatedFee = await tx.lateFee.update({
+        where: { id: fee.id },
+        data: {
+          amountWaived: newWaived,
+          finalAmount,
+          status:       isSettled ? 'WAIVED' : fee.status,
+          waivedAt:     new Date(),
+          waivedById:   actorId,
+          reason:       reason ?? fee.reason,
+        },
+      });
+
+      // Recompute the invoice's totals the same way updateInvoice() does for
+      // a payment -- reduce dueAmount/totalAmount, flip to PAID if that
+      // clears it, never let dueAmount go negative.
+      const invoice = await tx.invoice.findFirst({ where: { id: fee.invoiceId, tenantId } });
+      if (invoice) {
+        const newDue   = Math.max(0, Number(invoice.dueAmount) - amount);
+        const newTotal = Math.max(0, Number(invoice.totalAmount) - amount);
+        const status    = newDue <= 0 ? 'PAID' : invoice.status;
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            dueAmount:   newDue,
+            totalAmount: newTotal,
+            status:      status as any,
+            paidAt:      newDue <= 0 ? (invoice.paidAt ?? new Date()) : invoice.paidAt,
+          },
+        });
+      }
+
+      await this.audit.logUpdate(
+        {
+          tenantId,
+          actorId,
+          entityType: 'LateFee',
+          entityId:   fee.id,
+          before:     { amountWaived: Number(fee.amountWaived), status: fee.status },
+          after:      { amountWaived: newWaived, status: updatedFee.status, waivedAmount: amount, reason },
+        },
+        tx,
+      );
+
+      return updatedFee;
+    });
+
+    this.logger.log(`Late fee ${lateFeeId} waived ${amount} by ${actorId}`);
+    return { lateFee: result };
   }
 }
