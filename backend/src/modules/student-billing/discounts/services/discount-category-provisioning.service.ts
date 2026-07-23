@@ -9,25 +9,15 @@
 // never created as a side effect of a transactional write.
 
 import { Injectable, Logger } from '@nestjs/common';
-import type { PrismaService } from '@infra/database/prisma.service';
+// Moved to @infra/database now that AuditService is a second consumer -- as
+// the note that used to sit here said to do. Re-exported so existing importers
+// of this symbol from this module keep working.
+import type { PrismaTransactionClient } from '@infra/database/prisma-transaction.type';
+export type { PrismaTransactionClient };
 import {
   DEFAULT_DISCOUNT_CATEGORIES,
   DiscountCategoryTemplate,
 } from '../constants/default-discount-categories';
-
-/**
- * The client handed to callbacks inside `prisma.$transaction(...)`:
- * structurally a PrismaService minus the connection/transaction-control
- * methods, which an interactive transaction client does not expose.
- *
- * Declared here rather than in a shared location because this is currently its
- * only use. Move it somewhere shared when a second service needs it -- not
- * before.
- */
-export type PrismaTransactionClient = Omit<
-  PrismaService,
-  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
->;
 
 /**
  * Shape worth copying for future branch defaults (fee categories, document
