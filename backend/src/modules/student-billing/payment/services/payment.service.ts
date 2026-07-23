@@ -16,6 +16,7 @@ import { ConfigService }    from '@nestjs/config';
 import { PrismaService }    from '@infra/database/prisma.service';
 import { AuditService }     from '../../../../core/compliance/audit.service';
 import { InvoiceService }   from '../../invoice/services/invoice.service';
+import { LateFeeService }   from '../../late-fee/late-fee.service';
 import { InitiatePaymentDto, VerifyRazorpayPaymentDto, RecordOfflinePaymentDto } from '../../dto/billing.dto';
 import * as crypto           from 'crypto';
 
@@ -29,6 +30,7 @@ export class PaymentService {
     private readonly config:          ConfigService,
     private readonly emitter:         EventEmitter2,
     private readonly invoiceService:  InvoiceService,
+    private readonly lateFeeService:  LateFeeService,
   ) {}
 
   // ── Initiate Razorpay ─────────────────────────────────────────────────────
@@ -132,6 +134,11 @@ export class PaymentService {
         data:  { status: 'SUCCESS', gatewayPaymentId: dto.razorpayPaymentId, gatewaySignature: dto.razorpaySignature, paidAt: new Date() },
       });
       await this.updateInvoice(tx, tenantId, payment.invoiceId, Number(payment.amount));
+      // P0 FIX: keep LateFee.paidAmount/status in sync with the payment that
+      // just cleared. Purely additive bookkeeping -- does not affect the
+      // invoice totals above. See LateFeeService.allocatePayment() for why
+      // this must run in the same transaction.
+      await this.lateFeeService.allocatePayment(tx, tenantId, payment.invoiceId, payment.id, Number(payment.amount));
       const receipt = await this.generateReceipt(tx, tenantId, payment.invoiceId, payment.id);
       return { updated, receipt };
     });
@@ -270,6 +277,9 @@ export class PaymentService {
         });
 
         await this.updateInvoice(tx, tenantId, dto.invoiceId, dto.amount);
+        // P0 FIX: see verifyRazorpay -- same late-fee allocation, same
+        // reasoning for running inside this transaction.
+        await this.lateFeeService.allocatePayment(tx, tenantId, dto.invoiceId, payment.id, dto.amount);
         const receipt = await this.generateReceipt(tx, tenantId, dto.invoiceId, payment.id);
         return { payment, receipt };
       });

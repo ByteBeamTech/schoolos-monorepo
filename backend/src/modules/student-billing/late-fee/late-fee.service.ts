@@ -152,4 +152,82 @@ await this.prisma.lateFee.create({
   private async getTenantConfig(_tenantId: string): Promise<LateFeeConfig> {
     return DEFAULT_CONFIG;
   }
+
+  /**
+   * Allocate a cleared payment against this invoice's outstanding late fees.
+   *
+   * Fixes a P0 correctness gap: applyLateFees() folds each late fee into the
+   * invoice's own dueAmount/totalAmount, but nothing ever wrote back to
+   * LateFee.paidAmount/status when a payment came in -- so a late fee stayed
+   * ACTIVE forever, even after the invoice that contained it was fully paid.
+   * The schema already models this (paidAmount, amountWaived, finalAmount,
+   * paymentId, status incl. PAID) -- it was simply never wired up.
+   *
+   * Deliberately narrow: this ONLY updates LateFee rows. It does not touch
+   * Invoice.paidAmount/dueAmount -- those are already correctly maintained by
+   * PaymentService.updateInvoice() in the same settlement transaction. This
+   * method must be called from inside that same transaction (a `tx` client
+   * is required) so late-fee allocation commits atomically with the payment
+   * and the invoice update, per the FEE-1 "commit together or not at all"
+   * principle -- not because the split itself is money-critical (the
+   * invoice's own totals never depend on it), but because a late fee stuck
+   * showing ACTIVE after its invoice is PAID is a real reporting bug we do
+   * not want to reintroduce via a partial write.
+   *
+   * Allocation order: oldest-charged late fee first (appliedAt asc), i.e. the
+   * fee accrued longest ago is paid down first. Matches no other explicit
+   * business rule in the codebase -- FIFO is the least surprising default and
+   * is documented here so a future change to the ordering is deliberate, not
+   * accidental.
+   *
+   * NOTE (known limitation, not fixed here): a full refund
+   * (RefundService.initiate(), reopens the invoice and zeroes
+   * paidAmount/dueAmount) does not reverse what this method writes to
+   * LateFee.paidAmount/status. Reconciling refunds against late-fee
+   * allocation is refund-side work (RefundService is P3, out of scope here)
+   * and is left as a follow-up once that controller exists.
+   */
+  async allocatePayment(
+    tx:        any,
+    tenantId:  string,
+    invoiceId: string,
+    paymentId: string,
+    amount:    number,
+  ): Promise<void> {
+    if (amount <= 0) return;
+
+    const activeFees = await tx.lateFee.findMany({
+      where:   { tenantId, invoiceId, status: 'ACTIVE' },
+      orderBy: { appliedAt: 'asc' },
+    });
+
+    let remaining = amount;
+    for (const fee of activeFees) {
+      if (remaining <= 0) break;
+
+      const outstanding = Number(fee.amount) - Number(fee.paidAmount) - Number(fee.amountWaived);
+      if (outstanding <= 0) continue;
+
+      const allocated   = Math.min(remaining, outstanding);
+      const newPaid     = Number(fee.paidAmount) + allocated;
+      const finalAmount = Math.max(0, Number(fee.amount) - newPaid - Number(fee.amountWaived));
+      const isSettled   = finalAmount <= 0;
+
+      await tx.lateFee.update({
+        where: { id: fee.id },
+        data: {
+          paidAmount:  newPaid,
+          finalAmount,
+          status:      isSettled ? 'PAID' : fee.status,
+          // Snapshot of the payment that settled this fee. Only meaningful
+          // once the fee reaches PAID; a partial allocation leaves the
+          // previous trace (or none) in place rather than overwriting it
+          // with a payment that didn't finish the job.
+          ...(isSettled ? { paymentId } : {}),
+        },
+      });
+
+      remaining -= allocated;
+    }
+  }
 }

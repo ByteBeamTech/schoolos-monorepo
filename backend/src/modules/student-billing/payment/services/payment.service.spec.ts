@@ -18,6 +18,7 @@ import { PaymentService } from './payment.service';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../../core/compliance/audit.service';
 import { InvoiceService } from '../../invoice/services/invoice.service';
+import { LateFeeService } from '../../late-fee/late-fee.service';
 
 const REAL_SECRET = 'real_secret_for_tests';
 const PLACEHOLDER_SECRET = 'rzp_test_xxxxxxxxxx';
@@ -79,6 +80,7 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
         },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: InvoiceService, useValue: {} },
+        { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
       ],
     }).compile();
 
@@ -208,6 +210,7 @@ describe('PaymentService.getPaymentHistory — FEE-0 branch scoping', () => {
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: InvoiceService, useValue: {} },
+        { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -291,6 +294,7 @@ describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () =
             k === 'NODE_ENV' ? 'test' : d) } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: InvoiceService, useValue: invoiceService },
+        { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -450,6 +454,7 @@ describe('PaymentService.generateReceipt — one receipt per payment (FEE-1)', (
             k === 'NODE_ENV' ? 'test' : d) } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: InvoiceService, useValue: invoiceService },
+        { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -580,6 +585,7 @@ describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
         { provide: ConfigService, useValue: { get: jest.fn((k: string, d?: string) => (k === 'NODE_ENV' ? 'test' : d)) } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: InvoiceService, useValue: { generateReceiptNumber: jest.fn().mockResolvedValue('RCP-2026-00001') } },
+        { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
