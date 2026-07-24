@@ -10,7 +10,7 @@ import { EventEmitter2 }   from '@nestjs/event-emitter';
 import { EVENTS }           from '../../../../core/events/events.constants';
 import {
   Injectable, NotFoundException, BadRequestException, Logger,
-  ServiceUnavailableException,
+  ServiceUnavailableException, ConflictException,
 } from '@nestjs/common';
 import { ConfigService }    from '@nestjs/config';
 import { PrismaService }    from '@infra/database/prisma.service';
@@ -123,16 +123,48 @@ export class PaymentService {
     //
     // Signature verification happens above, deliberately OUTSIDE this
     // transaction -- an invalid signature must not open one at all.
-    const { updated, receipt } = await this.prisma.$transaction(async (tx: any) => {
+    const { updated, receipt, replayed } = await this.prisma.$transaction(async (tx: any) => {
       await tx.$executeRawUnsafe(
         `SELECT pg_advisory_xact_lock($1)`,
         this.settlementLockKey(payment.invoiceId),
       );
 
-      const updated = await tx.payment.update({
-        where: { id: payment.id },
+      // M1 (FEE-2 P0): compare-and-swap, not an unconditional update.
+      //
+      // Every input to this endpoint is deterministic and client-supplied, and
+      // the endpoint is reachable by the PARENT role. Previously the status
+      // write and updateInvoice() ran unconditionally, so replaying the same
+      // verified payload credited the invoice a SECOND time. generateReceipt()
+      // is idempotent on paymentId, so the duplicate credit produced no second
+      // receipt -- the discrepancy was invisible in the receipt register.
+      //
+      // The swap is the decision: only a PENDING payment may be settled, and
+      // exactly one caller can win that transition. tenantId stays in the
+      // predicate so the swap can never cross a tenant boundary.
+      const { count } = await tx.payment.updateMany({
+        where: { id: payment.id, tenantId, status: 'PENDING' },
         data:  { status: 'SUCCESS', gatewayPaymentId: dto.razorpayPaymentId, gatewaySignature: dto.razorpaySignature, paidAt: new Date() },
       });
+
+      if (count === 0) {
+        // The read after a failed swap only explains the failure; it does not
+        // participate in the decision (same shape as InvoiceService.send()).
+        const current = await tx.payment.findFirst({ where: { id: payment.id, tenantId } });
+        if (!current) throw new NotFoundException('Payment not found.');
+
+        // Already settled: this is a replay. Return the existing settlement
+        // rather than erroring -- the caller retried a legitimate request --
+        // but re-apply NOTHING.
+        if (current.status === 'SUCCESS') {
+          const existingReceipt = await tx.receipt.findUnique({ where: { paymentId: payment.id } });
+          return { updated: current, receipt: existingReceipt, replayed: true };
+        }
+
+        // Any other state (e.g. FAILED) is not a replay and is not a valid
+        // transition into SUCCESS. A failed payment is never resurrected.
+        throw new ConflictException(`Payment is already ${current.status}.`);
+      }
+
       await this.updateInvoice(tx, tenantId, payment.invoiceId, Number(payment.amount));
       // P0 FIX: keep LateFee.paidAmount/status in sync with the payment that
       // just cleared. Purely additive bookkeeping -- does not affect the
@@ -140,8 +172,21 @@ export class PaymentService {
       // this must run in the same transaction.
       await this.lateFeeService.allocatePayment(tx, tenantId, payment.invoiceId, payment.id, Number(payment.amount));
       const receipt = await this.generateReceipt(tx, tenantId, payment.invoiceId, payment.id);
-      return { updated, receipt };
+
+      // Post-write read: the return value needs the full settled row.
+      const updated = await tx.payment.findFirst({ where: { id: payment.id, tenantId } });
+      return { updated, receipt, replayed: false };
     });
+
+    if (replayed) {
+      // No audit entry and no event: nothing occurred on this call. Emitting
+      // PAYMENT_SUCCESS again would produce a duplicate parent notification
+      // for one payment.
+      this.logger.warn(
+        `verifyRazorpay(): replay detected for payment ${payment.id} — returning the existing settlement without re-applying it.`,
+      );
+      return { payment: updated, receipt };
+    }
 
     await this.audit.logPayment({ tenantId, actorId, entityType: 'Payment', entityId: payment.id, paymentStatus: 'success', after: { gatewayPaymentId: dto.razorpayPaymentId } });
     this.emitter.emit(EVENTS.PAYMENT_SUCCESS, {

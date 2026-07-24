@@ -10,6 +10,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
   ServiceUnavailableException,
+  ConflictException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -28,6 +29,7 @@ const mockPayment = {
   tenantId: 't-1',
   invoiceId: 'inv-1',
   amount: 1000,
+  status: 'PENDING',
   gatewayOrderId: 'order_1',
   invoice: { id: 'inv-1', studentId: 'stu-1', currency: 'INR' },
 };
@@ -50,13 +52,28 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
   let prisma: any;
   let configValues: Record<string, string | undefined>;
 
-  async function buildModule() {
+  async function buildModule(initialStatus = 'PENDING') {
+    // M1: the payment row is stateful in the mock so the compare-and-swap can
+    // actually be exercised — updateMany only affects a PENDING row, and the
+    // post-write findFirst must observe the swapped state.
+    const row: any = { ...mockPayment, status: initialStatus };
+
     prisma = {
       payment: {
-        findFirst: jest.fn().mockResolvedValue({ ...mockPayment }),
-        update: jest.fn().mockImplementation(({ data }) =>
-          Promise.resolve({ ...mockPayment, ...data }),
-        ),
+        findFirst: jest.fn().mockImplementation(() => Promise.resolve({ ...row })),
+        updateMany: jest.fn().mockImplementation(({ where, data }: any) => {
+          if (where.status && row.status !== where.status) return Promise.resolve({ count: 0 });
+          if (where.tenantId && row.tenantId !== where.tenantId) return Promise.resolve({ count: 0 });
+          Object.assign(row, data);
+          return Promise.resolve({ count: 1 });
+        }),
+        update: jest.fn().mockImplementation(({ data }) => {
+          Object.assign(row, data);
+          return Promise.resolve({ ...row });
+        }),
+      },
+      receipt: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'rcpt-1' }),
       },
       // FEE-1: settlement (payment + invoice totals + receipt) now runs in one
       // transaction guarded by a per-invoice advisory lock. The mock hands the
@@ -115,6 +132,7 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
 
         // The critical property: no write flipped the payment to SUCCESS.
         expect(prisma.payment.update).not.toHaveBeenCalled();
+        expect(prisma.payment.updateMany).not.toHaveBeenCalled();
       },
     );
   });
@@ -140,11 +158,7 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
           data: expect.objectContaining({ status: 'FAILED' }),
         }),
       );
-      expect(prisma.payment.update).not.toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: 'SUCCESS' }),
-        }),
-      );
+      expect(prisma.payment.updateMany).not.toHaveBeenCalled();
     });
 
     it('accepts a valid signature in production and confirms the payment', async () => {
@@ -161,8 +175,13 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
       );
 
       expect(result.payment.status).toBe('SUCCESS');
-      expect(prisma.payment.update).toHaveBeenCalledWith(
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: expect.objectContaining({
+            id: 'pay-1',
+            tenantId: 't-1',
+            status: 'PENDING',
+          }),
           data: expect.objectContaining({ status: 'SUCCESS' }),
         }),
       );
@@ -187,6 +206,104 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
         expect(result.payment.status).toBe('SUCCESS');
       },
     );
+  });
+
+  // ── M1: replay safety ───────────────────────────────────────────────────
+  //
+  // Every input is deterministic and client-supplied, and the endpoint is
+  // PARENT-reachable. Before the compare-and-swap, a replay credited the
+  // invoice twice while producing no second receipt.
+  describe('replay safety (M1)', () => {
+    beforeEach(() => {
+      configValues = {
+        NODE_ENV: 'production',
+        RAZORPAY_STUDENT_KEY_SECRET: REAL_SECRET,
+      };
+    });
+
+    const signed = () => ({ ...dto, razorpaySignature: validSignature(REAL_SECRET) });
+
+    it('applies the amount exactly once when the same verified payload is replayed', async () => {
+      await buildModule();
+
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+
+      // The swap ran twice; only the first won, so the money moved once.
+      expect(prisma.payment.updateMany).toHaveBeenCalledTimes(2);
+      expect((service as any).updateInvoice).toHaveBeenCalledTimes(1);
+      expect((service as any).generateReceipt).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns the existing settlement on replay instead of erroring', async () => {
+      await buildModule();
+
+      const first  = await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+      const second = await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+
+      expect(second.payment.status).toBe('SUCCESS');
+      expect(second.payment.id).toBe(first.payment.id);
+      expect(second.receipt).toEqual({ id: 'rcpt-1' });
+    });
+
+    it('does not re-audit or re-emit PAYMENT_SUCCESS on replay', async () => {
+      await buildModule();
+      const audit   = (service as any).audit;
+      const emitter = (service as any).emitter;
+
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+
+      expect(audit.logPayment).toHaveBeenCalledTimes(1);
+      expect(emitter.emit).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not allocate late fees a second time on replay', async () => {
+      await buildModule();
+      const lateFee = (service as any).lateFeeService;
+
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+
+      expect(lateFee.allocatePayment).toHaveBeenCalledTimes(1);
+    });
+
+    it('never resurrects a FAILED payment — it is not a replay', async () => {
+      await buildModule('FAILED');
+
+      await expect(
+        service.verifyRazorpay('t-1', signed() as any, 'actor-1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect((service as any).updateInvoice).not.toHaveBeenCalled();
+      expect((service as any).generateReceipt).not.toHaveBeenCalled();
+    });
+
+    it('takes the per-invoice advisory lock before attempting the swap', async () => {
+      await buildModule();
+
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+
+      expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        expect.any(Number),
+      );
+      const lockOrder = prisma.$executeRawUnsafe.mock.invocationCallOrder[0];
+      const swapOrder = prisma.payment.updateMany.mock.invocationCallOrder[0];
+      expect(lockOrder).toBeLessThan(swapOrder);
+    });
+
+    // Security: the swap predicate carries tenantId, so a payment belonging to
+    // another tenant can never be settled even if its gatewayOrderId is known.
+    it('the swap predicate is tenant-scoped and cannot cross a tenant boundary', async () => {
+      await buildModule();
+
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+
+      const where = prisma.payment.updateMany.mock.calls[0][0].where;
+      expect(where.tenantId).toBe('t-1');
+      expect(where.status).toBe('PENDING');
+    });
   });
 });
 
@@ -268,6 +385,9 @@ describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () =
         findUnique: jest.fn().mockResolvedValue({ id: 'pay-1', amount: 1000, currency: 'INR' }),
         create: jest.fn().mockResolvedValue({ id: 'pay-new' }),
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...mockPayment, ...data })),
+        // M1: verifyRazorpay settles via compare-and-swap. Default to a won
+        // swap; the replay path has dedicated coverage in the FEE-0 block.
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       invoice: {
         findFirst: jest.fn().mockResolvedValue({ ...invoice }),
