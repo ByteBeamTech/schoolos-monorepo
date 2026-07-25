@@ -34,14 +34,21 @@ describe('RefundService.initiate (FEE-1)', () => {
 
   beforeEach(async () => {
     prisma = {
-      payment: { findFirst: jest.fn(), update: jest.fn().mockResolvedValue({}) },
+      payment: {
+        findFirst: jest.fn(),
+        findMany:  jest.fn().mockResolvedValue([]),
+        update:    jest.fn().mockResolvedValue({}),
+      },
       refund: {
         create: jest.fn().mockResolvedValue({ id: 'ref-new', amount: 0 }),
         update: jest.fn().mockResolvedValue({ id: 'ref-new' }),
         // Settlement recomputes committed totals from the DB.
         findMany: jest.fn().mockResolvedValue([]),
       },
-      invoice: { update: jest.fn().mockResolvedValue({}) },
+      invoice: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update:    jest.fn().mockResolvedValue({}),
+      },
       // initiate() runs validation+reservation and settlement in transactions;
       // the mock hands the callback this same object as its tx client.
       $transaction: jest.fn((cb: any) => cb(prisma)),
@@ -74,7 +81,7 @@ describe('RefundService.initiate (FEE-1)', () => {
 
       // 6,000 already refunded => only 4,000 available.
       await expect(
-        service.initiate('t-1', { paymentId: 'pay-1', amount: 5_000, reason: 'x' }, 'actor-1'),
+        service.initiate('t-1', { paymentId: 'pay-1', amount: 5_000, reason: 'x' }, 'actor-1', 'ACCOUNTANT'),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.refund.create).not.toHaveBeenCalled();
     });
@@ -85,7 +92,7 @@ describe('RefundService.initiate (FEE-1)', () => {
       );
 
       await expect(
-        service.initiate('t-1', { paymentId: 'pay-1', amount: 1, reason: 'x' }, 'actor-1'),
+        service.initiate('t-1', { paymentId: 'pay-1', amount: 1, reason: 'x' }, 'actor-1', 'ACCOUNTANT'),
       ).rejects.toThrow(/exceeds available 0/);
     });
 
@@ -97,7 +104,7 @@ describe('RefundService.initiate (FEE-1)', () => {
       await service.initiate(
         't-1',
         { paymentId: 'pay-1', amount: PAYMENT_AMOUNT, reason: 'x' },
-        'actor-1',
+        'actor-1', 'ACCOUNTANT',
       );
       expect(prisma.refund.create).toHaveBeenCalled();
     });
@@ -113,7 +120,7 @@ describe('RefundService.initiate (FEE-1)', () => {
         service.initiate(
           't-1',
           { paymentId: 'pay-1', amount: PAYMENT_AMOUNT, reason: 'duplicate' },
-          'actor-1',
+          'actor-1', 'ACCOUNTANT',
         ),
       ).rejects.toThrow(/exceeds available 0/);
       expect(prisma.refund.create).not.toHaveBeenCalled();
@@ -130,17 +137,17 @@ describe('RefundService.initiate (FEE-1)', () => {
 
       // 8,000 consumed => 2,000 available.
       await expect(
-        service.initiate('t-1', { paymentId: 'pay-1', amount: 2_001, reason: 'x' }, 'actor-1'),
+        service.initiate('t-1', { paymentId: 'pay-1', amount: 2_001, reason: 'x' }, 'actor-1', 'ACCOUNTANT'),
       ).rejects.toThrow(/exceeds available 2000/);
 
-      await service.initiate('t-1', { paymentId: 'pay-1', amount: 2_000, reason: 'x' }, 'actor-1');
+      await service.initiate('t-1', { paymentId: 'pay-1', amount: 2_000, reason: 'x' }, 'actor-1', 'ACCOUNTANT');
       expect(prisma.refund.create).toHaveBeenCalled();
     });
 
     it('allows a partial refund within the available amount', async () => {
       prisma.payment.findFirst.mockResolvedValue(payment());
 
-      await service.initiate('t-1', { paymentId: 'pay-1', amount: 2_500, reason: 'x' }, 'actor-1');
+      await service.initiate('t-1', { paymentId: 'pay-1', amount: 2_500, reason: 'x' }, 'actor-1', 'ACCOUNTANT');
 
       expect(prisma.refund.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -159,13 +166,29 @@ describe('RefundService.initiate (FEE-1)', () => {
     it('uses REFUND_PROCESSED — a real AuditAction member, not REFUND_INITIATED', async () => {
       prisma.payment.findFirst.mockResolvedValue(payment());
 
-      await service.initiate('t-1', { paymentId: 'pay-1', amount: 1_000, reason: 'x' }, 'actor-1');
+      await service.initiate('t-1', { paymentId: 'pay-1', amount: 1_000, reason: 'x' }, 'actor-1', 'ACCOUNTANT');
 
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'REFUND_PROCESSED' }),
+        prisma, // written through the settlement tx
       );
       expect(audit.log).not.toHaveBeenCalledWith(
         expect.objectContaining({ action: 'REFUND_INITIATED' }),
+        expect.anything(),
+      );
+    });
+
+    it('records the audit entry through the settlement transaction with the real actor role', async () => {
+      prisma.payment.findFirst.mockResolvedValue(payment());
+      prisma.refund.findMany.mockResolvedValue([{ amount: 1_000 }]);
+
+      await service.initiate('t-1', { paymentId: 'pay-1', amount: 1_000, reason: 'x' }, 'actor-9', 'PRINCIPAL');
+
+      // Second arg is the tx client (the mock passes `prisma` itself as tx),
+      // and actorRole is the caller's real role, not a hardcoded 'ACCOUNTANT'.
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ actorId: 'actor-9', actorRole: 'PRINCIPAL', action: 'REFUND_PROCESSED' }),
+        prisma,
       );
     });
   });
@@ -174,20 +197,20 @@ describe('RefundService.initiate (FEE-1)', () => {
     it('rejects an unknown payment', async () => {
       prisma.payment.findFirst.mockResolvedValue(null);
       await expect(
-        service.initiate('t-1', { paymentId: 'nope', amount: 1, reason: 'x' }, 'actor-1'),
+        service.initiate('t-1', { paymentId: 'nope', amount: 1, reason: 'x' }, 'actor-1', 'ACCOUNTANT'),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('refuses to refund a payment that never succeeded', async () => {
       prisma.payment.findFirst.mockResolvedValue({ ...payment(), status: 'FAILED' });
       await expect(
-        service.initiate('t-1', { paymentId: 'pay-1', amount: 1, reason: 'x' }, 'actor-1'),
+        service.initiate('t-1', { paymentId: 'pay-1', amount: 1, reason: 'x' }, 'actor-1', 'ACCOUNTANT'),
       ).rejects.toThrow(/Only successful payments/);
     });
 
     it('scopes the payment lookup by tenant', async () => {
       prisma.payment.findFirst.mockResolvedValue(payment());
-      await service.initiate('t-1', { paymentId: 'pay-1', amount: 1, reason: 'x' }, 'actor-1');
+      await service.initiate('t-1', { paymentId: 'pay-1', amount: 1, reason: 'x' }, 'actor-1', 'ACCOUNTANT');
       expect(prisma.payment.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ id: 'pay-1', tenantId: 't-1' }),
@@ -204,13 +227,20 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
 
   beforeEach(async () => {
     prisma = {
-      payment: { findFirst: jest.fn().mockResolvedValue(payment()), update: jest.fn().mockResolvedValue({}) },
+      payment: {
+        findFirst: jest.fn().mockResolvedValue(payment()),
+        findMany:  jest.fn().mockResolvedValue([]),
+        update:    jest.fn().mockResolvedValue({}),
+      },
       refund: {
         create: jest.fn().mockResolvedValue({ id: 'ref-new' }),
         update: jest.fn().mockResolvedValue({ id: 'ref-new' }),
         findMany: jest.fn().mockResolvedValue([]),
       },
-      invoice: { update: jest.fn().mockResolvedValue({}) },
+      invoice: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        update:    jest.fn().mockResolvedValue({}),
+      },
       $transaction: jest.fn((cb: any) => cb(prisma)),
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
     };
@@ -230,7 +260,7 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
   });
 
   it('takes a payment-scoped advisory lock before reading refund history', async () => {
-    await service.initiate('t-1', { paymentId: 'pay-1', amount: 100, reason: 'x' }, 'a-1');
+    await service.initiate('t-1', { paymentId: 'pay-1', amount: 100, reason: 'x' }, 'a-1', 'ACCOUNTANT');
 
     expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
       expect.stringContaining('pg_advisory_xact_lock'),
@@ -242,11 +272,11 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
   });
 
   it('derives the lock key from the payment id — different payments do not serialize against each other', async () => {
-    await service.initiate('t-1', { paymentId: 'pay-1', amount: 1, reason: 'x' }, 'a-1');
+    await service.initiate('t-1', { paymentId: 'pay-1', amount: 1, reason: 'x' }, 'a-1', 'ACCOUNTANT');
     const keyA = prisma.$executeRawUnsafe.mock.calls[0][1];
 
     prisma.$executeRawUnsafe.mockClear();
-    await service.initiate('t-1', { paymentId: 'pay-2', amount: 1, reason: 'x' }, 'a-1');
+    await service.initiate('t-1', { paymentId: 'pay-2', amount: 1, reason: 'x' }, 'a-1', 'ACCOUNTANT');
     const keyB = prisma.$executeRawUnsafe.mock.calls[0][1];
 
     expect(keyA).not.toEqual(keyB);
@@ -255,7 +285,7 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
   });
 
   it('validation and reservation happen inside a transaction', async () => {
-    await service.initiate('t-1', { paymentId: 'pay-1', amount: 100, reason: 'x' }, 'a-1');
+    await service.initiate('t-1', { paymentId: 'pay-1', amount: 100, reason: 'x' }, 'a-1', 'ACCOUNTANT');
 
     // Two transactions: reserve, then settle. The gateway call sits between.
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);
@@ -274,7 +304,7 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
       return 'gw-1';
     });
 
-    await service.initiate('t-1', { paymentId: 'pay-1', amount: 100, reason: 'x' }, 'a-1');
+    await service.initiate('t-1', { paymentId: 'pay-1', amount: 100, reason: 'x' }, 'a-1', 'ACCOUNTANT');
     expect(gatewaySpy).toHaveBeenCalled();
   });
 
@@ -282,7 +312,7 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
     gatewaySpy.mockRejectedValue(new Error('gateway down'));
 
     await expect(
-      service.initiate('t-1', { paymentId: 'pay-1', amount: 100, reason: 'x' }, 'a-1'),
+      service.initiate('t-1', { paymentId: 'pay-1', amount: 100, reason: 'x' }, 'a-1', 'ACCOUNTANT'),
     ).rejects.toThrow(/Gateway refund failed/);
 
     expect(prisma.refund.update).toHaveBeenCalledWith(
@@ -294,14 +324,19 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
   });
 
   it('settles refund, payment and invoice in ONE transaction, from recomputed totals', async () => {
-    // Full refund: settlement re-reads COMPLETED refunds rather than trusting
-    // the amount computed before the gateway call.
+    // Full refund of the invoice's only payment: settlement re-reads COMPLETED
+    // refunds rather than trusting the amount computed before the gateway call.
     prisma.refund.findMany.mockResolvedValue([{ amount: PAYMENT_AMOUNT }]);
+    prisma.invoice.findFirst.mockResolvedValue({ id: 'inv-1', totalAmount: PAYMENT_AMOUNT });
+    // The one payment, now fully refunded -> nothing retained.
+    prisma.payment.findMany.mockResolvedValue([
+      { amount: PAYMENT_AMOUNT, refunds: [{ amount: PAYMENT_AMOUNT }] },
+    ]);
 
     await service.initiate(
       't-1',
       { paymentId: 'pay-1', amount: PAYMENT_AMOUNT, reason: 'x' },
-      'a-1',
+      'a-1', 'ACCOUNTANT',
     );
 
     expect(prisma.refund.findMany).toHaveBeenCalledWith(
@@ -312,18 +347,88 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
     expect(prisma.payment.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: 'REFUNDED' } }),
     );
-    expect(prisma.invoice.update).toHaveBeenCalled(); // reopened
+    // Invoice recomputed to fully-drained: nothing retained -> SENT, due back to full.
+    expect(prisma.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'inv-1' },
+        data: expect.objectContaining({ paidAmount: 0, dueAmount: PAYMENT_AMOUNT, status: 'SENT' }),
+      }),
+    );
   });
 
-  it('leaves the invoice alone when the payment is only partially refunded', async () => {
-    prisma.refund.findMany.mockResolvedValue([{ amount: 1_000 }]);
+  // The core M2 regression: an invoice paid by TWO payments, one fully
+  // refunded, must NOT erase the other payment's contribution.
+  it('preserves other payments\' contributions when one payment is fully refunded', async () => {
+    // Invoice total 10,000, paid by two 5,000 payments; refunding pay-1 in full.
+    prisma.payment.findFirst.mockResolvedValue({
+      id: 'pay-1', tenantId: 't-1', branchId: 'b-1', invoiceId: 'inv-1',
+      amount: 5_000, status: 'SUCCESS', gateway: 'RAZORPAY',
+      invoice: { id: 'inv-1', totalAmount: 10_000 }, refunds: [],
+    });
+    prisma.refund.findMany.mockResolvedValue([{ amount: 5_000 }]); // pay-1 fully refunded
+    prisma.invoice.findFirst.mockResolvedValue({ id: 'inv-1', totalAmount: 10_000 });
+    // Remaining picture: pay-1 fully refunded (retains 0), pay-2 untouched (retains 5,000).
+    prisma.payment.findMany.mockResolvedValue([
+      { amount: 5_000, refunds: [{ amount: 5_000 }] },
+      { amount: 5_000, refunds: [] },
+    ]);
 
-    await service.initiate('t-1', { paymentId: 'pay-1', amount: 1_000, reason: 'x' }, 'a-1');
+    await service.initiate('t-1', { paymentId: 'pay-1', amount: 5_000, reason: 'x' }, 'a-1', 'ACCOUNTANT');
+
+    // pay-2's 5,000 survives: invoice shows 5,000 paid / 5,000 due, PARTIALLY_PAID.
+    // NOT paidAmount:0 / dueAmount:10,000 (the bug).
+    expect(prisma.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'inv-1' },
+        data: expect.objectContaining({ paidAmount: 5_000, dueAmount: 5_000, status: 'PARTIALLY_PAID' }),
+      }),
+    );
+  });
+
+  it('recomputes the invoice from its own current state, not the Phase-1 snapshot', async () => {
+    // Phase-1 payment.invoice.totalAmount is deliberately stale (9,000);
+    // the invoice re-read inside settlement is the source of truth (10,000,
+    // e.g. a late fee was assessed between reservation and settlement).
+    prisma.payment.findFirst.mockResolvedValue({
+      id: 'pay-1', tenantId: 't-1', branchId: 'b-1', invoiceId: 'inv-1',
+      amount: 10_000, status: 'SUCCESS', gateway: 'RAZORPAY',
+      invoice: { id: 'inv-1', totalAmount: 9_000 }, refunds: [],
+    });
+    prisma.refund.findMany.mockResolvedValue([{ amount: 10_000 }]);
+    prisma.invoice.findFirst.mockResolvedValue({ id: 'inv-1', totalAmount: 10_000 });
+    prisma.payment.findMany.mockResolvedValue([
+      { amount: 10_000, refunds: [{ amount: 10_000 }] },
+    ]);
+
+    await service.initiate('t-1', { paymentId: 'pay-1', amount: 10_000, reason: 'x' }, 'a-1', 'ACCOUNTANT');
+
+    // due recomputes to the CURRENT total (10,000), not the stale snapshot (9,000).
+    expect(prisma.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'inv-1' },
+        data: expect.objectContaining({ dueAmount: 10_000 }),
+      }),
+    );
+  });
+
+  it('a partial refund still reduces the invoice retained/paid amount', async () => {
+    // pay-1 (10,000) partially refunded 4,000 -> retains 6,000; invoice due 4,000.
+    prisma.refund.findMany.mockResolvedValue([{ amount: 4_000 }]);
+    prisma.invoice.findFirst.mockResolvedValue({ id: 'inv-1', totalAmount: 10_000 });
+    prisma.payment.findMany.mockResolvedValue([
+      { amount: 10_000, refunds: [{ amount: 4_000 }] },
+    ]);
+
+    await service.initiate('t-1', { paymentId: 'pay-1', amount: 4_000, reason: 'x' }, 'a-1', 'ACCOUNTANT');
 
     expect(prisma.payment.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: 'PARTIALLY_REFUNDED' } }),
     );
-    expect(prisma.invoice.update).not.toHaveBeenCalled();
+    expect(prisma.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ paidAmount: 6_000, dueAmount: 4_000, status: 'PARTIALLY_PAID' }),
+      }),
+    );
   });
 
   it('allows a further refund against an already PARTIALLY_REFUNDED payment', async () => {
@@ -332,7 +437,7 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
       status: 'PARTIALLY_REFUNDED',
     });
 
-    await service.initiate('t-1', { paymentId: 'pay-1', amount: 6_000, reason: 'x' }, 'a-1');
+    await service.initiate('t-1', { paymentId: 'pay-1', amount: 6_000, reason: 'x' }, 'a-1', 'ACCOUNTANT');
     expect(prisma.refund.create).toHaveBeenCalled();
   });
 });

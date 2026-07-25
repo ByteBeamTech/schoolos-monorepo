@@ -55,7 +55,12 @@ export class RefundService {
       .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) & 0x7fffffff), 0);
   }
 
-  async initiate(tenantId: string, dto: InitiateRefundDto, actorId: string) {
+  async initiate(
+    tenantId: string,
+    dto: InitiateRefundDto,
+    actorId: string,
+    actorRole: string,
+  ) {
     // ── Phase 1 (transactional): serialize, validate, reserve ──────────────
     //
     // FEE-1 CONCURRENCY FIX: read-decide-write previously spanned separate
@@ -174,47 +179,85 @@ export class RefundService {
         data:  { status: isFullRefund ? 'REFUNDED' : 'PARTIALLY_REFUNDED' },
       });
 
-      // Reopen invoice if fully refunded
-      if (isFullRefund) {
+      // Recompute the invoice from its OWN current state, inside this
+      // transaction -- never from the Phase-1 snapshot, which predates the
+      // gateway round trip and may be stale (e.g. a late fee assessed in
+      // between).
+      //
+      // BUG FIXED HERE: the previous code set paidAmount: 0 /
+      // dueAmount: totalAmount on a full refund of THIS payment. When the
+      // invoice had more than one successful payment (partial payments /
+      // instalments -- the case FEE-1 exists to support), that erased every
+      // OTHER payment's contribution and re-billed the parent for money the
+      // school still holds. isFullRefund is a property of the payment, not of
+      // the invoice, and must never be applied as if it cleared the invoice.
+      //
+      // Correct model: an invoice's paid amount is the sum of the amounts its
+      // successful payments have actually retained after refunds. Recompute
+      // that from the remaining payments and derive due/status from it.
+      const invoice = await tx.invoice.findFirst({
+        where:  { id: payment.invoiceId, tenantId },
+        select: { id: true, totalAmount: true },
+      });
+
+      if (invoice) {
+        // Sum, per successful payment on this invoice, the amount NOT yet
+        // refunded (COMPLETED refunds only -- PENDING has not moved money out
+        // of the invoice's retained total, FAILED never will).
+        const invoicePayments = await tx.payment.findMany({
+          where:   { invoiceId: invoice.id, tenantId, status: { in: ['SUCCESS', 'PARTIALLY_REFUNDED', 'REFUNDED'] } },
+          select:  { amount: true, refunds: { where: { status: 'COMPLETED' }, select: { amount: true } } },
+        });
+
+        const retained = invoicePayments.reduce((sum: number, p: any) => {
+          const refunded = p.refunds.reduce((s: number, r: any) => s + Number(r.amount), 0);
+          return sum + Math.max(0, Number(p.amount) - refunded);
+        }, 0);
+
+        const total       = Number(invoice.totalAmount);
+        const paidAmount  = Math.min(retained, total);
+        const dueAmount   = Math.max(0, total - paidAmount);
+        const fullyPaid   = dueAmount <= 0 && total > 0;
+
         await tx.invoice.update({
-          where: { id: payment.invoiceId },
+          where: { id: invoice.id },
           data: {
-            status:     'SENT',
-            paidAmount: 0,
-            dueAmount:  payment.invoice.totalAmount,
-            paidAt:     null,
+            paidAmount,
+            dueAmount,
+            // Only a fully-drained invoice returns to SENT. A partially-paid
+            // invoice stays PARTIALLY_PAID; a still-fully-covered one stays
+            // PAID. Never assume the refund emptied it.
+            status: fullyPaid ? 'PAID' : (paidAmount > 0 ? 'PARTIALLY_PAID' : 'SENT'),
+            paidAt: fullyPaid ? undefined : null,
           },
         });
       }
 
-      return { completedRefund, isFullRefund };
-    });
+      // IMM-022/023: the audit row now joins THIS transaction, so it commits
+      // or rolls back with the settlement it describes. AuditService.log()
+      // accepts a transaction client as of the audit-hardening change; pass
+      // the settlement tx.
+      await this.audit.log(
+        {
+          tenantId,
+          actorId,
+          // The authenticated caller's role, threaded from the controller,
+          // replaces the previously hardcoded 'ACCOUNTANT' -- which lied
+          // whenever anyone else (admin, principal) issued a refund, exactly
+          // the attribution an auditor needs in a dispute.
+          actorRole:  actorRole as any,
+          // REFUND_PROCESSED is the valid AuditAction enum member (a prior
+          // value, REFUND_INITIATED, was not in the enum and silently
+          // produced no audit row).
+          action:     'REFUND_PROCESSED' as any,
+          entityType: 'Payment',
+          entityId:   dto.paymentId,
+          after:      { refundId: refund.id, amount: dto.amount, reason: dto.reason },
+        },
+        tx,
+      );
 
-    // NOTE (IMM-022/023): this audit write is still outside the settlement
-    // transaction, because AuditService.log() writes through its own injected
-    // PrismaService and cannot join a caller's transaction. Making financial
-    // audit entries transactional requires AuditService to accept a
-    // transaction client -- a cross-cutting change to a core service used by
-    // every module, deliberately not bundled into this refund fix.
-    await this.audit.log({
-      tenantId,
-      actorId,
-      actorRole:  'ACCOUNTANT' as any,
-      // FEE-1 CORRECTNESS FIX: 'REFUND_INITIATED' is not a member of the
-      // AuditAction enum -- Prisma rejected it with
-      // PrismaClientValidationError, which AuditService.log() swallows in its
-      // own try/catch, so every refund silently produced NO audit trail.
-      // REFUND_PROCESSED is the only valid refund action in the enum.
-      //
-      // NOTE: AuditLogParams.action is typed 'any', so neither the old value
-      // nor this one is compile-checked. That untyped interface is the root
-      // cause of this recurring bug class. Retyping it to AuditAction touches
-      // every audit call site across every module -- out of scope for FEE-1,
-      // but worth its own task.
-      action:     'REFUND_PROCESSED' as any,
-      entityType: 'Payment',
-      entityId:   dto.paymentId,
-      after:      { refundId: refund.id, amount: dto.amount, reason: dto.reason },
+      return { completedRefund, isFullRefund };
     });
 
     this.logger.log(`Refund processed: ${refund.id} amount=${dto.amount} gateway=${gatewayRefundId}`);
