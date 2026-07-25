@@ -24,10 +24,11 @@ function fmtDate(d: string | null | undefined) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
-function statusVariant(s: string) {
+function statusVariant(s: string, isOverdue: boolean) {
+  if (s === "PAID") return "success";
+  if (isOverdue)    return "error";
   const m: Record<string, any> = {
-    PAID: "success", SENT: "info", OVERDUE: "error",
-    PARTIALLY_PAID: "warning", DRAFT: "neutral", CANCELLED: "neutral",
+    SENT: "info", PARTIALLY_PAID: "warning", DRAFT: "neutral", CANCELLED: "neutral",
   };
   return m[s] ?? "neutral";
 }
@@ -106,7 +107,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   );
   if (!inv) return <div className="text-slate-400 py-24 text-center">Invoice not found</div>;
 
-  const canPay    = ["SENT","PARTIALLY_PAID","OVERDUE"].includes(inv.status);
+  const canPay    = ["SENT","PARTIALLY_PAID"].includes(inv.status);
   const canSend   = inv.status === "DRAFT";
   const canCancel = !["PAID","CANCELLED"].includes(inv.status);
   const dueAmt    = Number(inv.dueAmount);
@@ -134,7 +135,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           <div>
             <div className="flex items-center gap-3 mb-1">
               <h1 className="text-xl font-bold text-slate-900 font-mono">{inv.invoiceNumber}</h1>
-              <Badge label={inv.status.replace("_"," ")} variant={statusVariant(inv.status)} />
+              <Badge label={inv.status.replace("_"," ")} variant={statusVariant(inv.status, inv.isOverdue)} />
             </div>
             <p className="text-sm text-slate-500">
               {inv.student?.firstName} {inv.student?.lastName} · {inv.student?.admissionNumber}

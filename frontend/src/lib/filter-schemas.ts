@@ -61,7 +61,16 @@ export const INVOICE_FILTER_SCHEMA: FilterSchema = {
     { id: "status",    label: "Status",   type: "select",       options: [
       { label:"Draft",value:"DRAFT"},{ label:"Sent",value:"SENT"},
       { label:"Partially Paid",value:"PARTIALLY_PAID"},{ label:"Paid",value:"PAID"},
-      { label:"Overdue",value:"OVERDUE"},{ label:"Cancelled",value:"CANCELLED"},
+      { label:"Cancelled",value:"CANCELLED"},
+    ]},
+    // M5: 'OVERDUE' removed above -- it is no longer a persisted status
+    // (invoice/overdue.util.ts, backend), so status=OVERDUE would match
+    // nothing server-side. Overdue is now its own filter, driven by the
+    // server-computed isOverdue flag on each invoice and handled entirely
+    // client-side in billing/page.tsx (see overdueOnly there) -- the
+    // backend has no concept of this param and never sees it.
+    { id: "overdueOnly", label: "Overdue", type: "select", options: [
+      { label: "Overdue Only", value: "true" },
     ]},
     { id: "dueDate",   label: "Due Date", type: "date-range" },
     { id: "amount",    label: "Amount",   type: "number-range" },

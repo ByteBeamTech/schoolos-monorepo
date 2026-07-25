@@ -1,7 +1,7 @@
 "use client";
 import { HelpTip } from "@/components/ui/help-tip";
 import { HELP }    from "@/lib/help-content";
-import { useState }         from "react";
+import { useState, useEffect }  from "react";
 import { useSearchParams }  from "next/navigation";
 import { CreditCard, Plus, Send, FileText, DollarSign } from "lucide-react";
 import { PageHeader }        from "@/components/ui/page-header";
@@ -11,19 +11,18 @@ import { EmptyState }        from "@/components/ui/empty-state";
 import { FilterBuilder }     from "@/components/ui/filter-builder";
 import { Pagination }        from "@/components/ui/pagination";
 import { INVOICE_FILTER_SCHEMA } from "@/lib/filter-schemas";
-import { useApi, useFeePlans, useInvoiceStats, useStudents, useAcademicSessions } from "@/lib/hooks";
+import { useApi, useFeePlans, useInvoiceStats, useStudents, useAcademicSessions, type Invoice } from "@/lib/hooks";
 import { apiClient }         from "@/lib/api";
 import { useToast } from '@/lib/use-toast';
 
 
 type Tab = "invoices" | "fee-plans";
 
-function invoiceStatusVariant(s: string) {
+function invoiceStatusVariant(s: string, isOverdue: boolean) {
   if (s === "PAID")           return "success" as const;
+  if (isOverdue)              return "error"   as const;
   if (s === "SENT")           return "info"    as const;
-  if (s === "OVERDUE")        return "error"   as const;
   if (s === "PARTIALLY_PAID") return "warning" as const;
-  if (s === "DRAFT")          return "neutral" as const;
   return "neutral" as const;
 }
 
@@ -44,16 +43,148 @@ export default function BillingPage() {
   // URL-state filters — all invoice filters live in the URL
   const searchParams = useSearchParams();
   const qs           = searchParams.toString();
+  // M5: 'overdueOnly' is a frontend-only routing signal (set by the
+  // dashboard's "View Overdue" quick action and the filter panel's
+  // "Overdue" field). It is NEVER sent to the backend: InvoiceStatus.OVERDUE
+  // is no longer written (invoice/overdue.util.ts), so a literal
+  // status=OVERDUE query would now match nothing there. The backend has no
+  // route parameter for this and none is added here (no backend changes).
+  const overdueOnly  = searchParams.get("overdueOnly") === "true";
+
+  // The page size actually in effect. No page-size selector (25/50/100 or
+  // similar) exists anywhere in this application -- checked directly:
+  // components/ui/pagination.tsx has no such control, and no
+  // setFilter('limit', ...) call exists anywhere in the codebase. This list
+  // has always relied silently on the backend's own default of 20
+  // (InvoiceService.findAll()). Reading it from the URL means a page size
+  // WOULD be honored if a selector is ever added later (it would just call
+  // setFilter('limit', ...) like every other filter here); until then this
+  // falls back to the backend's own existing default -- not a new number
+  // invented by this commit.
+  const pageSize = Number(searchParams.get("limit")) || 20;
+  const page     = Number(searchParams.get("page"))  || 1;
 
   // Stats (not paginated)
   const { data: stats, loading: sLoading } = useInvoiceStats(academicYear);
 
-  // Invoices — driven by URL params
+  // ── Normal path (unchanged from before this milestone) ────────────────
+  // Every filter (status, studentId, academicYear, dueDate, amount, search,
+  // page, limit) is forwarded to the backend exactly as it always has been;
+  // findAll() does the filtering and pagination server-side. overdueOnly is
+  // never part of this query string.
   const invoiceQs = qs || (academicYear ? `academicYear=${encodeURIComponent(academicYear)}` : "");
   const { data: invoiceData, loading: iLoading, refetch: refetchInvoices } =
-    useApi<{ data: any[]; meta: any }>(`/billing/invoices${invoiceQs ? `?${invoiceQs}` : ""}`, [qs, academicYear]);
-  const invoices = (invoiceData as any)?.data ?? invoiceData ?? [];
-  const invoiceMeta = (invoiceData as any)?.meta ?? null;
+    useApi<{ data: Invoice[]; meta: any }>(`/billing/invoices${invoiceQs ? `?${invoiceQs}` : ""}`, [qs]);
+
+  // ── overdueOnly path ────────────────────────────────────────────────
+  // isOverdue is a computed property, not a stored column -- the backend
+  // cannot filter or paginate a result set by it (no backend changes in
+  // this milestone). The only way to guarantee an accurate overdue list,
+  // without guessing a "large enough" fetch size, is to walk every backend
+  // page for the OTHER active filters (status/overdueOnly excluded) using
+  // the backend's own real pagination contract (page / meta.lastPage,
+  // whatever limit it already defaults to), accumulate the full matching
+  // set, then filter it by isOverdue. Trade-off, stated plainly rather than
+  // hidden: this issues one backend request per page of matching invoices,
+  // so it costs more round trips than a single-page fetch -- the honest
+  // price of exact correctness without a backend change. MAX_SCAN_PAGES
+  // below is a defensive ceiling against a runaway loop on a very large
+  // result set, not a guess at "enough" data; if it is ever hit, the UI
+  // says so explicitly (below) rather than silently showing a partial list.
+  //
+  // Worst-case analysis (see architecture review): sequential fetching
+  // made wall-clock latency scale linearly with request count -- at the
+  // MAX_SCAN_PAGES=50 ceiling, roughly 2-6s. Fetched here with bounded
+  // concurrency instead (SCAN_CONCURRENCY requests in flight at once,
+  // matching a typical browser's own per-origin connection limit -- not a
+  // backend change, just how the existing requests are issued), cutting
+  // that latency by roughly the same factor without changing what is
+  // fetched, the accuracy contract, or MAX_SCAN_PAGES itself. Page 1 is
+  // always fetched alone first, since meta.lastPage (needed to know how
+  // many more pages exist) is only known after it returns.
+  const MAX_SCAN_PAGES  = 50;
+  const SCAN_CONCURRENCY = 6;
+  const overdueFetchKey = (() => {
+    const params = new URLSearchParams(qs);
+    params.delete("overdueOnly");
+    params.delete("page");
+    params.delete("limit");
+    if (academicYear && !params.has("academicYear")) params.set("academicYear", academicYear);
+    return params.toString();
+  })();
+  const [overdueScan, setOverdueScan] = useState<{
+    loading: boolean; invoices: Invoice[]; truncated: boolean;
+  }>({ loading: false, invoices: [], truncated: false });
+
+  useEffect(() => {
+    if (!overdueOnly) return;
+    let cancelled = false;
+    (async () => {
+      setOverdueScan(s => ({ ...s, loading: true }));
+
+      const fetchPage = async (p: number) => {
+        const params = new URLSearchParams(overdueFetchKey);
+        params.set("page", String(p));
+        const res = await apiClient.get(`/billing/invoices?${params.toString()}`);
+        return res.data as { data: Invoice[]; meta: { lastPage?: number } };
+      };
+
+      // Page 1 alone: lastPage is unknown until it returns.
+      const first = await fetchPage(1);
+      const byPage = new Map<number, Invoice[]>([[1, first.data ?? []]]);
+      const lastPage = first.meta?.lastPage ?? 1;
+      const scanThrough = Math.min(lastPage, MAX_SCAN_PAGES);
+      const truncated = lastPage > MAX_SCAN_PAGES;
+
+      // Remaining pages, SCAN_CONCURRENCY in flight at a time. Bounded, not
+      // "fire them all at once" -- keeps this well inside a normal
+      // browser's per-origin connection limit and avoids hammering the
+      // backend with 49 simultaneous requests for one filter click.
+      let nextPage = 2;
+      const worker = async () => {
+        while (nextPage <= scanThrough && !cancelled) {
+          const p = nextPage++;
+          const body = await fetchPage(p);
+          byPage.set(p, body.data ?? []);
+        }
+      };
+      await Promise.all(
+        Array.from({ length: Math.min(SCAN_CONCURRENCY, Math.max(0, scanThrough - 1)) }, worker),
+      );
+
+      // Reassembled in page order, not arrival order -- concurrent
+      // responses can resolve out of sequence; the backend's own
+      // orderBy: createdAt desc must be preserved across the pages.
+      const all: Invoice[] = [];
+      for (let p = 1; p <= scanThrough; p++) all.push(...(byPage.get(p) ?? []));
+
+      if (!cancelled) setOverdueScan({ loading: false, invoices: all, truncated });
+    })();
+    return () => { cancelled = true; };
+    // Re-scan only when the SET being scanned can change -- never on
+    // page/limit alone, since those just reslice the already-scanned,
+    // already-filtered result client-side (see below).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overdueOnly, overdueFetchKey]);
+
+  // isOverdue filtered from the server-computed field only -- never
+  // re-derived from status/dueDate anywhere in this file.
+  const overdueFiltered = overdueScan.invoices.filter(i => i.isOverdue);
+  const overdueTotal    = overdueFiltered.length;
+  const overdueLastPage = Math.max(1, Math.ceil(overdueTotal / pageSize));
+  const overduePage     = Math.min(page, overdueLastPage);
+
+  const fetchedInvoices = (invoiceData as any)?.data ?? invoiceData ?? [];
+  const invoices: Invoice[] = overdueOnly
+    ? overdueFiltered.slice((overduePage - 1) * pageSize, overduePage * pageSize)
+    : fetchedInvoices;
+  const invoiceMeta = overdueOnly
+    ? {
+        total: overdueTotal, page: overduePage, limit: pageSize, lastPage: overdueLastPage,
+        hasPrev: overduePage > 1, hasNext: overduePage < overdueLastPage,
+      }
+    : ((invoiceData as any)?.meta ?? null);
+  const overdueLoading = overdueOnly && overdueScan.loading;
 
   // Fee plans (not paginated)
   const { data: feePlans, loading: pLoading, refetch: refetchPlans } = useFeePlans(academicYear);
@@ -279,6 +410,16 @@ export default function BillingPage() {
           {/* FilterBuilder replaces the old status button row */}
           <FilterBuilder schema={INVOICE_FILTER_SCHEMA} className="mb-4" />
 
+          {/* Truncation notice -- shown, never silent, if the overdue scan
+              hit its safety ceiling (MAX_SCAN_PAGES) before covering every
+              matching invoice. */}
+          {overdueOnly && overdueScan.truncated && (
+            <div className="mb-3 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+              Showing overdue invoices from the first {MAX_SCAN_PAGES} pages scanned only —
+              narrow the Academic Year or another filter for a complete view.
+            </div>
+          )}
+
           {/* Invoices table */}
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
             <table className="w-full text-sm">
@@ -290,7 +431,7 @@ export default function BillingPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {iLoading ? [...Array(5)].map((_, i) => (
+                {(overdueOnly ? overdueLoading : iLoading) ? [...Array(5)].map((_, i) => (
                   <tr key={i}>{[...Array(7)].map((_, j) => (
                     <td key={j} className="px-4 py-3"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>
                   ))}</tr>
@@ -298,7 +439,7 @@ export default function BillingPage() {
                   <tr><td colSpan={7}>
                     <EmptyState title="No invoices" message="Generate your first invoice above." icon={<FileText className="w-12 h-12" />} />
                   </td></tr>
-                ) : invoices.map((inv: any) => (
+                ) : invoices.map((inv: Invoice) => (
                   <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs text-slate-600">{inv.invoiceNumber}</td>
                     <td className="px-4 py-3">
@@ -310,7 +451,7 @@ export default function BillingPage() {
                     <td className="px-4 py-3 text-xs text-slate-500">
                       {new Date(inv.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                     </td>
-                    <td className="px-4 py-3"><Badge label={inv.status} variant={invoiceStatusVariant(inv.status)} /></td>
+                    <td className="px-4 py-3"><Badge label={inv.status} variant={invoiceStatusVariant(inv.status, !!inv.isOverdue)} /></td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         {inv.status === "DRAFT" && (
@@ -319,7 +460,7 @@ export default function BillingPage() {
                             <Send className="w-3 h-3" /> Send
                           </button>
                         )}
-                        {["SENT","PARTIALLY_PAID","OVERDUE"].includes(inv.status) && (
+                        {["SENT","PARTIALLY_PAID"].includes(inv.status) && (
                           <button onClick={() => { setPayingInvoiceId(inv.id); setPayForm(p => ({ ...p, amount: String(inv.dueAmount) })); }}
                             className="text-xs text-emerald-600 hover:text-emerald-800 font-medium">Pay</button>
                         )}
@@ -329,7 +470,7 @@ export default function BillingPage() {
                 ))}
               </tbody>
             </table>
-            <Pagination meta={invoiceMeta} loading={iLoading} />
+            <Pagination meta={invoiceMeta} loading={overdueOnly ? overdueLoading : iLoading} />
           </div>
         </>
       )}

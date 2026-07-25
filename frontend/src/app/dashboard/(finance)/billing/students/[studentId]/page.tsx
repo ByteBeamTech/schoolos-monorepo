@@ -23,10 +23,11 @@ function fmtDate(d?: string | null) {
   if (!d) return "—";
   return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
-function invVariant(s: string) {
+function invVariant(s: string, isOverdue: boolean) {
+  if (s === "PAID") return "success";
+  if (isOverdue)    return "error";
   const m: Record<string, any> = {
-    PAID: "success", SENT: "info", OVERDUE: "error",
-    PARTIALLY_PAID: "warning", DRAFT: "neutral", CANCELLED: "neutral",
+    SENT: "info", PARTIALLY_PAID: "warning", DRAFT: "neutral", CANCELLED: "neutral",
   };
   return m[s] ?? "neutral";
 }
@@ -56,7 +57,7 @@ export default function StudentLedgerPage({ params }: { params: Promise<{ studen
   const totalPaid        = invoices.reduce((s, i) => s + Number(i.paidAmount), 0);
   const outstanding      = invoices.reduce((s, i) => s + Number(i.dueAmount), 0);
   const totalDiscounted  = invoices.reduce((s, i) => s + Number(i.discountAmount ?? 0), 0);
-  const overdueCount     = invoices.filter(i => ["OVERDUE","SENT","PARTIALLY_PAID"].includes(i.status) && new Date(i.dueDate) < new Date()).length;
+  const overdueCount     = invoices.filter(i => i.isOverdue).length;
 
   const cur = invoices[0]?.currency ?? "INR";
 
@@ -158,7 +159,7 @@ export default function StudentLedgerPage({ params }: { params: Promise<{ studen
                       </span>
                     </td>
                     <td className="py-3 pr-4">
-                      <Badge label={inv.status.replace("_"," ")} variant={invVariant(inv.status)} />
+                      <Badge label={inv.status.replace("_"," ")} variant={invVariant(inv.status, inv.isOverdue)} />
                     </td>
                     <td className="py-3">
                       <Link href={`/dashboard/billing/invoices/${inv.id}`}

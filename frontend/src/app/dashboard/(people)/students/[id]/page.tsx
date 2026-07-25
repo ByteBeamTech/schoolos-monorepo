@@ -924,7 +924,7 @@ setBehaviorForm({
                         variant={
                           invoice.status === "PAID"
                             ? "success"
-                            : invoice.status === "OVERDUE"
+                            : invoice.isOverdue
                               ? "error"
                               : invoice.status === "PARTIALLY_PAID"
                                 ? "warning"

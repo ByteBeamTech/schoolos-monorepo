@@ -248,6 +248,9 @@ export interface Invoice {
   academicYear: string; currency: string;
   subtotal: number; totalAmount: number; paidAmount: number; dueAmount: number;
   dueDate: string; paidAt?: string;
+  // M5: server-computed, see invoice/overdue.util.ts (backend). The single
+  // source of overdue-ness -- never re-derive this from status + dueDate.
+  isOverdue?: boolean;
   student: { firstName: string; lastName: string; admissionNumber: string };
   items: Array<{ name: string; amount: number; netAmount: number }>;
 }

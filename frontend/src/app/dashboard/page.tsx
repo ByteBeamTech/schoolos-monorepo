@@ -152,7 +152,7 @@ const QUICK_ACTIONS: Record<string, Array<{ label: string; href: string; icon: a
     { label: "Generate Invoice", href: "/dashboard/billing",     icon: CreditCard,     color: "#2563eb" },
     { label: "Record Expense",   href: "/dashboard/accounting",  icon: DollarSign,     color: "#059669" },
     { label: "Run Payroll",      href: "/dashboard/payroll",     icon: Users,          color: "#7c3aed" },
-    { label: "View Overdue",     href: "/dashboard/billing?status=OVERDUE", icon: AlertCircle, color: "#dc2626" },
+    { label: "View Overdue",     href: "/dashboard/billing?overdueOnly=true", icon: AlertCircle, color: "#dc2626" },
   ],
 };
 const DEFAULT_QUICK_ACTIONS = [
