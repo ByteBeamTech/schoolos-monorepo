@@ -432,6 +432,35 @@ describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () =
       expect(prisma.receipt.create).toHaveBeenCalled();
     });
 
+    it('computes invoice paid/due in Decimal — no binary-float paise drift (D-9)', async () => {
+      // Two independent drift cases in one invoice's arithmetic:
+      //  - paid side: 0.10 + 0.20 = 0.30 exactly (float gives 0.30000000000000004)
+      //  - due  side: 1000.00 - 0.30 = 999.70 exactly (float subtraction also drifts)
+      // Under the old Number() path at least one of these assertions fails.
+      prisma.invoice.findFirst.mockResolvedValue({
+        ...invoice, totalAmount: 1000, paidAmount: 0.1, dueAmount: 999.9,
+      });
+
+      await service.recordOffline('t-1', { ...dto, amount: 0.2 } as any, 'actor-1');
+
+      const data = prisma.invoice.update.mock.calls.at(-1)[0].data;
+      expect(data.paidAmount.toString()).toBe('0.3');     // not 0.30000000000000004
+      expect(data.dueAmount.toString()).toBe('999.7');    // not 999.6999999999999
+      expect(String(data.status)).toBe('PARTIALLY_PAID');
+    });
+
+    it('clamps due at zero and marks PAID when a payment covers the invoice exactly', async () => {
+      prisma.invoice.findFirst.mockResolvedValue({
+        ...invoice, totalAmount: 3000.3, paidAmount: 1000.1, dueAmount: 2000.2,
+      });
+
+      await service.recordOffline('t-1', { ...dto, amount: 2000.2 } as any, 'actor-1');
+
+      const data = prisma.invoice.update.mock.calls.at(-1)[0].data;
+      expect(data.dueAmount.toString()).toBe('0');
+      expect(String(data.status)).toBe('PAID');
+    });
+
     it('serializes on the invoice with an advisory lock, taken before the totals are read', async () => {
       await service.recordOffline('t-1', dto as any, 'actor-1');
 

@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService }    from '@nestjs/config';
 import { PrismaService }    from '@infra/database/prisma.service';
+import { Prisma }           from '@prisma/client';
 import { AuditService }     from '../../../../core/compliance/audit.service';
 import { InvoiceService }   from '../../invoice/services/invoice.service';
 import { LateFeeService }   from '../../late-fee/late-fee.service';
@@ -165,11 +166,18 @@ export class PaymentService {
         throw new ConflictException(`Payment is already ${current.status}.`);
       }
 
-      await this.updateInvoice(tx, tenantId, payment.invoiceId, Number(payment.amount));
+      // payment.amount is a Prisma.Decimal; pass it through without Number()
+      // coercion so the invoice arithmetic stays in Decimal (D-9).
+      await this.updateInvoice(tx, tenantId, payment.invoiceId, payment.amount);
       // P0 FIX: keep LateFee.paidAmount/status in sync with the payment that
       // just cleared. Purely additive bookkeeping -- does not affect the
       // invoice totals above. See LateFeeService.allocatePayment() for why
       // this must run in the same transaction.
+      //
+      // NOTE: allocatePayment() still takes a number -- LateFeeService is a
+      // separate aggregate and its Decimal conversion is its own M3 commit.
+      // The Number() coercion here is confined to that boundary and removed
+      // when that commit lands.
       await this.lateFeeService.allocatePayment(tx, tenantId, payment.invoiceId, payment.id, Number(payment.amount));
       const receipt = await this.generateReceipt(tx, tenantId, payment.invoiceId, payment.id);
 
@@ -296,7 +304,12 @@ export class PaymentService {
     const invoice = await this.prisma.invoice.findFirst({ where: { id: dto.invoiceId, tenantId } });
     if (!invoice) throw new NotFoundException(`Invoice not found: ${dto.invoiceId}`);
     if (invoice.status === 'PAID') throw new BadRequestException('Invoice already paid.');
-    if (dto.amount > Number(invoice.dueAmount)) throw new BadRequestException(`Amount ₹${dto.amount} exceeds due ₹${invoice.dueAmount}`);
+    // Money comparison in Decimal (D-9): dto.amount is a plain number from the
+    // DTO; invoice.dueAmount is a Prisma.Decimal. Compare as Decimal so an
+    // exact-to-the-paise due amount is not misjudged by float widening.
+    if (new Prisma.Decimal(dto.amount).greaterThan(new Prisma.Decimal(invoice.dueAmount))) {
+      throw new BadRequestException(`Amount ₹${dto.amount} exceeds due ₹${invoice.dueAmount}`);
+    }
 
     // FEE-1 ATOMICITY: see verifyRazorpay -- payment, invoice totals and
     // receipt commit together, serialized per invoice.
@@ -362,20 +375,29 @@ export class PaymentService {
    * creation meant a crash between the two could leave a SUCCESS payment
    * against an invoice that never recorded it.
    */
-  private async updateInvoice(tx: any, tenantId: string, invoiceId: string, amount: number) {
+  private async updateInvoice(tx: any, tenantId: string, invoiceId: string, amount: Prisma.Decimal.Value) {
     {
       const inv = await tx.invoice.findFirst({ where: { id: invoiceId, tenantId } });
       if (!inv) return;
-      const newPaid = Number(inv.paidAmount) + amount;
-      const newDue  = Number(inv.totalAmount) - newPaid;
-      const status  = newDue <= 0 ? 'PAID' : newPaid > 0 ? 'PARTIALLY_PAID' : inv.status;
+      // Money arithmetic in Decimal end-to-end (D-9). Previously this did
+      // Number(inv.paidAmount) + amount in binary float, which drifts on the
+      // paise for percentage-derived amounts. inv.paidAmount / inv.totalAmount
+      // arrive from Prisma as Decimal already; keep them Decimal through the
+      // add/subtract and the clamp, and let Prisma persist the Decimal values.
+      const pay      = new Prisma.Decimal(amount);
+      const newPaid  = new Prisma.Decimal(inv.paidAmount).plus(pay);
+      const newDue   = new Prisma.Decimal(inv.totalAmount).minus(newPaid);
+      const dueClamped = newDue.isNegative() ? new Prisma.Decimal(0) : newDue;
+      const status   = newDue.lessThanOrEqualTo(0)
+        ? 'PAID'
+        : newPaid.greaterThan(0) ? 'PARTIALLY_PAID' : inv.status;
       await tx.invoice.update({
         where: { id: invoiceId },
         data:  {
           paidAmount: newPaid,
-          dueAmount:  Math.max(0, newDue),
+          dueAmount:  dueClamped,
           status:     status as any,
-          paidAt:     newDue <= 0 ? new Date() : null,
+          paidAt:     newDue.lessThanOrEqualTo(0) ? new Date() : null,
         },
       });
     }
