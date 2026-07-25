@@ -4,6 +4,7 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../../../core/compliance/audit.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { overdueWhere } from '../invoice/overdue.util';
 
 export interface LateFeeConfig {
   gracePeriodDays: number;
@@ -87,10 +88,7 @@ export class LateFeeService {
     this.logger.log('Running daily late fee calculation...');
 
     const overdueInvoices = await this.prisma.invoice.findMany({
-      where: {
-        status:  { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
-        dueDate: { lt: new Date() },
-      },
+      where: overdueWhere(),
       include: {
   lateFees: {
     orderBy: { appliedAt: 'desc' },
@@ -182,7 +180,11 @@ export class LateFeeService {
             data: {
               dueAmount:   new Prisma.Decimal(fresh.dueAmount).plus(lateFee),
               totalAmount: new Prisma.Decimal(fresh.totalAmount).plus(lateFee),
-              status:      'OVERDUE',
+              // M5: status is intentionally NOT set to 'OVERDUE' here. The
+              // invoice remains whatever it already is (SENT or
+              // PARTIALLY_PAID); overdue-ness is derived by every reader
+              // (invoice/overdue.util.ts), never persisted. This was the
+              // only write site for InvoiceStatus.OVERDUE in the codebase.
             },
           });
 

@@ -5,6 +5,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AnalyticsService } from './analytics.service';
+import { OVERDUE_STATUS_MATCH } from '../../invoice/overdue.util';
 
 describe('AnalyticsService.getOverview', () => {
   let service: AnalyticsService;
@@ -86,5 +87,19 @@ describe('AnalyticsService.getOverview', () => {
     const overview = await service.getOverview('t-1');
 
     expect(overview.lateFeeOutstanding).toBe(300); // NOT 300.00000000000006
+  });
+
+  // M5: overdueInvoices previously queried a bare status: 'OVERDUE' equality
+  // -- purely cron-lag-dependent, since nothing set that status until the
+  // daily job ran (and never checked dueDate at all). Now derived:
+  // SENT/PARTIALLY_PAID/legacy-OVERDUE (transitional, see overdue.util.ts)
+  // with dueDate < now, correct in real time regardless of cron timing.
+  it('derives overdueInvoices from status+dueDate, not a bare OVERDUE equality', async () => {
+    await service.getOverview('t-1');
+
+    const countCall = prisma.invoice.count.mock.calls[0][0];
+    expect(countCall.where.status.in).toEqual(OVERDUE_STATUS_MATCH);
+    expect(countCall.where.dueDate).toHaveProperty('lt');
+    expect(countCall.where.tenantId).toBe('t-1');
   });
 });

@@ -2,6 +2,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { Prisma } from '@prisma/client';
+import { overdueWhere } from '../invoice/overdue.util';
 
 export interface StudentReconciliation {
   studentId:        string;
@@ -143,7 +144,11 @@ export class ReconciliationService {
         _sum:   { paidAmount: true },
       }),
       this.prisma.invoice.count({
-        where: { ...where, status: 'OVERDUE' },
+        // M5: derived (SENT/PARTIALLY_PAID/OVERDUE-legacy + dueDate < now),
+        // not a bare status equality -- see invoice/overdue.util.ts. Was
+        // previously purely cron-lag-dependent: an invoice past due but not
+        // yet touched by LateFeeService.applyLateFees() was invisible here.
+        where: { ...where, ...overdueWhere() },
       }),
     ]);
 

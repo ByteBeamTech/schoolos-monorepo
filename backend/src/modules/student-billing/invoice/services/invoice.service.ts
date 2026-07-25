@@ -17,6 +17,7 @@ import { PrismaService }     from '@infra/database/prisma.service';
 import { Prisma }            from '@prisma/client';
 import { AuditService }      from '../../../../core/compliance/audit.service';
 import { GenerateInvoiceDto, BulkGenerateInvoicesDto } from '../../dto/billing.dto';
+import { overdueWhere } from '../overdue.util';
 
 
 export interface GenerateInvoiceOptions {
@@ -371,8 +372,7 @@ export class InvoiceService {
     return this.prisma.invoice.findMany({
       where: {
         tenantId,
-        status:  { in: ['SENT', 'PARTIALLY_PAID'] as any[] },
-        dueDate: { lt: new Date() },
+        ...overdueWhere(),
         ...(authorizedBranchIds != null && { branchId: { in: authorizedBranchIds } }),
       },
       include: {
@@ -406,8 +406,7 @@ export class InvoiceService {
     const now = new Date();
     const where: any = {
       tenantId,
-      status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] as any[] },
-      dueDate: { lt: now },
+      ...overdueWhere(now),
       // Authorization constraint on the invoice's own branch:
       ...(authorizedBranchIds != null && { branchId: { in: authorizedBranchIds } }),
       // Pre-existing client narrowing filter (student's branch), unchanged:

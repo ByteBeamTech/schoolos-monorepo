@@ -7,6 +7,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../core/compliance/audit.service';
 import { LateFeeService } from './late-fee.service';
+import { OVERDUE_STATUS_MATCH } from '../invoice/overdue.util';
 
 describe('LateFeeService.calculateLateFee — Decimal rounding (D-9)', () => {
   let service: LateFeeService;
@@ -156,6 +157,26 @@ describe('LateFeeService.applyLateFees — invoice lock (M4)', () => {
     // the stale scanned invoice -- proves the write cannot clobber a
     // concurrent settlement's already-committed totals.
     expect(Number(invoiceData.dueAmount)).toBe(400 + feeData.amount);
+  });
+
+  // M5: the root fix. Before this milestone, applyLateFees() set
+  // status: 'OVERDUE' on every invoice-update write; that write is now gone
+  // entirely. Overdue-ness is derived by readers (invoice/overdue.util.ts),
+  // never persisted here or anywhere else in Student Billing.
+  it('does NOT write status: OVERDUE (M5 -- overdue is derived, never persisted)', async () => {
+    await service.applyLateFees();
+
+    const invoiceData = tx.invoice.update.mock.calls[0][0].data;
+    expect(invoiceData.status).toBeUndefined();
+    expect(invoiceData).not.toHaveProperty('status');
+  });
+
+  it('scans using the shared overdue predicate (SENT, PARTIALLY_PAID, legacy OVERDUE + dueDate < now)', async () => {
+    await service.applyLateFees();
+
+    const scanArg = prisma.invoice.findMany.mock.calls[0][0];
+    expect(scanArg.where.status.in).toEqual(OVERDUE_STATUS_MATCH);
+    expect(scanArg.where.dueDate).toHaveProperty('lt');
   });
 
   it('skips an invoice that vanished between the scan and the lock', async () => {

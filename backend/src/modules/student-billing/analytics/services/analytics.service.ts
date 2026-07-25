@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { Prisma } from '@prisma/client';
+import { overdueWhere } from '../../invoice/overdue.util';
 
 @Injectable()
 export class AnalyticsService {
@@ -91,9 +92,10 @@ export class AnalyticsService {
       }),
 
       this.prisma.invoice.count({
+        // M5: derived, not a bare status equality -- see invoice/overdue.util.ts.
         where: {
           tenantId,
-          status: 'OVERDUE',
+          ...overdueWhere(),
           ...branchFilter,
         },
       }),

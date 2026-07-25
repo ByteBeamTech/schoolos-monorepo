@@ -1,6 +1,7 @@
 import { Test, TestingModule }  from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { InvoiceService }  from './invoice.service';
+import { OVERDUE_STATUS_MATCH } from '../overdue.util';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }    from '../../../../core/compliance/audit.service';
 import { EventEmitter2 }   from '@nestjs/event-emitter';
@@ -249,6 +250,30 @@ describe('InvoiceService', () => {
       await service.findOverdue('t-1', []);
       const call = (prisma.invoice.findMany as jest.Mock).mock.calls[0][0];
       expect(call.where.branchId).toEqual({ in: [] });
+    });
+
+    // M5: findOverdue() previously filtered status IN (SENT, PARTIALLY_PAID)
+    // only -- a legacy invoice already marked OVERDUE by the (now-removed)
+    // cron write was invisible on this endpoint. Now sourced from the shared
+    // overdueWhere() predicate, which includes OVERDUE as a legacy match.
+    it('includes legacy OVERDUE-status invoices (M5 fix -- previously invisible here)', async () => {
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([]);
+      await service.findOverdue('t-1');
+      const call = (prisma.invoice.findMany as jest.Mock).mock.calls[0][0];
+      expect(call.where.status.in).toEqual(OVERDUE_STATUS_MATCH);
+      expect(call.where.dueDate).toHaveProperty('lt');
+    });
+  });
+
+  // M5: getDefaulters() now sources its status/dueDate predicate from the
+  // same shared util as findOverdue(), so the two can never drift apart.
+  describe('getDefaulters', () => {
+    it('uses the shared overdue predicate (SENT, PARTIALLY_PAID, legacy OVERDUE + dueDate < now)', async () => {
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([]);
+      await service.getDefaulters('t-1');
+      const call = (prisma.invoice.findMany as jest.Mock).mock.calls[0][0];
+      expect(call.where.status.in).toEqual(OVERDUE_STATUS_MATCH);
+      expect(call.where.dueDate).toHaveProperty('lt');
     });
   });
 });

@@ -2,6 +2,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@infra/database/prisma.service';
 import { ReconciliationService } from './reconciliation.service';
+import { OVERDUE_STATUS_MATCH } from '../invoice/overdue.util';
 
 describe('ReconciliationService', () => {
   let service: ReconciliationService;
@@ -126,6 +127,23 @@ describe('ReconciliationService', () => {
       const result = await service.reconciliationSummary('t-1');
 
       expect(result.outstanding).toBe(0);
+    });
+
+    // M5: overdueCount previously queried a bare status: 'OVERDUE' equality
+    // -- purely cron-lag-dependent, since nothing set that status until the
+    // daily job ran. Now derived: SENT/PARTIALLY_PAID/legacy-OVERDUE with
+    // dueDate < now, correct in real time regardless of cron timing.
+    it('derives overdueCount from status+dueDate, not a bare OVERDUE equality', async () => {
+      prisma.invoice.aggregate
+        .mockResolvedValueOnce({ _sum: { totalAmount: 0 } })
+        .mockResolvedValueOnce({ _sum: { paidAmount: 0 } });
+
+      await service.reconciliationSummary('t-1');
+
+      const countCall = prisma.invoice.count.mock.calls[0][0];
+      expect(countCall.where.status.in).toEqual(OVERDUE_STATUS_MATCH);
+      expect(countCall.where.dueDate).toHaveProperty('lt');
+      expect(countCall.where.tenantId).toBe('t-1');
     });
   });
 });
