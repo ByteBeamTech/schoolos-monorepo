@@ -20,9 +20,15 @@ Today, this ownership is implicit and inconsistent: some entities (Fee Plans) ar
 
 ## Billing (Current State)
 
-Fee Plan → Fee Assignment → Invoice (`DRAFT→SENT→{PARTIALLY_PAID→PAID, OVERDUE, CANCELLED}`, `EXPIRED` removed as dead code) → Payment (online via Razorpay, or offline cash/cheque) → Receipt. Discount and Late Fee attach to this flow; Refund reverses a completed Payment.
+Fee Plan → Fee Assignment → Invoice (`DRAFT→SENT→{PARTIALLY_PAID→PAID, CANCELLED}`, `EXPIRED` removed as dead code, `OVERDUE` removed as M5 turned it into a derived read-time condition — see ADR-FEE-003 §4) → Payment (online via Razorpay, or offline cash/cheque) → Receipt. Discount and Late Fee attach to this flow; Refund reverses a completed Payment.
 
 Governed by ADR-FEE-003's state-machine rules (`IMM-004`/`005`): no undefined transitions, ever. Corrections are only valid pre-fact (e.g. editing a `DRAFT` invoice); once a fact has occurred (e.g. `SENT`, `APPROVED`, `SUCCESS`), only a reversal (new opposing record) is valid — never an edit to the original (`IMM-001`, `IMM-006`, `IMM-007`).
+
+**Overdue status (M5).** `InvoiceStatus` no longer persists `OVERDUE` — `LateFeeService.applyLateFees()` stopped writing it; an overdue invoice simply remains `SENT` or `PARTIALLY_PAID`. `isOverdue`, on the invoice API response, is the canonical field for overdue-ness; it **MUST NOT** be re-derived from `status`/`dueDate` anywhere. Full rationale in ADR-FEE-003 §4.
+
+The frontend cannot filter or paginate invoices by `isOverdue` server-side — it is computed, not a stored column, and backend filtering was intentionally out of scope for M5. The billing list's "overdue only" view is therefore an **interim client-side implementation**: it walks every backend page matching the other active filters (bounded by a defensive `MAX_SCAN_PAGES` ceiling, fetched with bounded concurrency via `SCAN_CONCURRENCY`), filters the accumulated set by `isOverdue`, and shows an explicit warning banner if the ceiling is hit before scanning everything. This is not the target architecture — it exists only because the correct fix (below) is a backend change this milestone did not authorize.
+
+**Target architecture, next milestone:** expose `isOverdue` as an optional filter on `InvoiceService.findAll()`, translated server-side into the same `overdueWhere()` predicate already centralized in `invoice/overdue.util.ts` and already proven correct in `getDefaulters()`/`getOverview()`/`reconciliationSummary()` — no new derivation logic, just wiring the existing one into one more query. Once that lands, the frontend's scan loop, `MAX_SCAN_PAGES`, `SCAN_CONCURRENCY`, and the truncation warning banner are all removed — the backend does the filtering and pagination directly, the same way it already does for `status`/`studentId`/`academicYear`.
 
 ## Ledger
 

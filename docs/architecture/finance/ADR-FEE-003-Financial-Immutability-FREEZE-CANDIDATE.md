@@ -33,7 +33,7 @@ This ADR does **not** define: the Ledger's schema or entry structure (ADR-FEE-00
 
 Per this project's standing practice, the actual codebase was checked before writing normative rules, rather than assuming a green field.
 
-- **State-machine enums already exist and are clean**: `InvoiceStatus` (DRAFT/SENT/PARTIALLY_PAID/PAID/OVERDUE/EXPIRED/CANCELLED — `EXPIRED` since removed as confirmed-dead code, see §4), `PaymentStatus` (PENDING/PROCESSING/SUCCESS/FAILED/REFUNDED/PARTIALLY_REFUNDED), `RefundStatus` (PENDING/COMPLETED/FAILED), `LateFeeStatus` (ACTIVE/PAID/WAIVED/REVERSED), `ApprovalStatus` (PENDING/APPROVED/REJECTED/CANCELLED, used by `Discount`). No financial model was found with a hard-delete endpoint, and none carries a `deletedAt` column — the codebase has never had a soft-delete pattern on financial data to begin with, clean or otherwise. §6 ratifies this absence as correct rather than fixing anything.
+- **State-machine enums already exist and are clean**: `InvoiceStatus` (DRAFT/SENT/PARTIALLY_PAID/PAID/OVERDUE/EXPIRED/CANCELLED — `EXPIRED` since removed as confirmed-dead code, and `OVERDUE` since made a derived read-time condition rather than a persisted transition target, both see §4), `PaymentStatus` (PENDING/PROCESSING/SUCCESS/FAILED/REFUNDED/PARTIALLY_REFUNDED), `RefundStatus` (PENDING/COMPLETED/FAILED), `LateFeeStatus` (ACTIVE/PAID/WAIVED/REVERSED), `ApprovalStatus` (PENDING/APPROVED/REJECTED/CANCELLED, used by `Discount`). No financial model was found with a hard-delete endpoint, and none carries a `deletedAt` column — the codebase has never had a soft-delete pattern on financial data to begin with, clean or otherwise. §6 ratifies this absence as correct rather than fixing anything.
 - **A correct idempotency reference implementation already exists**: offline payment recording checks for an existing `SUCCESS` payment with the same `gatewayPaymentId`/reference before creating a new one, preventing duplicate-submission from creating two payments for one real transaction. §9 canonizes this shape as the model for all financial mutations, the same way ADR-FEE-002 canonized the existing `UserBranch` mechanism.
 - **No optimistic-concurrency infrastructure exists anywhere in the financial schema.** No financial model carries a `version` field or any row-locking pattern. (One unrelated `version` field exists on a `saas-billing` model, but per its own code comment it is a plan/schema-version label, not a concurrency-control mechanism — not a precedent to reuse.) This is a genuine gap, not something to ratify. §8 defines the requirement.
 - **A concrete, already-identified concurrency bug motivates §8**: `RefundService.initiate()` reads existing refunds to check against a maximum-refundable amount, then creates a new refund, with no transaction wrapping the check-then-create — a classic time-of-check-to-time-of-use gap that could allow two concurrent refund requests to each pass the check before either commits, together exceeding the payment's refundable amount. This is exactly the failure mode §8 exists to close.
@@ -80,18 +80,23 @@ Reference transition graphs, reflecting the existing enums (§2) and this projec
               DRAFT
                 |
                 v
-              SENT ────────────┐
-             /  |  \            |
-            v   v   v           v
-      OVERDUE PARTIALLY   CANCELLED
-            \   PAID
-             \   |
-              v  v
+              SENT ──────┐
+               |  \        |
+               v   v       v
+        PARTIALLY_PAID  CANCELLED
+               |
+               v
               PAID
 ```
-`DRAFT → SENT → {PARTIALLY_PAID → PAID, OVERDUE, CANCELLED}`. `SENT`/`PARTIALLY_PAID`/`OVERDUE` may reach `PAID` as payments complete. `CANCELLED` is terminal. `DRAFT` may go directly to `CANCELLED`. A `PAID` invoice **MUST NOT** be cancelled (existing, correct behavior per the audit — a refund is the reversal path instead, not a cancellation).
+`DRAFT → SENT → {PARTIALLY_PAID → PAID, CANCELLED}`. `SENT`/`PARTIALLY_PAID` may reach `PAID` as payments complete. `CANCELLED` is terminal. `DRAFT` may go directly to `CANCELLED`. A `PAID` invoice **MUST NOT** be cancelled (existing, correct behavior per the audit — a refund is the reversal path instead, not a cancellation). Overdue-ness is a derived condition evaluated over `SENT`/`PARTIALLY_PAID`, not a transition target in this graph — see below.
 
 **`EXPIRED` removed (resolved, not deferred):** an earlier draft of this ADR treated `EXPIRED`'s semantics as an open accounting-policy question. Per review, the correct first step was to check whether it had any surviving behavior before treating it as a policy question at all. Verified directly: repo-wide search confirms `InvoiceStatus.EXPIRED` was never set by any code path and never checked by any code path anywhere in `student-billing` (backend or frontend) — genuinely dead code, not a state anyone relied on. There was no policy to decide; there was nothing to decide *about*. Removed from the schema (`backend/prisma/schema/enums.prisma`) as a direct implementation change, not an ADR-level decision — per the standing principle that ADRs are for architectural choices, not for deleting unused states. See the accompanying migration and commit message for the rationale record.
+
+**`OVERDUE` becomes a derived condition, not a persisted state (M5 — this IS an ADR revision, unlike `EXPIRED` above):** `OVERDUE` was not dead code. It was actively written by `LateFeeService.applyLateFees()` (the daily late-fee assessment job) and actively read, independently and inconsistently, by four separate call sites (`InvoiceService.findOverdue()`, `getDefaulters()`, `ReconciliationService.reconciliationSummary()`, `AnalyticsService.getOverview()`) — one of which (`findOverdue()`) had its own latent bug, excluding rows the cron had already marked `OVERDUE` from its own results. Per IMM-005, retiring a live transition target from an entity's state machine **MUST** be treated as a revision to this ADR, not a silent implementation choice — the same discipline applies whether a state is being added or retired, and this is why this change is documented here, unlike `EXPIRED`'s direct removal above.
+
+The change: `LateFeeService.applyLateFees()` **MUST NOT** write `status: 'OVERDUE'`. An invoice that becomes overdue remains `SENT` or `PARTIALLY_PAID`; overdue-ness is derived at read time from one shared predicate (`invoice/overdue.util.ts`, `overdueWhere()`/`isInvoiceOverdue()`) — `status IN (SENT, PARTIALLY_PAID) AND dueDate < now` — that every prior independent copy of the rule now calls into, rather than a status value an entity transitions into. **`isOverdue`**, exposed on the invoice API response (`InvoiceService.findAll()`/`findById()`), is the canonical field for "is this invoice overdue"; consumers, frontend or backend, **MUST NOT** re-derive it from `status`/`dueDate` themselves.
+
+The underlying Prisma `InvoiceStatus` enum is deliberately left unchanged — `OVERDUE` remains a valid enum value. Two reasons, both recorded in the M5 pre-flight review: (a) `SaasInvoice.status` shares this exact enum (a separate bounded context, `ADR-FIN-004`), so removing the value would require a schema migration touching a table this milestone has no authorization to change; (b) unlike `EXPIRED`, this codebase does not have a confirmed-zero live-row count for `OVERDUE` — it is actively written today. Student Billing simply stops writing the value and stops treating it as a transition target; the value's continued presence in the enum is a schema fact, not evidence that `OVERDUE` is still reachable in this graph. A temporary, explicitly-labelled read-side allowance (`overdue.util.ts`'s `LEGACY_OVERDUE_STATUSES`) still matches rows already carrying the value from before this change, so they remain visible rather than silently vanishing from defaulter lists and dashboards; this is a data-migration accommodation for historical rows, not a reopening of `OVERDUE` as something new work may transition an invoice into.
 
 - **Payment**: `PENDING → {PROCESSING → {SUCCESS, FAILED}, FAILED}`. `SUCCESS → {REFUNDED, PARTIALLY_REFUNDED}` as refunds are recorded against it. `FAILED` is terminal (a new payment attempt is a new record, not a resurrected one).
 - **Discount** (`ApprovalStatus`): `PENDING → {APPROVED, REJECTED, CANCELLED}`. All three are terminal for the approval decision itself; an approved discount's *application* to an invoice is a separate fact (§5 — revoking an applied discount is a reversal, not an edit back to `PENDING`).
@@ -230,7 +235,7 @@ Per ADR-FEE-001 AUTH-005 (most-restrictive-wins, missing-context-denies), which 
 
 | Requirement | Implemented In | Test |
 |---|---|---|
-| IMM-001 … IMM-007 (immutability, transitions, corrections/reversals) | *(FEE-1/FEE-2 — audit each entity's mutation code paths against §4's transition graphs)* | *(FEE-1/FEE-2)* |
+| IMM-001 … IMM-007 (immutability, transitions, corrections/reversals) | *(FEE-1/FEE-2 — audit each entity's mutation code paths against §4's transition graphs; M5 partially closes this for Invoice — `OVERDUE` retired as a transition target per the §4 revision above, `LateFeeService.applyLateFees()`'s single write site removed)* | *(FEE-1/FEE-2; M5's change covered by `overdue.util.spec.ts` and the updated `late-fee.service.spec.ts`)* |
 | IMM-009 … IMM-011 (no hard delete / no soft-delete flag) | *(already correct — confirmed via audit; add a regression/lint check that no `DELETE` route or `deletedAt` field is ever added to a financial model)* | *(FEE-1)* |
 | IMM-012, IMM-013 (period freeze) | *(ADR-FEE-005 — Posting Engine)* | *(FEE-3, once Posting Engine lands)* |
 | IMM-014 … IMM-016 (concurrency) | *(FEE-1 — starting with the identified `RefundService.initiate()` gap)* | *(FEE-1)* |
