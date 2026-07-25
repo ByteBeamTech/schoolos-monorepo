@@ -1,6 +1,7 @@
 // modules/student-billing/reconciliation/reconciliation.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
+import { Prisma } from '@prisma/client';
 
 export interface StudentReconciliation {
   studentId:        string;
@@ -51,41 +52,45 @@ export class ReconciliationService {
       orderBy: { createdAt: 'desc' },
     });
 
-    let totalFees     = 0;
-    let totalPaid     = 0;
-    let totalDiscount = 0;
+    // Accumulated in Decimal (D-9); converted to numbers only at the response
+    // boundary below. Summing many invoices' fee/paid/discount as float
+    // drifts, and this report is exactly what an auditor cross-checks.
+    let totalFees     = new Prisma.Decimal(0);
+    let totalPaid     = new Prisma.Decimal(0);
+    let totalDiscount = new Prisma.Decimal(0);
     const invoiceSummaries: InvoiceSummary[] = [];
 
     for (const inv of invoices) {
-      const fee      = Number(inv.totalAmount);
-      const paid     = Number(inv.paidAmount ?? 0);
-      const due      = Number(inv.dueAmount ?? fee - paid);
-      const discount = Number((inv as any).discountAmount ?? 0);
+      const fee      = new Prisma.Decimal(inv.totalAmount);
+      const paid     = new Prisma.Decimal(inv.paidAmount ?? 0);
+      const due      = inv.dueAmount != null ? new Prisma.Decimal(inv.dueAmount) : fee.minus(paid);
+      const discount = new Prisma.Decimal((inv as any).discountAmount ?? 0);
 
-      totalFees     += fee;
-      totalPaid     += paid;
-      totalDiscount += discount;
+      totalFees     = totalFees.plus(fee);
+      totalPaid     = totalPaid.plus(paid);
+      totalDiscount = totalDiscount.plus(discount);
 
       invoiceSummaries.push({
         invoiceId:     inv.id,
         invoiceNumber: inv.invoiceNumber,
-        totalAmount:   fee,
-        paidAmount:    paid,
-        dueAmount:     due,
+        totalAmount:   fee.toNumber(),
+        paidAmount:    paid.toNumber(),
+        dueAmount:     due.toNumber(),
         status:        inv.status,
         dueDate:       (inv as any).dueDate ?? null,
       });
     }
 
-    const outstandingDues = Math.max(0, totalFees - totalPaid - totalDiscount);
+    const outstandingRaw = totalFees.minus(totalPaid).minus(totalDiscount);
+    const outstandingDues = outstandingRaw.isNegative() ? 0 : outstandingRaw.toNumber();
 
     return {
       studentId,
       studentName:  `${student.firstName} ${student.lastName}`,
       termId:       sessionId ?? 'all',
-      totalFees,
-      totalPaid,
-      totalDiscount,
+      totalFees:     totalFees.toNumber(),
+      totalPaid:     totalPaid.toNumber(),
+      totalDiscount: totalDiscount.toNumber(),
       outstandingDues,
       currency:     invoices[0] ? String((invoices[0] as any).currency ?? 'INR') : 'INR',
       invoices:     invoiceSummaries,
@@ -142,9 +147,15 @@ export class ReconciliationService {
       }),
     ]);
 
+    // Aggregate-to-response boundary, not arithmetic (D-9): Prisma computes
+    // these _sum values exactly in the database. Response contract is numbers.
     const invoiced   = Number(totalInvoiced._sum.totalAmount  ?? 0);
     const collected  = Number(totalCollected._sum.paidAmount  ?? 0);
-    const outstanding = Math.max(0, invoiced - collected);
+    // outstanding = invoiced - collected IS service-side arithmetic across two
+    // DB sums, computed in Decimal from the raw values to avoid float drift.
+    const outstandingRaw = new Prisma.Decimal(totalInvoiced._sum.totalAmount ?? 0)
+      .minus(totalCollected._sum.paidAmount ?? 0);
+    const outstanding = outstandingRaw.isNegative() ? 0 : outstandingRaw.toNumber();
 
     return { invoiced, collected, outstanding, overdueCount, collectionRate: invoiced > 0 ? (collected / invoiced) * 100 : 0 };
   }
