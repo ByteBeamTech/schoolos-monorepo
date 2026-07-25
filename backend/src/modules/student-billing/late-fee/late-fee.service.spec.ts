@@ -56,6 +56,130 @@ describe('LateFeeService.calculateLateFee — Decimal rounding (D-9)', () => {
   });
 });
 
+describe('LateFeeService.applyLateFees — invoice lock (M4)', () => {
+  let service: LateFeeService;
+  let prisma: any;
+  let tx: any;
+
+  function scannedInvoice(over: any = {}) {
+    return {
+      id: 'inv-1', tenantId: 't-1', studentId: 'stu-1',
+      dueDate: new Date('2026-01-01'),
+      dueAmount: 1000, totalAmount: 1000, status: 'SENT',
+      student: { branchId: 'b-1' },
+      lateFees: [],
+      ...over,
+    };
+  }
+
+  beforeEach(async () => {
+    tx = {
+      invoice: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', dueAmount: 1000, totalAmount: 1000 }),
+        update:    jest.fn().mockResolvedValue({}),
+      },
+      lateFee: { create: jest.fn().mockResolvedValue({}) },
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+    };
+    prisma = {
+      invoice: {
+        findMany:  jest.fn().mockResolvedValue([scannedInvoice()]),
+        findFirst: tx.invoice.findFirst,
+        update:    jest.fn(), // must NOT be called directly -- only via tx
+      },
+      lateFee: {
+        create:   jest.fn(), // must NOT be called directly -- only via tx
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      academicSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1' }) },
+      $transaction: jest.fn((cb: any) => cb(tx)),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LateFeeService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { logUpdate: jest.fn() } },
+      ],
+    }).compile();
+    service = module.get(LateFeeService);
+  });
+
+  it('acquires the SAME per-invoice advisory lock waiveLateFee uses (shared lockKeyFor, not a fifth copy)', async () => {
+    await service.applyLateFees();
+
+    expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(
+      `SELECT pg_advisory_xact_lock($1)`,
+      (service as any).lockKeyFor('inv-1'),
+    );
+  });
+
+  it('performs the LateFee insert and the Invoice update through the SAME transaction (atomic)', async () => {
+    await service.applyLateFees();
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.lateFee.create).toHaveBeenCalled();
+    expect(tx.invoice.update).toHaveBeenCalled();
+    // Never written outside the transaction/lock.
+    expect(prisma.lateFee.create).not.toHaveBeenCalled();
+    expect(prisma.invoice.update).not.toHaveBeenCalled();
+  });
+
+  // The core M4 regression. The initial scan captured dueAmount: 1000 (stale
+  // by the time the lock is acquired). Simulate a concurrent settlement
+  // having already paid the invoice off in full before this transaction's
+  // lock-protected re-read runs.
+  it('uses the FRESH invoice state re-read inside the lock, not the stale pre-lock scan (lost-update regression)', async () => {
+    // Concurrent settlement already cleared the invoice to zero due.
+    tx.invoice.findFirst.mockResolvedValue({ id: 'inv-1', dueAmount: 0, totalAmount: 1000 });
+
+    await service.applyLateFees();
+
+    // A cleared invoice must attract NO late fee -- if this used the stale
+    // scan's dueAmount: 1000 instead of the fresh 0, it would wrongly apply
+    // one and clobber the settlement's write. Neither write happens.
+    expect(tx.lateFee.create).not.toHaveBeenCalled();
+    expect(tx.invoice.update).not.toHaveBeenCalled();
+  });
+
+  it('computes the late fee and the new totals off the fresh due amount when a partial payment landed concurrently', async () => {
+    // Scan saw dueAmount: 1000; a concurrent partial payment already brought
+    // it down to 400 by the time the lock-protected re-read runs.
+    tx.invoice.findFirst.mockResolvedValue({ id: 'inv-1', dueAmount: 400, totalAmount: 1000 });
+
+    await service.applyLateFees();
+
+    const feeData = tx.lateFee.create.mock.calls[0][0].data;
+    expect(feeData.baseAmount).toBe(400); // NOT the stale 1000
+
+    const invoiceData = tx.invoice.update.mock.calls[0][0].data;
+    // dueAmount/totalAmount are built from the FRESH read (400 / 1000), not
+    // the stale scanned invoice -- proves the write cannot clobber a
+    // concurrent settlement's already-committed totals.
+    expect(Number(invoiceData.dueAmount)).toBe(400 + feeData.amount);
+  });
+
+  it('skips an invoice that vanished between the scan and the lock', async () => {
+    tx.invoice.findFirst.mockResolvedValue(null);
+
+    await expect(service.applyLateFees()).resolves.not.toThrow();
+    expect(tx.lateFee.create).not.toHaveBeenCalled();
+  });
+
+  it('logs and continues past a failing invoice without aborting the batch', async () => {
+    prisma.invoice.findMany.mockResolvedValue([
+      scannedInvoice({ id: 'inv-1' }),
+      scannedInvoice({ id: 'inv-2' }),
+    ]);
+    prisma.$transaction
+      .mockImplementationOnce(() => { throw new Error('db blip'); })
+      .mockImplementationOnce((cb: any) => cb(tx));
+
+    await expect(service.applyLateFees()).resolves.not.toThrow();
+    // Second invoice still processed despite the first one's transaction failing.
+    expect(tx.lateFee.create).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('LateFeeService.allocatePayment', () => {
   let service: LateFeeService;
   let tx: any;

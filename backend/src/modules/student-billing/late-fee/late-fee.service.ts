@@ -109,10 +109,8 @@ export class LateFeeService {
 
     for (const invoice of overdueInvoices) {
       try {
-        const dueDate   = new Date(invoice.dueDate);
-        const dueAmount = new Prisma.Decimal(invoice.dueAmount).toNumber();
-        const config    = await this.getTenantConfig(invoice.tenantId);
-        const { lateFee, daysOverdue } = this.calculateLateFee(dueAmount, dueDate, new Date(), config);
+        const dueDate = new Date(invoice.dueDate);
+        const config  = await this.getTenantConfig(invoice.tenantId);
 	const currentSession =
   await this.prisma.academicSession.findFirst({
     where: {
@@ -124,50 +122,72 @@ export class LateFeeService {
     },
   });
 
-        if (lateFee <= 0) continue;
-
         // Check if late fee already applied today
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const lastFee = (invoice as any).lateFees?.[0];
         if (lastFee && new Date(lastFee.appliedAt) >= today) continue;
 
-        // Invoice has no lateFeeAmount field — use LateFee relation model
-await this.prisma.lateFee.create({
-  data: {
-    tenantId: invoice.tenantId,
+        // M4 FIX: fold the LateFee insert and the Invoice update into ONE
+        // transaction, guarded by the SAME per-invoice advisory lock
+        // settlement holds (PaymentService.settlementLockKey /
+        // RefundService.lockKeyFor -- this.lockKeyFor below is this file's
+        // own copy of the identical key derivation, already used by
+        // waiveLateFee; reused here rather than copied a second time in
+        // this file). Without this, a concurrent payment settlement and
+        // this cron can each read the invoice's dueAmount/totalAmount
+        // before the other writes -- a lost update.
+        //
+        // Holding the lock is not sufficient on its own: the invoice MUST
+        // also be re-read INSIDE the lock. If this used the `invoice`
+        // object captured by the findMany scan above, a settlement that
+        // committed between the scan and lock acquisition would have its
+        // write silently overwritten by this one, computed from stale
+        // data -- the exact lost update the lock exists to prevent.
+        await this.prisma.$transaction(async (tx: any) => {
+          await tx.$executeRawUnsafe(
+            `SELECT pg_advisory_xact_lock($1)`,
+            this.lockKeyFor(invoice.id),
+          );
 
-    branchId: invoice.student.branchId,
+          const fresh = await tx.invoice.findFirst({
+            where: { id: invoice.id, tenantId: invoice.tenantId },
+          });
+          if (!fresh) return; // invoice vanished between scan and lock; nothing to do
 
-    invoiceId: invoice.id,
+          const freshDue = new Prisma.Decimal(fresh.dueAmount).toNumber();
+          const { lateFee, daysOverdue } = this.calculateLateFee(freshDue, dueDate, new Date(), config);
+          // Recomputed off the FRESH due amount: a payment that landed
+          // between the scan and the lock (partial or full) is reflected
+          // here, so a now-cleared invoice correctly attracts no late fee.
+          if (lateFee <= 0) return;
 
-    studentId: invoice.studentId,
+          await tx.lateFee.create({
+            data: {
+              tenantId: invoice.tenantId,
+              branchId: invoice.student.branchId,
+              invoiceId: invoice.id,
+              studentId: invoice.studentId,
+              academicYearId: currentSession?.id ?? 'default',
+              dueDate: invoice.dueDate,
+              baseAmount: freshDue,
+              graceDays: config.gracePeriodDays,
+              amount: lateFee,
+              daysOverdue,
+            },
+          });
 
-    academicYearId:
-      currentSession?.id ?? 'default',
+          await tx.invoice.update({
+            where: { id: invoice.id },
+            data: {
+              dueAmount:   new Prisma.Decimal(fresh.dueAmount).plus(lateFee),
+              totalAmount: new Prisma.Decimal(fresh.totalAmount).plus(lateFee),
+              status:      'OVERDUE',
+            },
+          });
 
-    dueDate: invoice.dueDate,
-
-    baseAmount: dueAmount,
-
-    graceDays: config.gracePeriodDays,
-
-    amount: lateFee,
-
-    daysOverdue,
-  },
-});
-        // Update invoice dueAmount and totalAmount
-        await this.prisma.invoice.update({
-          where: { id: invoice.id },
-          data: {
-            dueAmount:   new Prisma.Decimal(invoice.dueAmount).plus(lateFee),
-            totalAmount: new Prisma.Decimal(invoice.totalAmount).plus(lateFee),
-            status:      'OVERDUE',
-          },
+          applied++;
         });
-
-        applied++;
       } catch (err: any) {
         this.logger.error(`Late fee error for invoice ${invoice.id}: ${err.message}`);
       }
@@ -273,11 +293,25 @@ await this.prisma.lateFee.create({
    * abstraction was introduced for it, per the FEE-1 decision record, so each
    * caller that needs it keeps its own small copy).
    *
-   * A waiver mutates Invoice.dueAmount/totalAmount, the same fields a
-   * concurrent payment settlement mutates. Without this lock, a waiver
-   * running concurrently with a payment on the same invoice could read the
-   * invoice's totals before the other writes them -- a lost update, same
+   * Two callers in this file: waiveLateFee() and, as of M4, applyLateFees().
+   * Both mutate Invoice.dueAmount/totalAmount, the same fields a concurrent
+   * payment settlement mutates. Without this lock, any two of {settlement,
+   * waiver, assessment} running concurrently on the same invoice could each
+   * read its totals before the other writes them -- a lost update, same
    * failure class FEE-1 fixed for payments and refunds.
+   *
+   * TODO (do not action piecemeal): v1.2 Section 3.8 specifies the
+   * two-argument pg_advisory_xact_lock(classId, objId) form, namespaced by
+   * lock class, as the standard going forward. This file, RefundService and
+   * PaymentService currently all use the single-bigint-argument form instead.
+   * These are NOT interchangeable -- Postgres treats the single-argument and
+   * two-argument advisory lock functions as separate lock spaces that never
+   * conflict with each other, even for numerically identical keys. If this
+   * codebase ever migrates to the two-argument form, every call site
+   * (PaymentService x2, RefundService, this file x2) MUST move together in
+   * one atomic change; migrating any subset first would silently decouple
+   * that subset's lock from the others' and reintroduce the exact lost-update
+   * race these locks exist to prevent, while looking fixed.
    */
   private lockKeyFor(invoiceId: string): number {
     return invoiceId
