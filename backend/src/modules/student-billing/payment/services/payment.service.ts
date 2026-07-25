@@ -174,11 +174,9 @@ export class PaymentService {
       // invoice totals above. See LateFeeService.allocatePayment() for why
       // this must run in the same transaction.
       //
-      // NOTE: allocatePayment() still takes a number -- LateFeeService is a
-      // separate aggregate and its Decimal conversion is its own M3 commit.
-      // The Number() coercion here is confined to that boundary and removed
-      // when that commit lands.
-      await this.lateFeeService.allocatePayment(tx, tenantId, payment.invoiceId, payment.id, Number(payment.amount));
+      // allocatePayment() now accepts Prisma.Decimal.Value (M3), so
+      // payment.amount (a Decimal) is passed through without Number() (D-9).
+      await this.lateFeeService.allocatePayment(tx, tenantId, payment.invoiceId, payment.id, payment.amount);
       const receipt = await this.generateReceipt(tx, tenantId, payment.invoiceId, payment.id);
 
       // Post-write read: the return value needs the full settled row.

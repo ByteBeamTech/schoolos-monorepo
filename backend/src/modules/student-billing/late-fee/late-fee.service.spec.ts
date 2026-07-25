@@ -8,6 +8,54 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../core/compliance/audit.service';
 import { LateFeeService } from './late-fee.service';
 
+describe('LateFeeService.calculateLateFee — Decimal rounding (D-9)', () => {
+  let service: LateFeeService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LateFeeService,
+        { provide: PrismaService, useValue: {} },
+        { provide: AuditService, useValue: { logUpdate: jest.fn() } },
+      ],
+    }).compile();
+    service = module.get(LateFeeService);
+  });
+
+  it('rounds a percentage penalty correctly where binary float misrounds', () => {
+    // due 100 @ 8.325%/month, 1 month overdue, no grace:
+    //   100 * 0.08325 = 8.325 -> round-half-up = 8.33.
+    // The old float path did Math.round(8.325*100)/100 = 8.32 (8.325 stored
+    // as 8.32499...). Decimal.toDecimalPlaces(2) gives the correct 8.33.
+    const due = 100;
+    const dueDate = new Date('2026-01-01');
+    const asOf    = new Date('2026-01-16'); // 15 days late, no grace -> ceil(15/30)=1 month
+    const config = {
+      gracePeriodDays: 0,
+      penaltyType: 'PERCENTAGE' as const,
+      penaltyValue: 8.325,
+      compoundDaily: false,
+    };
+
+    const { lateFee } = service.calculateLateFee(due, dueDate, asOf, config);
+    expect(lateFee).toBe(8.33); // NOT 8.32
+  });
+
+  it('caps the penalty at maxPenalty without float drift', () => {
+    const config = {
+      gracePeriodDays: 0,
+      penaltyType: 'PERCENTAGE' as const,
+      penaltyValue: 50,
+      maxPenalty: 500,
+      compoundDaily: false,
+    };
+    const { lateFee } = service.calculateLateFee(
+      100000, new Date('2026-01-01'), new Date('2026-02-01'), config,
+    );
+    expect(lateFee).toBe(500); // capped
+  });
+});
+
 describe('LateFeeService.allocatePayment', () => {
   let service: LateFeeService;
   let tx: any;
@@ -70,8 +118,8 @@ describe('LateFeeService.allocatePayment', () => {
     fees.push(makeFee({ amount: 60 }));
     await service.allocatePayment(tx, 't-1', 'inv-1', 'pay-1', 100);
 
-    expect(fees[0].paidAmount).toBe(60);
-    expect(fees[0].finalAmount).toBe(0);
+    expect(Number(fees[0].paidAmount)).toBe(60);
+    expect(Number(fees[0].finalAmount)).toBe(0);
     expect(fees[0].status).toBe('PAID');
     expect(fees[0].paymentId).toBe('pay-1');
   });
@@ -80,8 +128,8 @@ describe('LateFeeService.allocatePayment', () => {
     fees.push(makeFee({ amount: 100 }));
     await service.allocatePayment(tx, 't-1', 'inv-1', 'pay-1', 40);
 
-    expect(fees[0].paidAmount).toBe(40);
-    expect(fees[0].finalAmount).toBe(60);
+    expect(Number(fees[0].paidAmount)).toBe(40);
+    expect(Number(fees[0].finalAmount)).toBe(60);
     expect(fees[0].status).toBe('ACTIVE'); // still open
     // Not settled yet -- must not claim this payment as the one that closed it.
     expect(fees[0].paymentId).toBeUndefined();
@@ -100,7 +148,7 @@ describe('LateFeeService.allocatePayment', () => {
     const old = fees.find((f) => f.id === 'lf-old');
     const nw = fees.find((f) => f.id === 'lf-new');
     expect(old.status).toBe('PAID');   // fully covered first
-    expect(nw.paidAmount).toBe(10);    // remainder spills into the next fee
+    expect(Number(nw.paidAmount)).toBe(10);    // remainder spills into the next fee
     expect(nw.status).toBe('ACTIVE');
   });
 
@@ -124,8 +172,8 @@ describe('LateFeeService.allocatePayment', () => {
     await service.allocatePayment(tx, 't-1', 'inv-1', 'pay-1', 100);
 
     // Only 30 was ever collectible; the payment must not over-allocate.
-    expect(fees[0].paidAmount).toBe(30);
-    expect(fees[0].finalAmount).toBe(0);
+    expect(Number(fees[0].paidAmount)).toBe(30);
+    expect(Number(fees[0].finalAmount)).toBe(0);
     expect(fees[0].status).toBe('PAID');
   });
 
@@ -133,8 +181,8 @@ describe('LateFeeService.allocatePayment', () => {
     fees.push(makeFee({ amount: 25 }));
     await service.allocatePayment(tx, 't-1', 'inv-1', 'pay-1', 1000);
 
-    expect(fees[0].paidAmount).toBe(25);
-    expect(fees[0].finalAmount).toBe(0);
+    expect(Number(fees[0].paidAmount)).toBe(25);
+    expect(Number(fees[0].finalAmount)).toBe(0);
   });
 
   it('does nothing when there are no active late fees for the invoice', async () => {
@@ -224,8 +272,8 @@ describe('LateFeeService.waiveLateFee', () => {
     fee.amount = 100;
     const { lateFee: result } = await service.waiveLateFee('t-1', 'lf-1', 100, 'actor-1', 'goodwill gesture');
 
-    expect(result.amountWaived).toBe(100);
-    expect(result.finalAmount).toBe(0);
+    expect(Number(result.amountWaived)).toBe(100);
+    expect(Number(result.finalAmount)).toBe(0);
     expect(result.status).toBe('WAIVED');
     expect(result.waivedById).toBe('actor-1');
     expect(result.reason).toBe('goodwill gesture');
@@ -236,8 +284,8 @@ describe('LateFeeService.waiveLateFee', () => {
     fee.amount = 100;
     const { lateFee: result } = await service.waiveLateFee('t-1', 'lf-1', 30, 'actor-1', 'partial goodwill');
 
-    expect(result.amountWaived).toBe(30);
-    expect(result.finalAmount).toBe(70);
+    expect(Number(result.amountWaived)).toBe(30);
+    expect(Number(result.finalAmount)).toBe(70);
     expect(result.status).toBe('ACTIVE');
   });
 
@@ -245,7 +293,7 @@ describe('LateFeeService.waiveLateFee', () => {
     fee.amount = 100; fee.amountWaived = 30;
     const { lateFee: result } = await service.waiveLateFee('t-1', 'lf-1', 70, 'actor-1', 'clear the rest');
 
-    expect(result.amountWaived).toBe(100);
+    expect(Number(result.amountWaived)).toBe(100);
     expect(result.status).toBe('WAIVED');
   });
 
@@ -257,8 +305,8 @@ describe('LateFeeService.waiveLateFee', () => {
 
   it('reduces the invoice dueAmount and totalAmount by the waived amount', async () => {
     await service.waiveLateFee('t-1', 'lf-1', 40, 'actor-1', 'x');
-    expect(invoice.dueAmount).toBe(1060);
-    expect(invoice.totalAmount).toBe(1060);
+    expect(Number(invoice.dueAmount)).toBe(1060);
+    expect(Number(invoice.totalAmount)).toBe(1060);
   });
 
   it('flips the invoice to PAID when the waiver clears the remaining due amount', async () => {
@@ -266,7 +314,7 @@ describe('LateFeeService.waiveLateFee', () => {
     fee.amount = 100;
     await service.waiveLateFee('t-1', 'lf-1', 100, 'actor-1', 'clear it out');
 
-    expect(invoice.dueAmount).toBe(0);
+    expect(Number(invoice.dueAmount)).toBe(0);
     expect(invoice.status).toBe('PAID');
     expect(invoice.paidAt).toBeInstanceOf(Date);
   });
@@ -275,7 +323,7 @@ describe('LateFeeService.waiveLateFee', () => {
     invoice.dueAmount = 20; // less than the fee being waived, shouldn't happen but must not corrupt data
     fee.amount = 40;
     await service.waiveLateFee('t-1', 'lf-1', 40, 'actor-1', 'x');
-    expect(invoice.dueAmount).toBe(0);
+    expect(Number(invoice.dueAmount)).toBe(0);
   });
 
   it('takes the per-invoice advisory lock inside the transaction', async () => {

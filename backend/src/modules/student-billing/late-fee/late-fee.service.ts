@@ -1,6 +1,7 @@
 // modules/student-billing/late-fee/late-fee.service.ts
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
+import { Prisma } from '@prisma/client';
 import { AuditService } from '../../../core/compliance/audit.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
@@ -44,19 +45,41 @@ export class LateFeeService {
       return { lateFee: 0, daysOverdue, gracePeriodDays: config.gracePeriodDays, isInGrace };
     }
 
-    let lateFee = 0;
+    // Penalty is a percentage of (or a flat charge against) the due amount --
+    // percentage math is the float-drift case. Compute in Decimal, round to
+    // 2dp (paise) at the end. The public contract stays `number` since callers
+    // (and the invoice update) use it as such; only the internal arithmetic
+    // moves to Decimal (D-9).
+    const due = new Prisma.Decimal(dueAmount);
+    let lateFee = new Prisma.Decimal(0);
     if (config.penaltyType === 'FLAT') {
-      lateFee = config.compoundDaily ? config.penaltyValue * daysOverdue : config.penaltyValue;
-    } else {
-      const monthlyRate = config.penaltyValue / 100;
-      const dailyRate   = monthlyRate / 30;
       lateFee = config.compoundDaily
-        ? dueAmount * (Math.pow(1 + dailyRate, daysOverdue) - 1)
-        : dueAmount * monthlyRate * Math.ceil(daysOverdue / 30);
+        ? new Prisma.Decimal(config.penaltyValue).times(daysOverdue)
+        : new Prisma.Decimal(config.penaltyValue);
+    } else {
+      const monthlyRate = new Prisma.Decimal(config.penaltyValue).dividedBy(100);
+      if (config.compoundDaily) {
+        // Daily compounding: due * ((1 + monthlyRate/30)^daysOverdue - 1).
+        // Decimal.pow takes an integer exponent, which daysOverdue is.
+        const dailyRate = monthlyRate.dividedBy(30);
+        const growth    = new Prisma.Decimal(1).plus(dailyRate).pow(daysOverdue).minus(1);
+        lateFee = due.times(growth);
+      } else {
+        const months = Math.ceil(daysOverdue / 30);
+        lateFee = due.times(monthlyRate).times(months);
+      }
     }
 
-    if (config.maxPenalty !== undefined) lateFee = Math.min(lateFee, config.maxPenalty);
-    return { lateFee: Math.round(lateFee * 100) / 100, daysOverdue, gracePeriodDays: config.gracePeriodDays, isInGrace };
+    if (config.maxPenalty !== undefined) {
+      const cap = new Prisma.Decimal(config.maxPenalty);
+      if (lateFee.greaterThan(cap)) lateFee = cap;
+    }
+    return {
+      lateFee: lateFee.toDecimalPlaces(2).toNumber(),
+      daysOverdue,
+      gracePeriodDays: config.gracePeriodDays,
+      isInGrace,
+    };
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
@@ -87,7 +110,7 @@ export class LateFeeService {
     for (const invoice of overdueInvoices) {
       try {
         const dueDate   = new Date(invoice.dueDate);
-        const dueAmount = Number(invoice.dueAmount);
+        const dueAmount = new Prisma.Decimal(invoice.dueAmount).toNumber();
         const config    = await this.getTenantConfig(invoice.tenantId);
         const { lateFee, daysOverdue } = this.calculateLateFee(dueAmount, dueDate, new Date(), config);
 	const currentSession =
@@ -138,8 +161,8 @@ await this.prisma.lateFee.create({
         await this.prisma.invoice.update({
           where: { id: invoice.id },
           data: {
-            dueAmount:   dueAmount + lateFee,
-            totalAmount: Number(invoice.totalAmount) + lateFee,
+            dueAmount:   new Prisma.Decimal(invoice.dueAmount).plus(lateFee),
+            totalAmount: new Prisma.Decimal(invoice.totalAmount).plus(lateFee),
             status:      'OVERDUE',
           },
         });
@@ -196,26 +219,32 @@ await this.prisma.lateFee.create({
     tenantId:  string,
     invoiceId: string,
     paymentId: string,
-    amount:    number,
+    amount:    Prisma.Decimal.Value,
   ): Promise<void> {
-    if (amount <= 0) return;
+    // amount is now Decimal-typed so PaymentService can pass payment.amount
+    // straight in without Number() coercion (D-9). All splitting below is
+    // Decimal.
+    let remaining = new Prisma.Decimal(amount);
+    if (remaining.lessThanOrEqualTo(0)) return;
 
     const activeFees = await tx.lateFee.findMany({
       where:   { tenantId, invoiceId, status: 'ACTIVE' },
       orderBy: { appliedAt: 'asc' },
     });
 
-    let remaining = amount;
     for (const fee of activeFees) {
-      if (remaining <= 0) break;
+      if (remaining.lessThanOrEqualTo(0)) break;
 
-      const outstanding = Number(fee.amount) - Number(fee.paidAmount) - Number(fee.amountWaived);
-      if (outstanding <= 0) continue;
+      const outstanding = new Prisma.Decimal(fee.amount)
+        .minus(fee.paidAmount)
+        .minus(fee.amountWaived);
+      if (outstanding.lessThanOrEqualTo(0)) continue;
 
-      const allocated   = Math.min(remaining, outstanding);
-      const newPaid     = Number(fee.paidAmount) + allocated;
-      const finalAmount = Math.max(0, Number(fee.amount) - newPaid - Number(fee.amountWaived));
-      const isSettled   = finalAmount <= 0;
+      const allocated   = Prisma.Decimal.min(remaining, outstanding);
+      const newPaid     = new Prisma.Decimal(fee.paidAmount).plus(allocated);
+      const finalRaw    = new Prisma.Decimal(fee.amount).minus(newPaid).minus(fee.amountWaived);
+      const finalAmount = finalRaw.isNegative() ? new Prisma.Decimal(0) : finalRaw;
+      const isSettled   = finalAmount.lessThanOrEqualTo(0);
 
       await tx.lateFee.update({
         where: { id: fee.id },
@@ -231,7 +260,7 @@ await this.prisma.lateFee.create({
         },
       });
 
-      remaining -= allocated;
+      remaining = remaining.minus(allocated);
     }
   }
 
@@ -291,16 +320,22 @@ await this.prisma.lateFee.create({
         throw new BadRequestException(`Only an ACTIVE late fee can be waived (current status: ${fee.status}).`);
       }
 
-      const outstanding = Number(fee.amount) - Number(fee.paidAmount) - Number(fee.amountWaived);
-      if (amount > outstanding) {
-        throw new BadRequestException(`Waiver amount ${amount} exceeds outstanding ${outstanding}.`);
+      // Money arithmetic in Decimal (D-9). amount stays a number at this HTTP
+      // boundary (validated DTO field); everything computed from it is Decimal.
+      const amt         = new Prisma.Decimal(amount);
+      const outstanding = new Prisma.Decimal(fee.amount)
+        .minus(fee.paidAmount)
+        .minus(fee.amountWaived);
+      if (amt.greaterThan(outstanding)) {
+        throw new BadRequestException(`Waiver amount ${amount} exceeds outstanding ${outstanding.toString()}.`);
       }
 
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock($1)`, this.lockKeyFor(fee.invoiceId));
 
-      const newWaived    = Number(fee.amountWaived) + amount;
-      const finalAmount  = Math.max(0, Number(fee.amount) - Number(fee.paidAmount) - newWaived);
-      const isSettled    = finalAmount <= 0;
+      const newWaived   = new Prisma.Decimal(fee.amountWaived).plus(amt);
+      const finalRaw    = new Prisma.Decimal(fee.amount).minus(fee.paidAmount).minus(newWaived);
+      const finalAmount = finalRaw.isNegative() ? new Prisma.Decimal(0) : finalRaw;
+      const isSettled   = finalAmount.lessThanOrEqualTo(0);
 
       const updatedFee = await tx.lateFee.update({
         where: { id: fee.id },
@@ -319,16 +354,18 @@ await this.prisma.lateFee.create({
       // clears it, never let dueAmount go negative.
       const invoice = await tx.invoice.findFirst({ where: { id: fee.invoiceId, tenantId } });
       if (invoice) {
-        const newDue   = Math.max(0, Number(invoice.dueAmount) - amount);
-        const newTotal = Math.max(0, Number(invoice.totalAmount) - amount);
-        const status    = newDue <= 0 ? 'PAID' : invoice.status;
+        const dueRaw    = new Prisma.Decimal(invoice.dueAmount).minus(amt);
+        const totalRaw  = new Prisma.Decimal(invoice.totalAmount).minus(amt);
+        const newDue    = dueRaw.isNegative() ? new Prisma.Decimal(0) : dueRaw;
+        const newTotal  = totalRaw.isNegative() ? new Prisma.Decimal(0) : totalRaw;
+        const status    = newDue.lessThanOrEqualTo(0) ? 'PAID' : invoice.status;
         await tx.invoice.update({
           where: { id: invoice.id },
           data: {
             dueAmount:   newDue,
             totalAmount: newTotal,
             status:      status as any,
-            paidAt:      newDue <= 0 ? (invoice.paidAt ?? new Date()) : invoice.paidAt,
+            paidAt:      newDue.lessThanOrEqualTo(0) ? (invoice.paidAt ?? new Date()) : invoice.paidAt,
           },
         });
       }
@@ -339,8 +376,8 @@ await this.prisma.lateFee.create({
           actorId,
           entityType: 'LateFee',
           entityId:   fee.id,
-          before:     { amountWaived: Number(fee.amountWaived), status: fee.status },
-          after:      { amountWaived: newWaived, status: updatedFee.status, waivedAmount: amount, reason },
+          before:     { amountWaived: new Prisma.Decimal(fee.amountWaived).toNumber(), status: fee.status },
+          after:      { amountWaived: newWaived.toNumber(), status: updatedFee.status, waivedAmount: amount, reason },
         },
         tx,
       );
