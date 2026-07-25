@@ -1,6 +1,7 @@
 // modules/student-billing/refund/refund.service.ts
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
+import { Prisma } from '@prisma/client';
 import { AuditService }  from '../../../core/compliance/audit.service';
 import { ConfigService } from '@nestjs/config';
 
@@ -106,11 +107,13 @@ export class RefundService {
       // FAILED is excluded: no money moved.
       const alreadyRefunded = payment.refunds
         .filter((r: any) => CONSUMING_REFUND_STATUSES.includes(r.status))
-        .reduce((sum: number, r: any) => sum + Number(r.amount), 0);
+        .reduce((sum: Prisma.Decimal, r: any) => sum.plus(new Prisma.Decimal(r.amount)), new Prisma.Decimal(0));
 
-      const maxRefund = Number(payment.amount) - alreadyRefunded;
-      if (dto.amount > maxRefund) {
-        throw new BadRequestException(`Refund amount ${dto.amount} exceeds available ${maxRefund}`);
+      // Money comparison in Decimal (D-9). dto.amount is a validated number
+      // from the DTO; the payment amount and prior refunds are Decimals.
+      const maxRefund = new Prisma.Decimal(payment.amount).minus(alreadyRefunded);
+      if (new Prisma.Decimal(dto.amount).greaterThan(maxRefund)) {
+        throw new BadRequestException(`Refund amount ${dto.amount} exceeds available ${maxRefund.toString()}`);
       }
 
       const refund = await tx.refund.create({
@@ -169,10 +172,10 @@ export class RefundService {
         select: { amount: true },
       });
       const totalRefunded = completed.reduce(
-        (sum: number, r: any) => sum + Number(r.amount),
-        0,
+        (sum: Prisma.Decimal, r: any) => sum.plus(new Prisma.Decimal(r.amount)),
+        new Prisma.Decimal(0),
       );
-      const isFullRefund = totalRefunded >= Number(payment.amount);
+      const isFullRefund = totalRefunded.greaterThanOrEqualTo(new Prisma.Decimal(payment.amount));
 
       await tx.payment.update({
         where: { id: dto.paymentId },
@@ -209,15 +212,20 @@ export class RefundService {
           select:  { amount: true, refunds: { where: { status: 'COMPLETED' }, select: { amount: true } } },
         });
 
-        const retained = invoicePayments.reduce((sum: number, p: any) => {
-          const refunded = p.refunds.reduce((s: number, r: any) => s + Number(r.amount), 0);
-          return sum + Math.max(0, Number(p.amount) - refunded);
-        }, 0);
+        const retained = invoicePayments.reduce((sum: Prisma.Decimal, p: any) => {
+          const refunded = p.refunds.reduce(
+            (s: Prisma.Decimal, r: any) => s.plus(new Prisma.Decimal(r.amount)),
+            new Prisma.Decimal(0),
+          );
+          const net = new Prisma.Decimal(p.amount).minus(refunded);
+          return sum.plus(net.isNegative() ? new Prisma.Decimal(0) : net);
+        }, new Prisma.Decimal(0));
 
-        const total       = Number(invoice.totalAmount);
-        const paidAmount  = Math.min(retained, total);
-        const dueAmount   = Math.max(0, total - paidAmount);
-        const fullyPaid   = dueAmount <= 0 && total > 0;
+        const total       = new Prisma.Decimal(invoice.totalAmount);
+        const paidAmount  = Prisma.Decimal.min(retained, total);
+        const dueRaw      = total.minus(paidAmount);
+        const dueAmount   = dueRaw.isNegative() ? new Prisma.Decimal(0) : dueRaw;
+        const fullyPaid   = dueAmount.lessThanOrEqualTo(0) && total.greaterThan(0);
 
         await tx.invoice.update({
           where: { id: invoice.id },
@@ -227,7 +235,7 @@ export class RefundService {
             // Only a fully-drained invoice returns to SENT. A partially-paid
             // invoice stays PARTIALLY_PAID; a still-fully-covered one stays
             // PAID. Never assume the refund emptied it.
-            status: fullyPaid ? 'PAID' : (paidAmount > 0 ? 'PARTIALLY_PAID' : 'SENT'),
+            status: fullyPaid ? 'PAID' : (paidAmount.greaterThan(0) ? 'PARTIALLY_PAID' : 'SENT'),
             paidAt: fullyPaid ? undefined : null,
           },
         });

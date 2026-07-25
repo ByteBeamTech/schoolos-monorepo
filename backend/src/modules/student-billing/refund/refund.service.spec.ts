@@ -74,6 +74,29 @@ describe('RefundService.initiate (FEE-1)', () => {
   });
 
   describe('over-refund guard (previously inert)', () => {
+    it('sums prior refunds in Decimal — a valid exact-remaining refund is not wrongly rejected (D-9)', async () => {
+      // Payment 1.00 with three prior COMPLETED refunds of 0.10.
+      // Float: 0.1 + 0.1 + 0.1 = 0.30000000000000004, so alreadyRefunded
+      // drifts high and a stricter comparison would reject the exact 0.70
+      // that actually remains. Decimal sums to exactly 0.30, leaving 0.70.
+      prisma.payment.findFirst.mockResolvedValue({
+        id: 'pay-1', tenantId: 't-1', branchId: 'b-1', invoiceId: 'inv-1',
+        amount: 1, status: 'SUCCESS', gateway: 'RAZORPAY',
+        invoice: { id: 'inv-1', totalAmount: 1 },
+        refunds: [
+          { amount: 0.1, status: 'COMPLETED' },
+          { amount: 0.1, status: 'COMPLETED' },
+          { amount: 0.1, status: 'COMPLETED' },
+        ],
+      });
+
+      // The exact remaining 0.70 must be accepted, not rejected.
+      await expect(
+        service.initiate('t-1', { paymentId: 'pay-1', amount: 0.7, reason: 'x' }, 'actor-1', 'ACCOUNTANT'),
+      ).resolves.toBeDefined();
+      expect(prisma.refund.create).toHaveBeenCalled();
+    });
+
     it('counts COMPLETED refunds against the available amount', async () => {
       prisma.payment.findFirst.mockResolvedValue(
         payment([{ amount: 6_000, status: 'COMPLETED' }]),
@@ -348,12 +371,10 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
       expect.objectContaining({ data: { status: 'REFUNDED' } }),
     );
     // Invoice recomputed to fully-drained: nothing retained -> SENT, due back to full.
-    expect(prisma.invoice.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'inv-1' },
-        data: expect.objectContaining({ paidAmount: 0, dueAmount: PAYMENT_AMOUNT, status: 'SENT' }),
-      }),
-    );
+    const drainedData = prisma.invoice.update.mock.calls.at(-1)[0].data;
+    expect(Number(drainedData.paidAmount)).toBe(0);
+    expect(Number(drainedData.dueAmount)).toBe(PAYMENT_AMOUNT);
+    expect(drainedData.status).toBe('SENT');
   });
 
   // The core M2 regression: an invoice paid by TWO payments, one fully
@@ -377,12 +398,10 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
 
     // pay-2's 5,000 survives: invoice shows 5,000 paid / 5,000 due, PARTIALLY_PAID.
     // NOT paidAmount:0 / dueAmount:10,000 (the bug).
-    expect(prisma.invoice.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'inv-1' },
-        data: expect.objectContaining({ paidAmount: 5_000, dueAmount: 5_000, status: 'PARTIALLY_PAID' }),
-      }),
-    );
+    const preservedData = prisma.invoice.update.mock.calls.at(-1)[0].data;
+    expect(Number(preservedData.paidAmount)).toBe(5_000);
+    expect(Number(preservedData.dueAmount)).toBe(5_000);
+    expect(preservedData.status).toBe('PARTIALLY_PAID');
   });
 
   it('recomputes the invoice from its own current state, not the Phase-1 snapshot', async () => {
@@ -403,12 +422,8 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
     await service.initiate('t-1', { paymentId: 'pay-1', amount: 10_000, reason: 'x' }, 'a-1', 'ACCOUNTANT');
 
     // due recomputes to the CURRENT total (10,000), not the stale snapshot (9,000).
-    expect(prisma.invoice.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'inv-1' },
-        data: expect.objectContaining({ dueAmount: 10_000 }),
-      }),
-    );
+    const snapshotData = prisma.invoice.update.mock.calls.at(-1)[0].data;
+    expect(Number(snapshotData.dueAmount)).toBe(10_000);
   });
 
   it('a partial refund still reduces the invoice retained/paid amount', async () => {
@@ -424,11 +439,10 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
     expect(prisma.payment.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: 'PARTIALLY_REFUNDED' } }),
     );
-    expect(prisma.invoice.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ paidAmount: 6_000, dueAmount: 4_000, status: 'PARTIALLY_PAID' }),
-      }),
-    );
+    const partialData = prisma.invoice.update.mock.calls.at(-1)[0].data;
+    expect(Number(partialData.paidAmount)).toBe(6_000);
+    expect(Number(partialData.dueAmount)).toBe(4_000);
+    expect(partialData.status).toBe('PARTIALLY_PAID');
   });
 
   it('allows a further refund against an already PARTIALLY_REFUNDED payment', async () => {
