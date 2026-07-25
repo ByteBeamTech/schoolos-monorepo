@@ -4,6 +4,7 @@ import {
   CreateExamDto, UpdateExamDto,
   CreateExamScheduleDto, BulkMarkEntryDto,
 } from '../dto/examinations.dto';
+import { computeGrade } from '@modules/gradebook/services/grading.util';
 
 @Injectable()
 export class ExaminationsService {
@@ -137,18 +138,35 @@ export class ExaminationsService {
       include: { schedule: true },
     });
 
+    const boundaries = await this.prisma.gradeBoundary.findMany({
+      where:   { tenantId, sessionId: (exam as any).sessionId },
+      orderBy: { minMark: 'desc' },
+    });
+
     const totalMax      = exam.schedules.reduce((s: number, sc: any) => s + Number(sc.maxMarks), 0);
     const totalObtained = marks.filter((m: any) => !m.isAbsent).reduce((s: number, m: any) => s + Number(m.marksObtained ?? 0), 0);
     const percentage    = totalMax > 0 ? Math.round(totalObtained / totalMax * 100) : 0;
     const passed        = marks.every((m: any) => m.isAbsent || Number(m.marksObtained ?? 0) >= Number(m.schedule.passMarks));
-    const grade         = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B+' :
-                          percentage >= 60 ? 'B'  : percentage >= 50 ? 'C' : percentage >= 40 ? 'D' : 'F';
+    const grade         = computeGrade(percentage, boundaries);
 
     return { examId, studentId, totalMax, totalObtained, percentage, grade, passed, marks };
   }
 
   async getClassResults(tenantId: string, examId: string, classId: string) {
-    const schedules    = await this.prisma.examSchedule.findMany({ where: { examId, classId } });
+    const exam = await this.prisma.exam.findFirst({
+      where:  { id: examId, tenantId },
+      select: { sessionId: true },
+    });
+
+    const [schedules, boundaries] = await Promise.all([
+      this.prisma.examSchedule.findMany({ where: { examId, classId } }),
+      exam
+        ? this.prisma.gradeBoundary.findMany({
+            where:   { tenantId, sessionId: exam.sessionId },
+            orderBy: { minMark: 'desc' },
+          })
+        : Promise.resolve([]),
+    ]);
     const scheduleIds  = schedules.map((s: any) => s.id);
 
     // Get marks without student relation (Mark model doesn't have it)
@@ -178,8 +196,7 @@ export class ExaminationsService {
     const results = Array.from(byStudent.entries()).map(([studentId, sm]) => {
       const obtained   = sm.filter((m: any) => !m.isAbsent).reduce((s: number, m: any) => s + Number(m.marksObtained ?? 0), 0);
       const percentage = totalMax > 0 ? Math.round(obtained / totalMax * 100) : 0;
-      const grade      = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B+' :
-                         percentage >= 60 ? 'B'  : percentage >= 50 ? 'C' : percentage >= 40 ? 'D' : 'F';
+      const grade      = computeGrade(percentage, boundaries);
       return { studentId, student: studentMap.get(studentId), obtained, totalMax, percentage, grade };
     });
 

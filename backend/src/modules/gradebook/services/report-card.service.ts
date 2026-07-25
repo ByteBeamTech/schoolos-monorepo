@@ -7,6 +7,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EVENTS }        from '../../../core/events/events.constants';
+import { computeGrade }  from './grading.util';
 
 export interface ReportCardResult {
   studentId:            string;
@@ -41,23 +42,6 @@ export class ReportCardService {
     private readonly prisma:   PrismaService,
     private readonly emitter:  EventEmitter2,
   ) {}
-
-  // ── Apply grade from boundaries, fallback to built-in scale ──────────────
-  private applyGrade(pct: number, boundaries: any[]): string {
-    if (boundaries.length > 0) {
-      for (const b of boundaries) {
-        if (pct >= Number(b.minMark) && pct <= Number(b.maxMark)) return b.grade;
-      }
-      return 'F';
-    }
-    if (pct >= 90) return 'A+';
-    if (pct >= 80) return 'A';
-    if (pct >= 70) return 'B+';
-    if (pct >= 60) return 'B';
-    if (pct >= 50) return 'C';
-    if (pct >= 40) return 'D';
-    return 'F';
-  }
 
   // ── Single student report card ────────────────────────────────────────────
   async getStudentReportCard(
@@ -110,7 +94,7 @@ export class ReportCardService {
           passMarks: Number(sch.passMarks),
           obtained,
           isAbsent:  mark?.isAbsent ?? false,
-          grade:     obtained !== null ? this.applyGrade(subPct, boundaries) : 'AB',
+          grade:     obtained !== null ? computeGrade(subPct, boundaries) : 'AB',
         };
       });
 
@@ -118,7 +102,7 @@ export class ReportCardService {
     const totalMax      = subjects.reduce((s, sub) => s + sub.maxMarks,             0);
     const totalObtained = subjects.reduce((s, sub) => s + (sub.obtained ?? 0),      0);
     const percentage    = totalMax > 0 ? Math.round((totalObtained / totalMax) * 100 * 10) / 10 : 0;
-    const grade         = this.applyGrade(percentage, boundaries);
+    const grade         = computeGrade(percentage, boundaries);
     const passed        = subjects.every(
       sub => sub.isAbsent || (sub.obtained !== null && sub.obtained >= sub.passMarks)
     );

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { CreateGradeBoundaryDto } from '../dto/gradebook.dto';
+import { computeGrade } from './grading.util';
 
 @Injectable()
 export class GradebookService {
@@ -24,13 +25,6 @@ export class GradebookService {
     if (!b) throw new NotFoundException('Grade boundary not found');
     await this.prisma.gradeBoundary.delete({ where: { id } });
     return { deleted: true };
-  }
-
-  private applyGrade(mark: number, boundaries: any[]): string {
-    for (const b of boundaries) {
-      if (mark >= Number(b.minMark) && mark <= Number(b.maxMark)) return b.grade;
-    }
-    return 'N/A';
   }
 
   async getClassResults(tenantId: string, examId: string, classId: string, sessionId: string) {
@@ -71,7 +65,7 @@ export class GradebookService {
         studentMap[sid].subjects[(sch as any)?.subject?.name ?? m.scheduleId] = {
           obtained: Number(m.marksObtained),
           max:      sch?.maxMarks ?? 100,
-          grade:    this.applyGrade(Number(m.marksObtained) / (Number((sch as any)?.maxMarks) || 100) * 100, boundaries),
+          grade:    computeGrade(Number(m.marksObtained) / (Number((sch as any)?.maxMarks) || 100) * 100, boundaries),
         };
         studentMap[sid].totalMarks += Number(m.marksObtained);
         studentMap[sid].totalMax   += (Number((sch as any)?.maxMarks) || 100);
@@ -81,7 +75,7 @@ export class GradebookService {
     // Calculate % and grade
     const results = Object.values(studentMap).map((s: any) => {
       s.percentage = s.totalMax > 0 ? Math.round(s.totalMarks / s.totalMax * 100 * 100) / 100 : 0;
-      s.grade      = this.applyGrade(s.percentage, boundaries);
+      s.grade      = computeGrade(s.percentage, boundaries);
       return s;
     });
 
