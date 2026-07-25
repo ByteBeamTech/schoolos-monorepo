@@ -77,4 +77,14 @@ describe('AnalyticsService.getOverview', () => {
     expect(overview.lateFeeWaived).toBe(100);
     expect(overview.lateFeeOutstanding).toBe(300); // 1000 - 600 - 100
   });
+
+  it('computes lateFeeOutstanding in Decimal — no float drift across the three sums (D-9)', async () => {
+    // 1000.10 - 600.05 - 100.05 = 300.00 exactly; float subtraction of these
+    // widened sums yields 300.00000000000006.
+    prisma.lateFee.aggregate.mockResolvedValue({ _sum: { amount: 1000.10, paidAmount: 600.05, amountWaived: 100.05 } });
+
+    const overview = await service.getOverview('t-1');
+
+    expect(overview.lateFeeOutstanding).toBe(300); // NOT 300.00000000000006
+  });
 });

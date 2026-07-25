@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AnalyticsService {
@@ -98,6 +99,10 @@ export class AnalyticsService {
       }),
     ]);
 
+    // Aggregate-to-response boundary, not arithmetic (D-9): Prisma computes
+    // each _sum exactly in the database. These are read out as numbers because
+    // the response contract exposes numbers and no service-side math is done
+    // on them individually.
     const totalInvoiced =
       Number(invoices._sum.totalAmount ?? 0);
 
@@ -107,6 +112,9 @@ export class AnalyticsService {
     const outstanding =
       Number(invoices._sum.dueAmount ?? 0);
 
+    // collectionRate is a ratio (a percentage), not a money amount. It is a
+    // derived display statistic rounded to 2dp, so float division is fine
+    // here -- there is no paise to preserve.
     const collectionRate =
       totalInvoiced > 0
         ? (totalCollected / totalInvoiced) * 100
@@ -121,10 +129,14 @@ export class AnalyticsService {
     const lateFeeWaived =
       Number(lateFees._sum.amountWaived ?? 0);
 
+    // Real money arithmetic across three DB sums -- subtracting float-widened
+    // sums drifts on the paise, so compute in Decimal from the raw _sum values
+    // and expose the result as a number to keep the response contract.
     const lateFeeOutstanding =
-      lateFeeApplied -
-      lateFeeCollected -
-      lateFeeWaived;
+      new Prisma.Decimal(lateFees._sum.amount ?? 0)
+        .minus(lateFees._sum.paidAmount ?? 0)
+        .minus(lateFees._sum.amountWaived ?? 0)
+        .toNumber();
 
     return {
       totalInvoiced,
