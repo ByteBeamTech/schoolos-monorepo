@@ -72,16 +72,37 @@ describe('InvoiceService', () => {
       dueDate: '2025-04-30',
     }, 'actor-1');
 
-    // Verify GST: 2000 * 18% = 360
-    expect(prisma.invoice.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          gstAmount: 360,
-          totalAmount: 12360,
-          subtotal: 12000,
-        }),
-      }),
-    );
+    // Verify GST: 2000 * 18% = 360. Money fields are now Prisma.Decimal
+    // (D-9), so assert on their exact decimal value rather than a JS number.
+    const createArg = (prisma.invoice.create as jest.Mock).mock.calls.at(-1)[0];
+    expect(createArg.data.gstAmount.toString()).toBe('360');
+    expect(createArg.data.totalAmount.toString()).toBe('12360');
+    expect(createArg.data.subtotal.toString()).toBe('12000');
+    // Per-item GST is exact to the paise: activity 2000 * 18% = 360.00.
+    const activityItem = createArg.data.items.create.find((i: any) => i.name === 'Activity');
+    expect(activityItem.gstAmount.toString()).toBe('360');
+    expect(activityItem.netAmount.toString()).toBe('2360');
+  });
+
+  // D-9: GST rounding must be exact-to-the-paise. amount 100 * 8.325% = 8.325,
+  // which round-half-up must make 8.33. The old float path did
+  // Math.round(8.325*100)/100 and got 8.32, because 8.325 is stored as
+  // 8.32499...; Prisma.Decimal.toDecimalPlaces(2) rounds it correctly.
+  it('rounds percentage GST correctly where binary float misrounds (D-9)', async () => {
+    (prisma.feePlan.findFirst as jest.Mock).mockResolvedValue({
+      ...mockFeePlan,
+      feeItems: [{ id: 'x', name: 'X', amount: 100, gstRate: 8.325, gstCode: 'G', isOptional: false, sortOrder: 1 }],
+    });
+    (prisma.invoice.create as jest.Mock).mockResolvedValue({ id: 'inv-1', invoiceNumber: 'INV-2025-00001' });
+
+    await service.generate('t-1', { studentId: 'stu-1', feePlanId: 'plan-1', dueDate: '2025-04-30' }, 'actor-1');
+
+    const createArg = (prisma.invoice.create as jest.Mock).mock.calls.at(-1)[0];
+    const item = createArg.data.items.create[0];
+    expect(item.gstAmount.toString()).toBe('8.33');     // NOT 8.32
+    expect(item.netAmount.toString()).toBe('108.33');
+    expect(createArg.data.gstAmount.toString()).toBe('8.33');
+    expect(createArg.data.totalAmount.toString()).toBe('108.33');
   });
 
   // TEST 7

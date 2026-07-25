@@ -14,6 +14,7 @@ import {
   Injectable, NotFoundException, BadRequestException, ConflictException, Logger, ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService }     from '@infra/database/prisma.service';
+import { Prisma }            from '@prisma/client';
 import { AuditService }      from '../../../../core/compliance/audit.service';
 import { GenerateInvoiceDto, BulkGenerateInvoicesDto } from '../../dto/billing.dto';
 
@@ -98,16 +99,19 @@ export class InvoiceService {
 
     if (!plan.feeItems.length) throw new BadRequestException('Fee plan has no items.');
 
-    // Build academic items
+    // Build academic items. Money arithmetic in Decimal end-to-end (D-9):
+    // GST is a percentage of the amount, the exact case where float drifts.
+    // Round GST explicitly to 2dp (paise) with Decimal rather than the old
+    // Math.round(x*rate/100*100)/100 float dance.
     const itemData: any[] = plan.feeItems.map((item: any) => {
-      const amount    = Number(item.amount);
-      const gstRate   = Number(item.gstRate ?? 0);
-      const gstAmount = Math.round((amount * gstRate) / 100 * 100) / 100;
+      const amount    = new Prisma.Decimal(item.amount);
+      const gstRate   = new Prisma.Decimal(item.gstRate ?? 0);
+      const gstAmount = amount.times(gstRate).dividedBy(100).toDecimalPlaces(2);
       return {
         feeItemId: item.id, chargeCategory: 'ACADEMIC',
         name: item.name, amount, discountAmount: 0,
-        gstRate: gstRate || null, gstAmount,
-        netAmount: amount + gstAmount, sortOrder: item.sortOrder,
+        gstRate: gstRate.isZero() ? null : gstRate, gstAmount,
+        netAmount: amount.plus(gstAmount), sortOrder: item.sortOrder,
       };
     });
 
@@ -117,11 +121,11 @@ export class InvoiceService {
       include: { route: true },
     });
     if (transport) {
-      const transportAmount = Number((transport as any).route.feeAmount);
+      const transportAmount = new Prisma.Decimal((transport as any).route.feeAmount);
       itemData.push({
         feeItemId: null, chargeCategory: 'TRANSPORT',
         name: 'Transport Fee', amount: transportAmount, discountAmount: 0,
-        gstRate: null, gstAmount: 0, netAmount: transportAmount, sortOrder: 999,
+        gstRate: null, gstAmount: new Prisma.Decimal(0), netAmount: transportAmount, sortOrder: 999,
       });
     }
 
@@ -129,18 +133,26 @@ export class InvoiceService {
     const approvedDiscounts = await this.prisma.discount.findMany({
       where: { studentId: dto.studentId, tenantId, approvalStatus: 'APPROVED', isActive: true },
     });
-    let totalDiscount = 0;
-    const subtotalBeforeDiscount = itemData.reduce((s, i) => s + Number(i.amount), 0);
+    let totalDiscount = new Prisma.Decimal(0);
+    const subtotalBeforeDiscount = itemData.reduce(
+      (s: Prisma.Decimal, i: any) => s.plus(new Prisma.Decimal(i.amount)),
+      new Prisma.Decimal(0),
+    );
     for (const d of approvedDiscounts) {
+      // Percentage discounts round to 2dp (paise); flat amounts are exact.
       const discountAmt = (d as any).type === 'PERCENTAGE'
-        ? Math.round(subtotalBeforeDiscount * Number(d.value) / 100 * 100) / 100
-        : Number(d.value);
-      totalDiscount += discountAmt;
+        ? subtotalBeforeDiscount.times(new Prisma.Decimal(d.value)).dividedBy(100).toDecimalPlaces(2)
+        : new Prisma.Decimal(d.value);
+      totalDiscount = totalDiscount.plus(discountAmt);
     }
 
     const subtotal    = subtotalBeforeDiscount;
-    const gstTotal    = itemData.reduce((s, i) => s + Number(i.gstAmount), 0);
-    const totalAmount = Math.max(0, subtotal + gstTotal - totalDiscount);
+    const gstTotal    = itemData.reduce(
+      (s: Prisma.Decimal, i: any) => s.plus(new Prisma.Decimal(i.gstAmount)),
+      new Prisma.Decimal(0),
+    );
+    const totalRaw    = subtotal.plus(gstTotal).minus(totalDiscount);
+    const totalAmount = totalRaw.isNegative() ? new Prisma.Decimal(0) : totalRaw;
 
     const invoiceNumber = await this.generateInvoiceNumber(tenantId);
 
@@ -420,14 +432,16 @@ export class InvoiceService {
       if (!studentMap.has(s.id)) {
         studentMap.set(s.id, {
           student:          s,
-          outstandingAmount: 0,
+          // Accumulated in Decimal (D-9); converted to a number only at the
+          // response boundary below. Summing many dueAmounts as float drifts.
+          outstandingAmount: new Prisma.Decimal(0),
           invoiceCount:      0,
           maxDaysOverdue:    0,
           lastPaymentAt:     null,
         });
       }
       const entry = studentMap.get(s.id);
-      entry.outstandingAmount += Number(inv.dueAmount);
+      entry.outstandingAmount = entry.outstandingAmount.plus(new Prisma.Decimal(inv.dueAmount));
       entry.invoiceCount++;
       entry.maxDaysOverdue = Math.max(entry.maxDaysOverdue, daysOverdue);
       const lastPay = (inv as any).payments?.[0];
@@ -435,7 +449,11 @@ export class InvoiceService {
         entry.lastPaymentAt = lastPay.paidAt;
       }
     }
-    return Array.from(studentMap.values()).sort((a, b) => b.outstandingAmount - a.outstandingAmount);
+    // Sort on the Decimal, then expose outstandingAmount as a number to keep
+    // the response contract unchanged (the field has always been a number).
+    return Array.from(studentMap.values())
+      .sort((a, b) => (b.outstandingAmount as Prisma.Decimal).comparedTo(a.outstandingAmount))
+      .map((e) => ({ ...e, outstandingAmount: (e.outstandingAmount as Prisma.Decimal).toNumber() }));
   }
 
   // ── Stats ─────────────────────────────────────────────────────────────────
@@ -475,6 +493,11 @@ export class InvoiceService {
     ]);
     return {
       totalInvoices: total._count,
+      // Aggregate-to-response boundary, not arithmetic: Prisma computes these
+      // _sum values exactly in the database. The response contract exposes
+      // them as numbers; converting here introduces no drift (no service-side
+      // math is performed on them). Left as Number() deliberately (D-9 targets
+      // service-layer arithmetic, not the DB aggregate read-out).
       totalAmount:     Number(total._sum.totalAmount ?? 0),
       collectedAmount: Number(collected._sum.paidAmount ?? 0),
       overdueCount: overdue, draftCount: draft, paidCount,
