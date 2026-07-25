@@ -17,7 +17,7 @@ import { PrismaService }     from '@infra/database/prisma.service';
 import { Prisma }            from '@prisma/client';
 import { AuditService }      from '../../../../core/compliance/audit.service';
 import { GenerateInvoiceDto, BulkGenerateInvoicesDto } from '../../dto/billing.dto';
-import { overdueWhere } from '../overdue.util';
+import { overdueWhere, isInvoiceOverdue } from '../overdue.util';
 
 
 export interface GenerateInvoiceOptions {
@@ -231,7 +231,16 @@ export class InvoiceService {
       }),
       this.prisma.invoice.count({ where }),
     ]);
-    return { data, meta: { total, page, limit, lastPage: Math.ceil(total / limit) } };
+    // M5 Commit 3: isOverdue computed server-side from the same shared
+    // predicate as findOverdue()/overdueWhere() (overdue.util.ts), so the
+    // frontend never has to re-derive or duplicate the rule. Added here
+    // because status: 'OVERDUE' is no longer written (M5 Commit 1) --
+    // without this field, every "Overdue" badge and filter that reads
+    // invoice.status === 'OVERDUE' directly would silently stop matching.
+    return {
+      data: data.map((inv) => ({ ...inv, isOverdue: isInvoiceOverdue(inv) })),
+      meta: { total, page, limit, lastPage: Math.ceil(total / limit) },
+    };
   }
 
   // ── Single invoice — full detail ──────────────────────────────────────────
@@ -260,7 +269,8 @@ export class InvoiceService {
       },
     });
     if (!invoice) throw new NotFoundException(`Invoice not found: ${id}`);
-    return invoice;
+    // M5 Commit 3: same reasoning as findAll() above.
+    return { ...invoice, isOverdue: isInvoiceOverdue(invoice) };
   }
 
   // ── Send ──────────────────────────────────────────────────────────────────

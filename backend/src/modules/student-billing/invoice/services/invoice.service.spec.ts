@@ -276,4 +276,143 @@ describe('InvoiceService', () => {
       expect(call.where.dueDate).toHaveProperty('lt');
     });
   });
+
+  // M5 Commit 3: isOverdue on API responses. Neither method had any prior
+  // test coverage at all -- adding it here for the first time, not just for
+  // the new field.
+  describe('findAll', () => {
+    it('adds isOverdue: true to an invoice that is SENT and past due', async () => {
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([
+        { id: 'inv-1', status: 'SENT', dueDate: new Date('2020-01-01') },
+      ]);
+      (prisma.invoice.count as jest.Mock).mockResolvedValue(1);
+
+      const result = await service.findAll('t-1');
+
+      expect(result.data[0].isOverdue).toBe(true);
+    });
+
+    it('adds isOverdue: false to a PAID invoice, even if its due date has passed', async () => {
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([
+        { id: 'inv-1', status: 'PAID', dueDate: new Date('2020-01-01') },
+      ]);
+      (prisma.invoice.count as jest.Mock).mockResolvedValue(1);
+
+      const result = await service.findAll('t-1');
+
+      expect(result.data[0].isOverdue).toBe(false);
+    });
+
+    it('adds isOverdue: false to a SENT invoice that is not yet due', async () => {
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([
+        { id: 'inv-1', status: 'SENT', dueDate: new Date('2099-01-01') },
+      ]);
+      (prisma.invoice.count as jest.Mock).mockResolvedValue(1);
+
+      const result = await service.findAll('t-1');
+
+      expect(result.data[0].isOverdue).toBe(false);
+    });
+
+    it('preserves every other field on the invoice unchanged', async () => {
+      const invoice = { id: 'inv-1', status: 'SENT', dueDate: new Date('2020-01-01'), totalAmount: 5000 };
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([invoice]);
+      (prisma.invoice.count as jest.Mock).mockResolvedValue(1);
+
+      const result = await service.findAll('t-1');
+
+      expect(result.data[0]).toEqual(expect.objectContaining({ id: 'inv-1', totalAmount: 5000 }));
+    });
+
+    // Defensive edge case: the Invoice schema declares dueDate as a required
+    // (non-nullable) DateTime column, so a real row can never have
+    // dueDate: null. isInvoiceOverdue()'s signature accepts null anyway
+    // (overdue.util.spec.ts covers it directly); this proves findAll()
+    // doesn't crash if one ever slipped through -- a direct SQL write, a
+    // future migration widening the column, etc. -- rather than assuming
+    // the schema constraint alone is enough.
+    it('does not crash and reports isOverdue: false if dueDate were ever null', async () => {
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([
+        { id: 'inv-1', status: 'SENT', dueDate: null },
+      ]);
+      (prisma.invoice.count as jest.Mock).mockResolvedValue(1);
+
+      const result = await service.findAll('t-1');
+
+      expect(result.data[0].isOverdue).toBe(false);
+    });
+
+    // Realistic edge case: DRAFT is a valid, common status (every invoice
+    // starts here), and findAll() does not filter it out. A DRAFT invoice
+    // has not been sent to the parent yet, so it must never read as
+    // overdue, even with a due date long past -- DRAFT is in neither
+    // PERMANENT_OVERDUE_STATUSES nor LEGACY_OVERDUE_STATUSES.
+    it('reports isOverdue: false for a DRAFT invoice, even with a due date far in the past', async () => {
+      (prisma.invoice.findMany as jest.Mock).mockResolvedValue([
+        { id: 'inv-1', status: 'DRAFT', dueDate: new Date('2000-01-01') },
+      ]);
+      (prisma.invoice.count as jest.Mock).mockResolvedValue(1);
+
+      const result = await service.findAll('t-1');
+
+      expect(result.data[0].isOverdue).toBe(false);
+    });
+  });
+
+  describe('findById', () => {
+    it('adds isOverdue: true to a PARTIALLY_PAID invoice past its due date', async () => {
+      (prisma.invoice.findFirst as jest.Mock).mockResolvedValue({
+        id: 'inv-1', status: 'PARTIALLY_PAID', dueDate: new Date('2020-01-01'),
+      });
+
+      const result = await service.findById('t-1', 'inv-1');
+
+      expect(result.isOverdue).toBe(true);
+    });
+
+    it('adds isOverdue: false to a CANCELLED invoice past what was its due date', async () => {
+      (prisma.invoice.findFirst as jest.Mock).mockResolvedValue({
+        id: 'inv-1', status: 'CANCELLED', dueDate: new Date('2020-01-01'),
+      });
+
+      const result = await service.findById('t-1', 'inv-1');
+
+      expect(result.isOverdue).toBe(false);
+    });
+
+    it('preserves every other field on the invoice unchanged', async () => {
+      (prisma.invoice.findFirst as jest.Mock).mockResolvedValue({
+        id: 'inv-1', status: 'SENT', dueDate: new Date('2020-01-01'), invoiceNumber: 'INV-1',
+      });
+
+      const result = await service.findById('t-1', 'inv-1');
+
+      expect(result).toEqual(expect.objectContaining({ id: 'inv-1', invoiceNumber: 'INV-1' }));
+    });
+
+    // Defensive edge case, same reasoning as findAll() above: the schema
+    // forbids a null dueDate on a real row, but the service must not crash
+    // if one ever slipped through.
+    it('does not crash and reports isOverdue: false if dueDate were ever null', async () => {
+      (prisma.invoice.findFirst as jest.Mock).mockResolvedValue({
+        id: 'inv-1', status: 'SENT', dueDate: null,
+      });
+
+      const result = await service.findById('t-1', 'inv-1');
+
+      expect(result.isOverdue).toBe(false);
+    });
+
+    // Realistic edge case, same reasoning as findAll() above: a DRAFT
+    // invoice has not been sent yet and must never read as overdue.
+    it('reports isOverdue: false for a DRAFT invoice, even with a due date far in the past', async () => {
+      (prisma.invoice.findFirst as jest.Mock).mockResolvedValue({
+        id: 'inv-1', status: 'DRAFT', dueDate: new Date('2000-01-01'),
+      });
+
+      const result = await service.findById('t-1', 'inv-1');
+
+      expect(result.isOverdue).toBe(false);
+    });
+  });
 });
