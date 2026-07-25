@@ -30,28 +30,46 @@ export class GradebookService {
   async getClassResults(tenantId: string, examId: string, classId: string, sessionId: string) {
     const [schedules, boundaries] = await Promise.all([
       this.prisma.examSchedule.findMany({
-        where:   { exam: { tenantId }, classId },
-        include: { subject: true } as any,
+        where: { exam: { tenantId }, classId },
       }),
       this.prisma.gradeBoundary.findMany({ where: { tenantId, sessionId }, orderBy: { minMark: 'desc' } }),
     ]);
 
-    const scheduleIds = schedules.map((s: any) => s.id);
-    const marks       = await this.prisma.mark.findMany({
-      where:   { scheduleId: { in: scheduleIds } },
-      include: { student: true } as any,
+    // ExamSchedule has no `subject` relation (subjectId is a plain scalar
+    // column) -- fetch subjects separately and join in memory, matching the
+    // pattern already used in ExaminationsService.getClassResults.
+    const subjectIds  = [...new Set(schedules.map((s: any) => s.subjectId))];
+    const subjectRows = await this.prisma.subject.findMany({
+      where:  { id: { in: subjectIds } },
+      select: { id: true, name: true },
     });
+    const subjectById = new Map(subjectRows.map((s: any) => [s.id, s]));
+
+    const scheduleIds = schedules.map((s: any) => s.id);
+    // Mark has no `student` relation (studentId is a plain scalar column) --
+    // fetch students separately and join in memory, matching the pattern
+    // already used in ExaminationsService.getClassResults.
+    const marks = await this.prisma.mark.findMany({
+      where: { scheduleId: { in: scheduleIds } },
+    });
+    const studentIds  = [...new Set(marks.map((m: any) => m.studentId))];
+    const studentRows = await this.prisma.student.findMany({
+      where:  { id: { in: studentIds } },
+      select: { id: true, firstName: true, lastName: true, admissionNumber: true, rollNumber: true },
+    });
+    const studentById = new Map(studentRows.map((s: any) => [s.id, s]));
 
     // Group by student
     const studentMap: Record<string, any> = {};
     for (const m of marks) {
       const sid = m.studentId;
       if (!studentMap[sid]) {
+        const student = studentById.get(sid) as any;
         studentMap[sid] = {
           studentId:     sid,
-          studentName:   `${(m as any).student?.firstName} ${(m as any).student?.lastName}`,
-          admissionNo:   (m as any).student?.admissionNumber,
-          rollNumber:    (m as any).student?.rollNumber,
+          studentName:   `${student?.firstName} ${student?.lastName}`,
+          admissionNo:   student?.admissionNumber,
+          rollNumber:    student?.rollNumber,
           subjects:      {},
           totalMarks:    0,
           totalMax:      0,
@@ -62,7 +80,8 @@ export class GradebookService {
       }
       if (!m.isAbsent && m.marksObtained !== null) {
         const sch = schedules.find((s: any) => s.id === m.scheduleId) as any;
-        studentMap[sid].subjects[(sch as any)?.subject?.name ?? m.scheduleId] = {
+        const subjectName = (subjectById.get(sch?.subjectId) as any)?.name ?? m.scheduleId;
+        studentMap[sid].subjects[subjectName] = {
           obtained: Number(m.marksObtained),
           max:      sch?.maxMarks ?? 100,
           grade:    computeGrade(Number(m.marksObtained) / (Number((sch as any)?.maxMarks) || 100) * 100, boundaries),

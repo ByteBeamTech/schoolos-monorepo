@@ -50,14 +50,12 @@ export class ReportCardService {
     studentId: string,
     sessionId: string,
   ): Promise<ReportCardResult> {
-    // Fetch exam + schedules + subject names
+    // Fetch exam + schedules
     const exam = await this.prisma.exam.findFirst({
       where:   { id: examId, tenantId },
       include: {
-        schedules: {
-          include: { subject: true } as any,
-        },
-        session: true,
+        schedules: true,
+        session:   true,
       } as any,
     });
     if (!exam) throw new NotFoundException(`Exam ${examId} not found`);
@@ -82,6 +80,17 @@ export class ReportCardService {
 
     // Build subject results
     const schedules = (exam as any).schedules as any[];
+
+    // ExamSchedule has no `subject` relation (subjectId is a plain scalar
+    // column) -- fetch subjects separately and join in memory, matching the
+    // pattern already used in ExaminationsService.getClassResults.
+    const subjectIds  = [...new Set(schedules.map((s: any) => s.subjectId))];
+    const subjectRows = await this.prisma.subject.findMany({
+      where:  { id: { in: subjectIds } },
+      select: { id: true, name: true },
+    });
+    const subjectById = new Map(subjectRows.map((s: any) => [s.id, s]));
+
     const subjects = schedules
       .filter(sch => sch.classId === (student as any).section?.class?.id || !sch.classId)
       .map(sch => {
@@ -89,7 +98,7 @@ export class ReportCardService {
         const obtained = mark && !mark.isAbsent ? Number(mark.marksObtained ?? 0) : null;
         const subPct   = obtained !== null ? (obtained / Number(sch.maxMarks)) * 100 : 0;
         return {
-          name:      (sch as any).subject?.name ?? sch.subjectId,
+          name:      (subjectById.get(sch.subjectId) as any)?.name ?? sch.subjectId,
           maxMarks:  Number(sch.maxMarks),
           passMarks: Number(sch.passMarks),
           obtained,
