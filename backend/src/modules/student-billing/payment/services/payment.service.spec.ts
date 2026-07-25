@@ -432,6 +432,22 @@ describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () =
       expect(prisma.receipt.create).toHaveBeenCalled();
     });
 
+    // Regression for the PaymentGatewayProvider enum mismatch: gateway
+    // MUST be a real enum value (STRIPE | RAZORPAY | CASH). An earlier
+    // version wrote 'OFFLINE' -- not a member of that enum -- cast through
+    // `as any` to bypass the type check, which then failed at runtime
+    // against Prisma's actual constraint. CASH is correct: the same value
+    // SaasPaymentService.recordOfflinePayment() already uses for the
+    // identical scenario. paymentMethod (a separate, free-text field) is
+    // where the specific collection method belongs, not gateway.
+    it('writes gateway: CASH, never a value outside PaymentGatewayProvider', async () => {
+      await service.recordOffline('t-1', dto as any, 'actor-1');
+
+      const created = (prisma.payment.create as jest.Mock).mock.calls[0][0];
+      expect(created.data.gateway).toBe('CASH');
+      expect(['STRIPE', 'RAZORPAY', 'CASH']).toContain(created.data.gateway);
+    });
+
     it('computes invoice paid/due in Decimal — no binary-float paise drift (D-9)', async () => {
       // Two independent drift cases in one invoice's arithmetic:
       //  - paid side: 0.10 + 0.20 = 0.30 exactly (float gives 0.30000000000000004)

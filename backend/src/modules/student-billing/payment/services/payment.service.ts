@@ -2,7 +2,18 @@
 // FULL REPLACEMENT
 // P0 FIXES:
 //  1. recordOffline() now idempotency-safe via idempotencyKey
-//  2. Offline payments use gateway: 'OFFLINE' not 'RAZORPAY'
+//  2. Offline payments use gateway: 'CASH' not 'RAZORPAY' (see enum-mismatch
+//     audit: an earlier version of this fix used a non-existent 'OFFLINE'
+//     value cast through `as any`, which type-checked but failed at runtime
+//     against the real PaymentGatewayProvider enum -- STRIPE/RAZORPAY/CASH,
+//     no OFFLINE. CASH is the pre-existing, correct value for "not
+//     processed through an online gateway", already used identically by
+//     SaasPaymentService.recordOfflinePayment() for the same scenario in a
+//     sibling module. The specific collection method (cash in hand, cheque,
+//     DD, bank transfer, offline UPI) is a separate concern, already
+//     captured in the free-text paymentMethod field below -- gateway and
+//     paymentMethod are not the same field and must not both try to encode
+//     "how was this paid".
 //  3. generateReceipt() uses InvoiceService.generateReceiptNumber() — race condition fixed
 //  4. updateInvoice() wrapped in transaction
 
@@ -323,8 +334,15 @@ export class PaymentService {
           data: {
             tenantId, invoiceId: dto.invoiceId,
             branchId: invoice.branchId,
-            // P0 FIX: was hardcoded 'RAZORPAY' — now correctly 'OFFLINE'
-            gateway: 'OFFLINE' as any,
+            // Was hardcoded 'RAZORPAY' (wrong: mislabels an offline
+            // collection as if it went through the Razorpay gateway). CASH
+            // is the correct value -- see the enum-mismatch audit above.
+            // No `as any` needed: 'CASH' is a real PaymentGatewayProvider
+            // value, so this type-checks against the Prisma-generated field
+            // type the same way 'RAZORPAY' does at the online path above --
+            // the previous 'OFFLINE' cast was masking a genuine invalid
+            // value, not working around an unrelated type limitation.
+            gateway: 'CASH',
             amount: dto.amount, currency: invoice.currency, status: 'SUCCESS',
             paymentMethod:   dto.paymentMethod,
             gatewayPaymentId: reference,
