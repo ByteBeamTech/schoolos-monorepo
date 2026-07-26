@@ -51,6 +51,10 @@ model Branch {
   invoiceSequences InvoiceSequence[]
   receiptSequences ReceiptSequence[]
 
+  // Library (ADR-LIB-001 Phase 1)
+  libraryRacks           Rack[]
+  libraryBranchSettings  LibraryBranchSettings[]
+
   @@unique([tenantId, name])
   @@unique([tenantId, branchCode])
   @@index([tenantId])

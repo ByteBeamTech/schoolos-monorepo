@@ -1,3 +1,146 @@
+// ============================================================
+// LIBRARY — ADR-LIB-001 (Domain Architecture Freeze, APPROVED FOR
+// IMPLEMENTATION). This file is being migrated in phases per the
+// implementation roadmap in docs/architecture/library/
+// LIBRARY_DOMAIN_ARCHITECTURE_FREEZE.md. Do not add aggregates or
+// fields outside the current phase's scope without amending the ADR.
+// ============================================================
+
+// ---------- Phase 1: catalog taxonomy + branch config ----------
+// Pure additive schema -- Book/BookIssue behavior is unchanged in
+// this phase. categoryId/publisherId/authors on Book are nullable so
+// existing rows and existing service code keep working unmodified.
+// The free-text Book.author/Book.publisher columns are NOT removed in
+// this phase (kept for backward compatibility) -- they are cut over
+// to Author/Publisher/BookAuthor and dropped in Phase 2, alongside
+// the Book -> BookCopy split, per the frozen roadmap.
+
+model BookCategory {
+  id       String  @id @default(cuid())
+  tenantId String
+  parentId String?
+
+  name      String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  parent   BookCategory?  @relation("BookCategoryToParent", fields: [parentId], references: [id])
+  children BookCategory[] @relation("BookCategoryToParent")
+  books    Book[]
+
+  @@unique([tenantId, parentId, name])
+  @@index([tenantId])
+  @@index([tenantId, parentId])
+}
+
+model Author {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name      String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  books BookAuthor[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model Publisher {
+  id       String @id @default(cuid())
+  tenantId String
+
+  name      String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  books Book[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+// Join table for Book <-> Author (co-authorship). No surrogate id --
+// the composite key IS the fact being recorded, consistent with how
+// other pure join tables in this schema are modeled.
+model BookAuthor {
+  bookId   String
+  authorId String
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  author Author @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@id([bookId, authorId])
+  @@index([authorId])
+}
+
+model Rack {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
+  code      String
+  name      String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  branch  Branch  @relation(fields: [branchId], references: [id])
+  shelves Shelf[]
+
+  @@unique([tenantId, branchId, code])
+  @@index([tenantId, branchId])
+}
+
+model Shelf {
+  id       String @id @default(cuid())
+  tenantId String
+  rackId   String
+
+  code      String
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  rack Rack @relation(fields: [rackId], references: [id], onDelete: Restrict)
+
+  @@unique([rackId, code])
+  @@index([tenantId])
+}
+
+// Per-branch Library configuration (ADR-LIB-001 section 1 -- "Library" is
+// not modeled as its own aggregate; this is the config surface that
+// replaced it). One row per (tenantId, branchId), created on demand
+// with defaults rather than provisioned eagerly for every branch.
+model LibraryBranchSettings {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
+  loanDurationDays          Int     @default(14)
+  maxRenewals               Int     @default(2)
+  maxActiveLoansPerBorrower Int     @default(1)
+  reservationHoldHours      Int     @default(48)
+  fineRatePerDay            Decimal @default(2.00) @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([tenantId, branchId])
+  @@index([tenantId])
+}
+
 model Book {
   id              String      @id @default(cuid())
   tenantId        String
@@ -13,8 +156,20 @@ model Book {
   updatedAt       DateTime    @updatedAt
   issues          BookIssue[]
 
+  // Phase 1 additions (nullable -- Phase 2 will backfill from the
+  // free-text author/publisher columns above and, once backfilled,
+  // those columns are dropped; kept optional here so this migration
+  // has zero impact on existing create/read paths).
+  categoryId      String?
+  publisherId     String?
+  category        BookCategory? @relation(fields: [categoryId], references: [id])
+  publisherRecord Publisher?    @relation(fields: [publisherId], references: [id])
+  authors         BookAuthor[]
+
   @@index([tenantId])
   @@index([isbn])
+  @@index([categoryId])
+  @@index([publisherId])
 }
 
 model BookIssue {
