@@ -632,6 +632,22 @@ enum BorrowerType {
   STAFF
 }
 
+// ADR-LIB-001 §8 -- Reservation lifecycle.
+enum ReservationStatus {
+  QUEUED
+  READY_FOR_PICKUP
+  FULFILLED
+  CANCELLED
+  EXPIRED
+}
+
+// ADR-LIB-001 §6 -- InventoryAudit (stocktake) header status.
+enum InventoryAuditStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
 enum AssetStatus {
   FUNCTIONAL
   DAMAGED

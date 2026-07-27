@@ -34,7 +34,7 @@ export class LibraryService {
    * read/report endpoint, a missing branch context is a hard error here, not
    * a "show tenant-wide" fallback.
    */
-  private requireActingBranch(actor: AuthenticatedUser): string {
+  requireActingBranch(actor: AuthenticatedUser): string {
     if (!actor.branchId) {
       throw new BadRequestException('Select a branch before performing this Library action.');
     }
@@ -49,13 +49,13 @@ export class LibraryService {
    * unrestricted, consistent with BranchContextMiddleware's own tenant-wide
    * semantics.
    */
-  private assertSameBranch(actor: AuthenticatedUser, issueBranchId: string) {
+  assertSameBranch(actor: AuthenticatedUser, issueBranchId: string) {
     if (actor.branchId && actor.branchId !== issueBranchId) {
       throw new ForbiddenException('This issue belongs to a different branch.');
     }
   }
 
-  private async getOrDefaultSettings(tx: any, tenantId: string, branchId: string) {
+  async getOrDefaultSettings(tx: any, tenantId: string, branchId: string) {
     const existing = await tx.libraryBranchSettings.findFirst({ where: { tenantId, branchId } });
     if (existing) return existing;
     // ADR §1: "created on demand with defaults rather than provisioned
@@ -189,7 +189,7 @@ export class LibraryService {
         const branchId = this.requireActingBranch(actor);
         for (let i = 0; i < dto.initialCopies; i++) {
           const barcode = await this.bookCopyService.generateBarcode(tx, tenantId, branchId);
-          const copy = await tx.bookCopy.create({ data: { tenantId, branchId, bookId: book.id, barcode } });
+          const copy = await this.bookCopyService.createCopy(tx, { tenantId, branchId, bookId: book.id, barcode });
           await this.audit.logCreate(
             { tenantId, actorId: actor.id, actorRole: actor.role, entityType: 'BookCopy', entityId: copy.id, after: { bookId: copy.bookId, branchId: copy.branchId, barcode: copy.barcode } },
             tx,
@@ -208,11 +208,9 @@ export class LibraryService {
 
     return this.prisma.$transaction(async (tx: any) => {
       const barcode = dto.barcode?.trim() || await this.bookCopyService.generateBarcode(tx, tenantId, branchId);
-      const copy = await tx.bookCopy.create({
-        data: {
-          tenantId, branchId, bookId: dto.bookId,
-          barcode, rfidTag: dto.rfidTag, shelfId: dto.shelfId, condition: dto.condition,
-        },
+      const copy = await this.bookCopyService.createCopy(tx, {
+        tenantId, branchId, bookId: dto.bookId,
+        barcode, rfidTag: dto.rfidTag, shelfId: dto.shelfId, condition: dto.condition,
       });
       await this.audit.logCreate(
         { tenantId, actorId: actor.id, actorRole: actor.role, entityType: 'BookCopy', entityId: copy.id, after: { bookId: copy.bookId, branchId: copy.branchId, barcode: copy.barcode } },
@@ -395,6 +393,63 @@ export class LibraryService {
           tenantId, actorId: actor.id, actorRole: actor.role,
           entityType: 'BookIssue', entityId: issue.id,
           before: { status: issue.status }, after: { status: updated.status },
+        },
+        tx,
+      );
+
+      return updated;
+    });
+  }
+
+  /**
+   * ADR-LIB-001 §7: renewal only ever extends dueDate/renewalCount on the
+   * existing BookIssue -- it is not a BookCopy transition, so it doesn't go
+   * through BookCopyService at all. The one illegal case the ADR calls out
+   * explicitly: renewing past a reservation someone else is queued for on
+   * this same book+branch. Queried directly against the Reservation table
+   * rather than through ReservationService, to avoid a two-way dependency
+   * between the two services over what is, from here, a single read.
+   */
+  async renewBook(tenantId: string, issueId: string, actor: AuthenticatedUser) {
+    return this.prisma.$transaction(async (tx: any) => {
+      const issue = await tx.bookIssue.findFirst({ where: { id: issueId, tenantId } });
+      if (!issue) throw new NotFoundException('Issue not found.');
+      if (issue.status !== 'ISSUED') {
+        throw new BadRequestException(`Only an ISSUED book can be renewed (current status: ${issue.status}).`);
+      }
+      this.assertSameBranch(actor, issue.branchId);
+
+      const settings = await this.getOrDefaultSettings(tx, tenantId, issue.branchId);
+      if (issue.renewalCount >= settings.maxRenewals) {
+        throw new BadRequestException(`This book has already been renewed the maximum of ${settings.maxRenewals} time(s).`);
+      }
+
+      const copy = await tx.bookCopy.findFirst({ where: { id: issue.copyId, tenantId }, select: { bookId: true } });
+      const blockingReservation = await tx.reservation.findFirst({
+        where: {
+          tenantId, branchId: issue.branchId, bookId: copy?.bookId,
+          status: { in: ['QUEUED', 'READY_FOR_PICKUP'] },
+          NOT: { borrowerType: issue.borrowerType, borrowerId: issue.borrowerId },
+        },
+      });
+      if (blockingReservation) {
+        throw new BadRequestException('This book cannot be renewed -- another borrower is waiting for it.');
+      }
+
+      const updated = await tx.bookIssue.update({
+        where: { id: issueId },
+        data: {
+          dueDate:      new Date(Date.now() + Number(settings.loanDurationDays) * 24 * 60 * 60 * 1000),
+          renewalCount: { increment: 1 },
+        },
+      });
+
+      await this.audit.logUpdate(
+        {
+          tenantId, actorId: actor.id, actorRole: actor.role,
+          entityType: 'BookIssue', entityId: issue.id,
+          before: { dueDate: issue.dueDate, renewalCount: issue.renewalCount },
+          after:  { dueDate: updated.dueDate, renewalCount: updated.renewalCount },
         },
         tx,
       );

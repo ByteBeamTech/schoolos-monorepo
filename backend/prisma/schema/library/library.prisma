@@ -167,6 +167,8 @@ model BookCopy {
   branch Branch      @relation(fields: [branchId], references: [id])
   shelf  Shelf?      @relation(fields: [shelfId], references: [id])
   issues BookIssue[]
+  reservations        Reservation[]
+  inventoryAuditItems InventoryAuditItem[]
 
   // NOTE (ADR-LIB-001 §3 invariant 2): a BookCopy may have at most one
   // OPEN issue at a time. Prisma cannot express a partial unique index
@@ -216,6 +218,7 @@ model Book {
   publisherRecord Publisher?    @relation(fields: [publisherId], references: [id])
   authors         BookAuthor[]
   copies          BookCopy[]
+  reservations    Reservation[]
 
   @@index([tenantId])
   @@index([isbn])
@@ -264,4 +267,92 @@ model BookIssue {
   @@index([tenantId, branchId, status, dueDate])
   @@index([copyId])
   @@index([borrowerType, borrowerId])
+}
+
+// ---------- Phase 3: Reservation + Inventory Audit ----------
+// ADR-LIB-001 §8: a Reservation is a claim on (Book, branch) -- "next
+// available copy of this title at this branch" -- not on a specific
+// BookCopy (a borrower doesn't know or care which physical copy they
+// get, and a copy going DAMAGED shouldn't cancel someone's place in
+// line). `copyId` is set only once a copy is actually put on hold for
+// this reservation (status READY_FOR_PICKUP).
+model Reservation {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+  bookId   String
+
+  borrowerType         BorrowerType
+  borrowerId           String
+  borrowerNameSnapshot String
+
+  status        ReservationStatus @default(QUEUED)
+  copyId        String?
+  holdExpiresAt DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  fulfilledAt DateTime?
+  cancelledAt DateTime?
+
+  book   Book      @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  branch Branch    @relation(fields: [branchId], references: [id])
+  copy   BookCopy? @relation(fields: [copyId], references: [id])
+
+  // NOTE: at most one ACTIVE (QUEUED or READY_FOR_PICKUP) reservation per
+  // borrower per (tenantId, branchId, bookId) -- prevents the same
+  // borrower double-queuing for a title. Like BookIssue's open-issue
+  // constraint, Prisma cannot express a partial unique index
+  // declaratively; it is created via raw SQL in this phase's migration
+  // (index "Reservation_borrower_active_key").
+  @@index([tenantId, branchId, bookId, status, createdAt])
+  @@index([borrowerType, borrowerId])
+  @@index([copyId])
+}
+
+// ADR-LIB-001 §6 -- stocktake header. Line items are created when the
+// audit starts (a snapshot of every non-DISPOSED copy at the branch)
+// so a copy that is never scanned is still visible as a discrepancy
+// ("missing"), not just silently absent from the audit.
+model InventoryAudit {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
+  status      InventoryAuditStatus @default(IN_PROGRESS)
+  conductedBy String
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  branch Branch               @relation(fields: [branchId], references: [id])
+  items  InventoryAuditItem[]
+
+  @@index([tenantId, branchId, status])
+}
+
+model InventoryAuditItem {
+  id      String @id @default(cuid())
+  auditId String
+  copyId  String
+
+  // Captured when the item is created (audit start, or first scan of a
+  // copy added after the audit started) -- the "expected" side of the
+  // reconciliation described in ADR §6.
+  expectedStatus BookCopyStatus
+  scannedStatus  BookCopyStatus?
+  scannedAt      DateTime?
+  discrepancy    Boolean         @default(false)
+
+  // Set once a flagged discrepancy has been resolved into a real
+  // BookCopy.status transition (ADR §6's approval-gated write-off/
+  // recovery step) -- see LibraryController's resolve endpoint.
+  resolvedAt DateTime?
+
+  audit InventoryAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  copy  BookCopy       @relation(fields: [copyId], references: [id], onDelete: Restrict)
+
+  @@unique([auditId, copyId])
+  @@index([auditId])
+  @@index([copyId])
 }

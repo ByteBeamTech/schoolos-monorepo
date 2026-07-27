@@ -45,6 +45,21 @@ export const EVENTS = {
   // ── Alerts ────────────────────────────────────────────────────────────────
   ALERT_FEE_DROP:                'alert.fee.drop',
   ALERT_ATTENDANCE_DROP:         'alert.attendance.drop',
+
+  // ── Library (ADR-LIB-001 §8 -- Reservation auto-allocation) ────────────────
+  // Fired by BookCopyService.transitionCopyStatus()/createCopy() any time a
+  // copy becomes AVAILABLE (return, cancelled hold, new copy added).
+  // ReservationService listens for this to attempt allocation to the oldest
+  // QUEUED reservation for that book+branch -- kept event-driven rather than
+  // an inline call inside returnBook() specifically so returnBook's own
+  // transaction stays small, per the ADR.
+  LIBRARY_COPY_AVAILABLE:        'library.copy.available',
+  // Fired once a reservation is promoted to READY_FOR_PICKUP. No consumer
+  // yet -- notification wiring is explicit Phase 6 scope (ADR §15/§19 item
+  // 14, "added incrementally per event as each phase's events start
+  // firing"). Emitting it now costs nothing and means Phase 6 has nothing
+  // to add on the producer side.
+  LIBRARY_RESERVATION_READY:     'library.reservation.ready',
  // ── Feature Flags ─────────────────────────────────────────────────────────
   FLAG_OVERRIDE_REQUESTED:       'flag.override.requested',
   FLAG_OVERRIDE_APPROVED:        'flag.override.approved',

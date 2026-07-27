@@ -1,11 +1,14 @@
-// ADR-LIB-001 §3/§6/§7/§12 -- BookCopy is the aggregate that owns
+// ADR-LIB-001 §3/§6/§7/§8/§12 -- BookCopy is the aggregate that owns
 // physical state. This service is the ONE place BookCopy.status is
 // ever written from -- no other file in this module should call
-// `prisma.bookCopy.update({ data: { status: ... } })` directly.
+// `prisma.bookCopy.update({ data: { status: ... } })` directly, and
+// the ONE place a new BookCopy row is created from, for the same
+// reason (see createCopy()).
 
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import type { BookCopyStatus } from '@prisma/client';
 import { AuditService } from '../../../core/compliance/audit.service';
+import { EVENTS } from '../../../core/events/events.constants';
 
 /**
  * ADR-LIB-001 §7 legal transition table. Any (from, to) pair not
@@ -13,11 +16,10 @@ import { AuditService } from '../../../core/compliance/audit.service';
  * this is what "prevent invalid transitions" means structurally
  * rather than just as a rule someone has to remember.
  *
- * RESERVED_HOLD transitions are defined now (schema/enum already
- * carries the state) but unreachable by any Phase 2 caller -- no
- * Reservation aggregate exists yet (Phase 3). Leaving them in the
- * table is not dead code: it is the ADR's finalized state machine,
- * which Phase 3 wires callers into without touching this table again.
+ * RESERVED_HOLD transitions are wired into a real caller as of Phase
+ * 3 (ReservationService.attemptAllocation() / cancelReservation() /
+ * the hold-expiry cron) -- this table itself hasn't changed since
+ * Phase 2, since it was already the ADR's finalized state machine.
  */
 const LEGAL_TRANSITIONS: Record<BookCopyStatus, BookCopyStatus[]> = {
   AVAILABLE:     ['RESERVED_HOLD', 'ISSUED'],
@@ -60,6 +62,21 @@ export class BookCopyService {
 
   private lockKeyForBarcodeSequence(tenantId: string, branchId: string, year: number): number {
     return `barcode:${tenantId}:${branchId}:${year}`
+      .split('')
+      .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) & 0x7fffffff), 0);
+  }
+
+  /**
+   * ADR-LIB-001 §8 -- allocation runs "an AVAILABLE copy of (book,
+   * branch)" as its unit of contention, not a single copy id (there
+   * may be several candidate copies). Locking on (bookId, branchId)
+   * rather than a specific copyId is what makes two concurrent
+   * allocation attempts for the same book+branch serialize correctly
+   * instead of both grabbing different copies for the same reservation
+   * or racing on the reservation-queue read.
+   */
+  lockKeyForBookAvailability(tenantId: string, branchId: string, bookId: string): number {
+    return `book-availability:${tenantId}:${branchId}:${bookId}`
       .split('')
       .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) & 0x7fffffff), 0);
   }
@@ -112,7 +129,59 @@ export class BookCopyService {
       tx,
     );
 
+    // ADR §8: every path that makes a copy AVAILABLE again (return,
+    // cancelled/expired hold, repair complete) should give a queued
+    // reservation a chance at it -- centralized here, once, rather than
+    // requiring every caller of transitionCopyStatus to remember to also
+    // notify Reservation. Kept event-driven (not an inline allocation
+    // call) so this function's own transaction stays small.
+    if (params.toStatus === 'AVAILABLE') {
+      await tx.eventOutbox.create({
+        data: {
+          uniqueKey: `library-copy-available:${copy.id}:${Date.now()}`,
+          type:      EVENTS.LIBRARY_COPY_AVAILABLE,
+          payload:   { core: { tenantId: params.tenantId }, branchId: copy.branchId, bookId: copy.bookId, copyId: copy.id },
+        },
+      });
+    }
+
     return updated;
+  }
+
+  /**
+   * The ONLY function in this module allowed to INSERT a BookCopy row --
+   * mirrors transitionCopyStatus() being the only one allowed to update
+   * one. A newly created copy defaults to AVAILABLE (schema default),
+   * which per ADR §8 should also give a queued reservation for this
+   * book+branch a chance at it -- same event as any other path into
+   * AVAILABLE, emitted here since creation doesn't go through
+   * transitionCopyStatus (there is no "from" status for a brand new row).
+   */
+  async createCopy(
+    tx: any,
+    params: { tenantId: string; branchId: string; bookId: string; barcode: string; rfidTag?: string; shelfId?: string; condition?: string },
+  ) {
+    const copy = await tx.bookCopy.create({
+      data: {
+        tenantId:  params.tenantId,
+        branchId:  params.branchId,
+        bookId:    params.bookId,
+        barcode:   params.barcode,
+        rfidTag:   params.rfidTag,
+        shelfId:   params.shelfId,
+        condition: params.condition,
+      },
+    });
+
+    await tx.eventOutbox.create({
+      data: {
+        uniqueKey: `library-copy-available:${copy.id}:${Date.now()}`,
+        type:      EVENTS.LIBRARY_COPY_AVAILABLE,
+        payload:   { core: { tenantId: params.tenantId }, branchId: copy.branchId, bookId: copy.bookId, copyId: copy.id },
+      },
+    });
+
+    return copy;
   }
 
   /**

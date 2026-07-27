@@ -72,6 +72,10 @@ model Branch {
   libraryBookCopies       BookCopy[]
   libraryBarcodeSequences BarcodeSequence[]
 
+  // Library (ADR-LIB-001 Phase 3)
+  libraryReservations     Reservation[]
+  libraryInventoryAudits  InventoryAudit[]
+
   @@unique([tenantId, name])
   @@unique([tenantId, branchCode])
   @@index([tenantId])

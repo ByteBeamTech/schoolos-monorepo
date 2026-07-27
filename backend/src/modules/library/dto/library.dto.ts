@@ -1,8 +1,9 @@
 import {
-  IsString, IsInt, IsOptional, IsNotEmpty, IsDateString, IsArray, IsEnum, IsBoolean, Min,
+  IsString, IsInt, IsOptional, IsNotEmpty, IsDateString, IsArray, IsEnum, IsBoolean, Min, ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BorrowerType } from '@prisma/client';
+import { BorrowerType, BookCopyStatus } from '@prisma/client';
 
 /**
  * ADR-LIB-001 §3 -- Book is a catalog (title) record only; physical
@@ -72,4 +73,33 @@ export class IssueBookDto {
 export class ReturnBookDto {
   @ApiPropertyOptional({ default: false, description: 'Copy returned in a damaged condition.' })
   @IsBoolean() @IsOptional() damaged?: boolean;
+}
+
+/** ADR-LIB-001 §8 -- a claim on (Book, branch), not a specific BookCopy. */
+export class ReserveBookDto {
+  @ApiProperty() @IsString() @IsNotEmpty() bookId!: string;
+
+  @ApiProperty({ enum: BorrowerType }) @IsEnum(BorrowerType) borrowerType!: BorrowerType;
+  @ApiProperty()                       @IsString() @IsNotEmpty() borrowerId!: string;
+}
+
+/** One scanned item within an inventory audit (ADR §6/§12). */
+export class ScanAuditItemDto {
+  @ApiPropertyOptional({ description: 'Either barcode or copyId is required.' })
+  @IsString() @IsOptional() barcode?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() copyId?: string;
+
+  @ApiProperty({ enum: BookCopyStatus }) @IsEnum(BookCopyStatus) scannedStatus!: BookCopyStatus;
+}
+
+/** ADR-LIB-001 §12 -- bulk scanning: a batch of scanned items in one call. */
+export class BulkScanAuditDto {
+  @ApiProperty({ type: [ScanAuditItemDto] })
+  @IsArray() @ValidateNested({ each: true }) @Type(() => ScanAuditItemDto)
+  items!: ScanAuditItemDto[];
+}
+
+/** ADR-LIB-001 §6 -- resolving a flagged discrepancy into a real BookCopy transition. Role-gated to SCHOOL_ADMIN/PRINCIPAL at the controller (approval above the actor who flagged it). */
+export class ResolveAuditItemDto {
+  @ApiProperty({ enum: BookCopyStatus }) @IsEnum(BookCopyStatus) toStatus!: BookCopyStatus;
 }
