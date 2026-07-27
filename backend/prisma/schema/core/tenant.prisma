@@ -109,10 +109,10 @@ model Tenant {
   fuelLogs                    FuelLog[]
   maintenanceRecords          Maintenance[]
   complianceItems             ComplianceItem[]
-  cronLogs             CronExecutionLog[]
-  jobSchedules         TenantJobSchedule[]
-  calendarEvents       AcademicCalendarEvent[]
-  NotificationSetting  NotificationSetting?
+  cronLogs                    CronExecutionLog[]
+  jobSchedules                TenantJobSchedule[]
+  calendarEvents              AcademicCalendarEvent[]
+  NotificationSetting         NotificationSetting?
 
   subscriptions      TenantSubscription[]
   subscriptionEvents SubscriptionEvent[]

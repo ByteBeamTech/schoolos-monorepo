@@ -159,41 +159,41 @@ model DunningAttempt {
 }
 
 model License {
-  id               String        @id @default(cuid())
-  key              String        @unique @default(uuid())
-  tenantId         String?
-  branchId         String?
-  issuedById       String?
-  subscriptionId   String?
-  orderId          String?
-  type             LicenseType
-  status           LicenseStatus @default(UNUSED)
-  version          Int           @default(1)
+  id                String           @id @default(cuid())
+  key               String           @unique @default(uuid())
+  tenantId          String?
+  branchId          String?
+  issuedById        String?
+  subscriptionId    String?
+  orderId           String?
+  type              LicenseType
+  status            LicenseStatus    @default(UNUSED)
+  version           Int              @default(1)
   // PR-4: increments on every LicenseBuilder.regenerateForTenant() call.
   // Distinct from `version` above (LicenseType/schema version, pre-existing,
   // unrelated) -- generationVersion tracks "which regeneration is this,"
   // making LicenseHistory rows unambiguously orderable without relying on
   // timestamps alone. See LicenseHistory.generationVersion.
-  generationVersion Int          @default(1)
-  maxStudents      Int?
-  maxStaff         Int?
-  maxBranches      Int?
-  storageLimit     Int?
-  features         Json?
-  domain           String?
-  hardwareHash     String?
-  metadata         Json?
-  expiresAt        DateTime?
-  usedAt           DateTime?
-  revokedAt        DateTime?
-  revocationReason String?
-  gracePeriod      Int           @default(7)
-  activatedVia     String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  branch           Branch?       @relation(fields: [branchId], references: [id])
-  tenant           Tenant?       @relation(fields: [tenantId], references: [id])
-  history          LicenseHistory[]
+  generationVersion Int              @default(1)
+  maxStudents       Int?
+  maxStaff          Int?
+  maxBranches       Int?
+  storageLimit      Int?
+  features          Json?
+  domain            String?
+  hardwareHash      String?
+  metadata          Json?
+  expiresAt         DateTime?
+  usedAt            DateTime?
+  revokedAt         DateTime?
+  revocationReason  String?
+  gracePeriod       Int              @default(7)
+  activatedVia      String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  branch            Branch?          @relation(fields: [branchId], references: [id])
+  tenant            Tenant?          @relation(fields: [tenantId], references: [id])
+  history           LicenseHistory[]
 
   @@index([tenantId])
   @@index([branchId])
@@ -208,19 +208,19 @@ model License {
 // the whole reason COMM-002 requires License to be a persisted, versioned
 // entity rather than a pure runtime computation.
 model LicenseHistory {
-  id                String                  @id @default(cuid())
-  licenseId         String
-  tenantId          String
-  generationVersion Int
-  reason            LicenseGenerationReason
-  triggeredBy       String                  // event name, or a user/admin id for manual actions
+  id                 String                  @id @default(cuid())
+  licenseId          String
+  tenantId           String
+  generationVersion  Int
+  reason             LicenseGenerationReason
+  triggeredBy        String // event name, or a user/admin id for manual actions
   // PR-4 review feedback: explicit, queryable columns rather than only
   // burying these inside planSnapshot's JSON -- ad-hoc audits ("find every
   // history row generated under plan version 3") shouldn't require JSON
   // path queries.
-  planId            String?
-  planVersion       Int?
-  subscriptionId    String?
+  planId             String?
+  planVersion        Int?
+  subscriptionId     String?
   subscriptionStatus String?
   // Idempotency key for event-driven callers (e.g. SUBSCRIPTION_ACTIVATED's
   // listener) -- deliberately the SAME string as the EventOutbox row's
@@ -228,15 +228,15 @@ model LicenseHistory {
   // callers (onboarding, manual admin) that have no originating event.
   // Nullable+unique is fine in Postgres (multiple NULLs allowed) since only
   // event-driven rows populate it.
-  sourceEventKey    String?                 @unique
-  effectiveFrom     DateTime                @default(now())
-  effectiveTo       DateTime?               // set when a later regeneration supersedes this snapshot
-  planSnapshot      Json?
-  featuresSnapshot  Json?
-  limitsSnapshot    Json?
-  generatedAt       DateTime                @default(now())
+  sourceEventKey     String?                 @unique
+  effectiveFrom      DateTime                @default(now())
+  effectiveTo        DateTime? // set when a later regeneration supersedes this snapshot
+  planSnapshot       Json?
+  featuresSnapshot   Json?
+  limitsSnapshot     Json?
+  generatedAt        DateTime                @default(now())
 
-  license           License                 @relation(fields: [licenseId], references: [id])
+  license License @relation(fields: [licenseId], references: [id])
 
   @@index([licenseId])
   @@index([tenantId])
@@ -337,4 +337,3 @@ model TenantAddon {
   @@index([addonId])
   @@index([status])
 }
-

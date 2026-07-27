@@ -134,7 +134,7 @@ model Student {
   // TRN-SCH-001A — additive target Transport domain (coexists with legacy
   // transportAssignment above; see transport/transport-domain.prisma)
   transportAssignments StudentTransportAssignment[]
-  tripAttendance        TripAttendance[]
+  tripAttendance       TripAttendance[]
 
   // =========================================================================
   // 🛡️ MULTI-TENANT & INTEGRITY RULES (De-risked for Data Imports)

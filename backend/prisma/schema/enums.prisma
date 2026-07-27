@@ -222,13 +222,13 @@ enum LicenseStatus {
   TRIAL
   UNUSED
   ACTIVE
-  GRACE_PERIOD        // PR-4: reserved for ADR COMM-014 (read-only suspension
-                       // lifecycle). Not yet produced by any code path --
-                       // license-expiry.job.ts still collapses to EXPIRED
-                       // (see its PR-1 note). Wiring GRACE_PERIOD/SUSPENDED
-                       // transitions is PR-5+ scope, alongside the actual
-                       // SuspendedTenantGuard the ADR requires.
-  SUSPENDED            // PR-4: reserved, same as above -- not yet produced.
+  GRACE_PERIOD // PR-4: reserved for ADR COMM-014 (read-only suspension
+  // lifecycle). Not yet produced by any code path --
+  // license-expiry.job.ts still collapses to EXPIRED
+  // (see its PR-1 note). Wiring GRACE_PERIOD/SUSPENDED
+  // transitions is PR-5+ scope, alongside the actual
+  // SuspendedTenantGuard the ADR requires.
+  SUSPENDED // PR-4: reserved, same as above -- not yet produced.
   EXPIRED
   REVOKED
   PENDING_ACTIVATION
@@ -830,5 +830,3 @@ enum CommercialTier {
   ASSISTED
   ENTERPRISE
 }
-
-
