@@ -51,6 +51,17 @@ interface RecordRefundCompletedParams {
   metadata?: Record<string, unknown>;
 }
 
+interface RecordLateFeeAssessedParams {
+  tenantId: string;
+  branchId: string;
+  studentId?: string | null;
+  occurredAt: Date;
+  amount: Prisma.Decimal | number | string;
+  /** LateFee.id -- the record that produced this fact. */
+  referenceId: string;
+  metadata?: Record<string, unknown>;
+}
+
 @Injectable()
 export class LedgerService {
   /**
@@ -110,4 +121,30 @@ export class LedgerService {
   // Deliberately no update(), no delete(), no soft-delete field anywhere
   // in this class. Invariant 12 / IMM-009 / IMM-010 are enforced by this
   // being the only way to touch the table, not by convention alone.
+
+  /**
+   * The single owner of LATE_FEE_ASSESSED, established here at M4. Same
+   * transactional requirement and same reuse rule as the two methods
+   * above: any later milestone representing this same fact calls this
+   * method rather than issuing its own write.
+   */
+  async recordLateFeeAssessed(
+    tx: Prisma.TransactionClient,
+    params: RecordLateFeeAssessedParams,
+  ): Promise<void> {
+    await tx.ledger.create({
+      data: {
+        tenantId: params.tenantId,
+        branchId: params.branchId,
+        studentId: params.studentId ?? null,
+        financialYear: financialYearFor(params.occurredAt),
+        eventType: 'LATE_FEE_ASSESSED',
+        amount: params.amount,
+        occurredAt: params.occurredAt,
+        referenceType: 'LateFee',
+        referenceId: params.referenceId,
+        metadata: params.metadata as Prisma.InputJsonValue | undefined,
+      },
+    });
+  }
 }

@@ -7,6 +7,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../core/compliance/audit.service';
 import { LateFeeService } from './late-fee.service';
+import { LedgerService } from '../ledger/services/ledger.service';
 import { OVERDUE_STATUS_MATCH } from '../invoice/overdue.util';
 
 describe('LateFeeService.calculateLateFee — Decimal rounding (D-9)', () => {
@@ -18,6 +19,7 @@ describe('LateFeeService.calculateLateFee — Decimal rounding (D-9)', () => {
         LateFeeService,
         { provide: PrismaService, useValue: {} },
         { provide: AuditService, useValue: { logUpdate: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn() } },
       ],
     }).compile();
     service = module.get(LateFeeService);
@@ -79,7 +81,7 @@ describe('LateFeeService.applyLateFees — invoice lock (M4)', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'inv-1', dueAmount: 1000, totalAmount: 1000 }),
         update:    jest.fn().mockResolvedValue({}),
       },
-      lateFee: { create: jest.fn().mockResolvedValue({}) },
+      lateFee: { create: jest.fn().mockResolvedValue({ id: 'lf-1' }) },
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
     };
     prisma = {
@@ -100,6 +102,7 @@ describe('LateFeeService.applyLateFees — invoice lock (M4)', () => {
         LateFeeService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { logUpdate: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn() } },
       ],
     }).compile();
     service = module.get(LateFeeService);
@@ -123,6 +126,32 @@ describe('LateFeeService.applyLateFees — invoice lock (M4)', () => {
     // Never written outside the transaction/lock.
     expect(prisma.lateFee.create).not.toHaveBeenCalled();
     expect(prisma.invoice.update).not.toHaveBeenCalled();
+  });
+
+  // M4 (redesigned roadmap, §4.9): LATE_FEE_ASSESSED posted exactly once,
+  // inside the same lock+transaction as the LateFee insert and Invoice
+  // update -- not a separate write outside them.
+  it('posts a LATE_FEE_ASSESSED ledger entry referencing the created LateFee, inside the same transaction', async () => {
+    await service.applyLateFees();
+
+    expect((service as any).ledger.recordLateFeeAssessed).toHaveBeenCalledTimes(1);
+    expect((service as any).ledger.recordLateFeeAssessed).toHaveBeenCalledWith(
+      tx, // the SAME transaction client the LateFee insert and Invoice update used
+      expect.objectContaining({
+        tenantId: 't-1', branchId: 'b-1', studentId: 'stu-1', referenceId: 'lf-1',
+      }),
+    );
+  });
+
+  it('does not post a ledger entry when the invoice is skipped (already fee-applied today)', async () => {
+    prisma.invoice.findMany.mockResolvedValue([
+      scannedInvoice({ lateFees: [{ appliedAt: new Date() }] }),
+    ]);
+
+    await service.applyLateFees();
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect((service as any).ledger.recordLateFeeAssessed).not.toHaveBeenCalled();
   });
 
   // The core M4 regression. The initial scan captured dueAmount: 1000 (stale
@@ -247,6 +276,7 @@ describe('LateFeeService.allocatePayment', () => {
         LateFeeService,
         { provide: PrismaService, useValue: {} },
         { provide: AuditService, useValue: { logUpdate: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn() } },
       ],
     }).compile();
     service = module.get(LateFeeService);
@@ -387,6 +417,7 @@ describe('LateFeeService.waiveLateFee', () => {
         LateFeeService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn() } },
       ],
     }).compile();
     service = module.get(LateFeeService);

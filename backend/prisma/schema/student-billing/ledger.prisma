@@ -99,9 +99,10 @@ model Ledger {
 }
 
 // Additive-only per §4.8. A new event type may be appended for a future
-// milestone (e.g. LATE_FEE_ASSESSED at M4, INVOICE_ISSUED at M8); an
-// existing value's meaning must never be repurposed.
+// milestone (e.g. INVOICE_ISSUED at M8); an existing value's meaning must
+// never be repurposed.
 enum LedgerEventType {
   PAYMENT_COMPLETED
   REFUND_COMPLETED
+  LATE_FEE_ASSESSED
 }

@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../../../core/compliance/audit.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { overdueWhere } from '../invoice/overdue.util';
+import { LedgerService } from '../ledger/services/ledger.service';
 
 export interface LateFeeConfig {
   gracePeriodDays: number;
@@ -29,6 +30,7 @@ export class LateFeeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit:  AuditService,
+    private readonly ledger: LedgerService,
   ) {}
 
   calculateLateFee(
@@ -160,7 +162,7 @@ export class LateFeeService {
           // here, so a now-cleared invoice correctly attracts no late fee.
           if (lateFee <= 0) return;
 
-          await tx.lateFee.create({
+          const createdLateFee = await tx.lateFee.create({
             data: {
               tenantId: invoice.tenantId,
               branchId: invoice.student.branchId,
@@ -186,6 +188,22 @@ export class LateFeeService {
               // (invoice/overdue.util.ts), never persisted. This was the
               // only write site for InvoiceStatus.OVERDUE in the codebase.
             },
+          });
+
+          // M4 (redesigned roadmap, §4.9): LATE_FEE_ASSESSED, posted
+          // exactly once per assessment, inside this same lock+transaction.
+          // The "already applied today" continue-guard above runs BEFORE
+          // this transaction ever opens, so a second cron run on the same
+          // day for the same invoice never reaches this line at all --
+          // there is no separate replay path here to double-post from.
+          await this.ledger.recordLateFeeAssessed(tx, {
+            tenantId: invoice.tenantId,
+            branchId: invoice.student.branchId,
+            studentId: invoice.studentId,
+            occurredAt: new Date(),
+            amount: lateFee,
+            referenceId: createdLateFee.id,
+            metadata: { invoiceId: invoice.id, daysOverdue, baseAmount: freshDue },
           });
 
           applied++;

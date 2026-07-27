@@ -91,6 +91,32 @@ describe('LedgerService', () => {
     });
   });
 
+  describe('recordLateFeeAssessed', () => {
+    it('writes eventType LATE_FEE_ASSESSED with referenceType LateFee', async () => {
+      await service.recordLateFeeAssessed(tx, {
+        tenantId: 't-1', branchId: 'b-1', studentId: 's-1',
+        occurredAt: new Date('2026-06-15T00:00:00Z'),
+        amount: 250, referenceId: 'lf-1',
+      });
+
+      const written = tx.ledger.create.mock.calls[0][0].data;
+      expect(written.eventType).toBe('LATE_FEE_ASSESSED');
+      expect(written.referenceType).toBe('LateFee');
+      expect(written.referenceId).toBe('lf-1');
+      expect(written.amount).toBe(250);
+    });
+
+    it('derives financialYear from occurredAt using the same shared FY boundary as the other event types', async () => {
+      await service.recordLateFeeAssessed(tx, {
+        tenantId: 't-1', branchId: 'b-1',
+        occurredAt: new Date('2026-03-31T23:59:59Z'), // FY 2025, not calendar 2026
+        amount: 50, referenceId: 'lf-1',
+      });
+
+      expect(tx.ledger.create.mock.calls[0][0].data.financialYear).toBe(2025);
+    });
+  });
+
   // Invariant 12 / IMM-009 / IMM-010: enforced by absence, not convention.
   it('exposes no update or delete method', () => {
     expect((service as any).update).toBeUndefined();
