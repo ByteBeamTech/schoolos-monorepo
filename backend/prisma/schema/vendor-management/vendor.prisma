@@ -16,6 +16,9 @@ model VendorProfile {
   purchaseOrders VendorPurchaseOrder[]
   quotes         VendorQuote[]
 
+  // TRN-SCH-001A — additive: Transport Fleet vendor management (SAD Ch.6)
+  transportMaintenanceRecords Maintenance[]
+
   @@index([tenantId])
 }
 

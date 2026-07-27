@@ -22,6 +22,17 @@ model Branch {
   suspendedAt         DateTime?
   License             License[]
   transportRoutes     TransportRoute[]
+
+  // TRN-SCH-001A — additive target Transport domain (coexists with legacy
+  // transportRoutes above; see transport/transport-domain.prisma)
+  stops                       Stop[]
+  routes                      Route[]
+  studentTransportAssignments StudentTransportAssignment[]
+  vehicles                    Vehicle[]
+  drivers                     Driver[]
+  conductors                  Conductor[]
+  tripSchedules               TripSchedule[]
+  trips                       Trip[]
   // 🔥 ADD THESE BACK-RELATIONS (Mandatory for Validation)
   tenant              Tenant                     @relation(fields: [tenantId], references: [id])
   students            Student[]
