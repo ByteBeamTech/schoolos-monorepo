@@ -34,7 +34,21 @@
 // ledger.service.ts for the enforced single entry point.
 
 model Ledger {
-  id            String  @id @default(cuid())
+  // NOT @id here -- the primary key is the composite (id, financialYear)
+  // declared via @@id below, matching what actually exists in Postgres.
+  // A plain `@id` on this field alone, as this model incorrectly had
+  // until this correction, causes Prisma to believe `id` is the whole
+  // primary key. The FIRST time anyone then runs `prisma migrate dev`
+  // against this schema for ANY unrelated change, Prisma diffs the whole
+  // schema, detects that mismatch as drift, and silently folds an ALTER
+  // attempting to "fix" the primary key back into whatever unrelated
+  // migration is being generated -- which then fails outright, because
+  // Postgres refuses a non-composite primary key on a table partitioned
+  // by a column the key doesn't include. This exact failure happened
+  // once already (P3018, blocking an unrelated transport-domain
+  // migration) and is the reason this comment exists: the schema
+  // declaration below is not optional polish, it is the fix.
+  id            String  @default(cuid())
   tenantId      String
   branchId      String
   studentId     String? // denormalised for query convenience; not every event type is necessarily student-scoped
@@ -65,6 +79,18 @@ model Ledger {
   // model's service layer -- IMM-009/IMM-010/invariant 12. Enforced in
   // code (ledger.service.ts exposes no update/delete function at all),
   // not just by convention.
+  //
+  // id alone is NOT declared @unique / part of a unique index: Postgres
+  // applies the exact same "must include the partition key" rule to every
+  // unique constraint on a partitioned table, not only the primary key --
+  // there is no way to make id alone enforceably unique here without
+  // financialYear. Application-level uniqueness (cuid collision is not a
+  // realistic concern) is relied on for id-alone lookups; the plain
+  // (non-unique) index below keeps that lookup pattern reasonably
+  // efficient across partitions without claiming a DB-enforced guarantee
+  // this partitioning scheme cannot actually provide.
+  @@id([id, financialYear])
+  @@index([id])
   @@index([tenantId, financialYear])
   @@index([tenantId, branchId, financialYear])
   @@index([studentId])
