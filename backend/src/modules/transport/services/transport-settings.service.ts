@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../core/compliance/audit.service';
-import type { TransportSettings } from '@prisma/client';
+import type { Prisma, TransportSettings } from '@prisma/client';
 import { UpdateTransportSettingsDto } from '../dto/transport-settings.dto';
 
 /**
@@ -63,9 +63,20 @@ export class TransportSettingsService {
 
     const before = await this.getOrCreate(tenantId, branchId, caller);
 
+    // `metadata` is the one field Prisma's Json typing won't structurally
+    // accept as a plain Record<string, unknown> (InputJsonValue is a
+    // recursive JSON-value union, not just "any object shape") — cast that
+    // field alone rather than the whole payload, so every other field stays
+    // checked against TransportSettingsUpdateInput as normal.
+    const { metadata, ...rest } = dto;
+    const data: Prisma.TransportSettingsUpdateInput = {
+      ...rest,
+      ...(metadata !== undefined ? { metadata: metadata as Prisma.InputJsonValue } : {}),
+    };
+
     const after = await this.prisma.transportSettings.update({
       where: { tenantId_branchId: { tenantId, branchId } },
-      data: dto,
+      data,
     });
 
     await this.audit.log({
