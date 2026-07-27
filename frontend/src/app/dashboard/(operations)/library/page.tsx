@@ -36,16 +36,16 @@ export default function LibraryPage() {
   const { data: stats,    loading: sLoad, refetch: refetchStats  } = useApi<any>("/library/stats");
   const { data: students }                                          = useApi<any>("/students?limit=500");
 
-  const [bookForm, setBookForm] = useState({ title:"", author:"", isbn:"", subject:"", location:"", totalCopies:"1" });
-  const [issueForm, setIssueForm] = useState({ bookId:"", studentId:"", dueDate:"" });
+  const [bookForm, setBookForm] = useState({ title:"", authorName:"", isbn:"", categoryName:"", initialCopies:"1" });
+  const [issueForm, setIssueForm] = useState({ bookId:"", borrowerId:"", dueDate:"" });
   const bf = (k:string) => (e:any) => setBookForm(p=>({...p,[k]:e.target.value}));
   const isf = (k:string) => (e:any) => setIssueForm(p=>({...p,[k]:e.target.value}));
 
   const saveBook = async (e:React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
-      await apiClient.post("/library/books", { ...bookForm, totalCopies: parseInt(bookForm.totalCopies) });
-      setShowAdd(false); setBookForm({ title:"", author:"", isbn:"", subject:"", location:"", totalCopies:"1" });
+      await apiClient.post("/library/books", { ...bookForm, initialCopies: parseInt(bookForm.initialCopies) || 0 });
+      setShowAdd(false); setBookForm({ title:"", authorName:"", isbn:"", categoryName:"", initialCopies:"1" });
       refetchBooks(); refetchStats();
     } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
@@ -54,8 +54,11 @@ export default function LibraryPage() {
   const issueBook = async (e:React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
-      await apiClient.post("/library/issue", issueForm);
-      setShowIssue(false); setIssueForm({ bookId:"", studentId:"", dueDate:"" });
+      // borrowerType is hardcoded to STUDENT here -- this form only offers a
+      // student picker today; a staff-borrower picker is new UX scope not
+      // built in this phase (backend already supports BorrowerType.STAFF).
+      await apiClient.post("/library/issue", { ...issueForm, borrowerType: "STUDENT" });
+      setShowIssue(false); setIssueForm({ bookId:"", borrowerId:"", dueDate:"" });
       refetchBooks(); refetchStats();
     } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
     finally { setSaving(false); }
@@ -95,7 +98,7 @@ export default function LibraryPage() {
         <div className="bg-white border border-slate-100 rounded-xl p-5 mb-5 shadow-sm">
           <h3 className="font-semibold text-slate-900 text-sm mb-4">Add book</h3>
           <form onSubmit={saveBook} className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {[{l:"Title *",k:"title",req:true},{l:"Author",k:"author"},{l:"ISBN",k:"isbn"},{l:"Subject",k:"subject"},{l:"Location",k:"location"}].map(({l,k,req})=>(
+            {[{l:"Title *",k:"title",req:true},{l:"Author",k:"authorName"},{l:"ISBN",k:"isbn"},{l:"Category",k:"categoryName"}].map(({l,k,req})=>(
               <div key={k}>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{l}</label>
                 <input type="text" required={req} value={(bookForm as any)[k]} onChange={bf(k)}
@@ -104,7 +107,7 @@ export default function LibraryPage() {
             ))}
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Copies *</label>
-              <input type="number" min="1" required value={bookForm.totalCopies} onChange={bf("totalCopies")}
+              <input type="number" min="0" required value={bookForm.initialCopies} onChange={bf("initialCopies")}
                 className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
             </div>
             <div className="md:col-span-3 flex gap-3">
@@ -131,7 +134,7 @@ export default function LibraryPage() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Student *</label>
-              <select required value={issueForm.studentId} onChange={isf("studentId")}
+              <select required value={issueForm.borrowerId} onChange={isf("borrowerId")}
                 className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">Select student...</option>
                 {students?.data?.map((s:any)=>(
@@ -171,22 +174,21 @@ export default function LibraryPage() {
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
             <table className="w-full text-sm">
               <thead><tr className="bg-slate-50 border-b border-slate-100">
-                {["Title","Author","ISBN","Subject","Location","Copies","Available"].map(h=>(
+                {["Title","Author","ISBN","Category","Copies","Available"].map(h=>(
                   <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr></thead>
               <tbody className="divide-y divide-slate-50">
                 {bLoad ? [...Array(5)].map((_,i)=>(
-                  <tr key={i}>{[...Array(7)].map((_,j)=><td key={j} className="px-5 py-4"><div className="h-4 bg-slate-100 rounded animate-pulse"/></td>)}</tr>
+                  <tr key={i}>{[...Array(6)].map((_,j)=><td key={j} className="px-5 py-4"><div className="h-4 bg-slate-100 rounded animate-pulse"/></td>)}</tr>
                 )) : !books||books.length===0 ? (
-                  <tr><td colSpan={7} className="px-5 py-16 text-center text-slate-400 text-sm">No books yet. Add your first book above.</td></tr>
+                  <tr><td colSpan={6} className="px-5 py-16 text-center text-slate-400 text-sm">No books yet. Add your first book above.</td></tr>
                 ) : books.map((b:any)=>(
                   <tr key={b.id} className="hover:bg-slate-50">
                     <td className="px-5 py-3.5 font-medium text-slate-900">{b.title}</td>
-                    <td className="px-5 py-3.5 text-slate-600">{b.author??'—'}</td>
+                    <td className="px-5 py-3.5 text-slate-600">{b.authorNames?.length ? b.authorNames.join(', ') : '—'}</td>
                     <td className="px-5 py-3.5 font-mono text-xs text-slate-500">{b.isbn??'—'}</td>
-                    <td className="px-5 py-3.5 text-slate-500">{b.subject??'—'}</td>
-                    <td className="px-5 py-3.5 text-slate-500">{b.location??'—'}</td>
+                    <td className="px-5 py-3.5 text-slate-500">{b.category?.name??'—'}</td>
                     <td className="px-5 py-3.5 font-medium text-slate-700">{b.totalCopies}</td>
                     <td className="px-5 py-3.5"><Badge label={String(b.availableCopies)} variant={b.availableCopies>0?"success":"error"}/></td>
                   </tr>
@@ -214,8 +216,8 @@ export default function LibraryPage() {
                 const days = Math.floor((Date.now()-new Date(o.dueDate).getTime())/86400000);
                 return (
                   <tr key={o.id} className="hover:bg-slate-50">
-                    <td className="px-5 py-3.5 font-medium text-slate-900">{o.book?.title}</td>
-                    <td className="px-5 py-3.5 text-slate-700">{o.student?.firstName} {o.student?.lastName}</td>
+                    <td className="px-5 py-3.5 font-medium text-slate-900">{o.copy?.book?.title}</td>
+                    <td className="px-5 py-3.5 text-slate-700">{o.borrowerNameSnapshot}</td>
                     <td className="px-5 py-3.5 text-xs text-slate-500">{new Date(o.issuedAt).toLocaleDateString("en-IN")}</td>
                     <td className="px-5 py-3.5 text-xs text-red-500 font-medium">{new Date(o.dueDate).toLocaleDateString("en-IN")}</td>
                     <td className="px-5 py-3.5"><Badge label={`${days}d`} variant="error"/></td>

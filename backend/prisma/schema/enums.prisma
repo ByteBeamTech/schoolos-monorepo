@@ -590,13 +590,45 @@ enum LibraryMemberType {
   ALUMNI
   EXTERNAL
 }
+// NOTE (ADR-LIB-001): the above enum predates the Library domain
+// architecture freeze and is UNUSED (no model field references it).
+// It represents the "LibraryMember" concept the ADR explicitly
+// rejected in favor of BorrowerType + borrowerId (see below). Left
+// in place rather than removed, since removing unrelated dead code
+// is outside Phase 2's scope -- flagged in
+// docs/architecture/library/IMPLEMENTATION_STATE.md instead. Do not
+// use this enum for new Library work.
 
+// ADR-LIB-001 §7 -- trimmed from the original 5-value enum
+// (ISSUED, RETURNED, OVERDUE, LOST, DAMAGED). OVERDUE is a computed
+// predicate (dueDate < now(), status = ISSUED), never persisted --
+// same convention as the Finance module's invoice OVERDUE handling.
+// DAMAGED moves to BookCopy.status (a copy's physical condition,
+// not the issue transaction's outcome). WRITTEN_OFF added for the
+// approved-write-off terminal state (ADR-LIB-001 §6/§7).
 enum BookIssueStatus {
   ISSUED
   RETURNED
-  OVERDUE
+  LOST
+  WRITTEN_OFF
+}
+
+// ADR-LIB-001 §3/§7 -- BookCopy physical-item state machine.
+enum BookCopyStatus {
+  AVAILABLE
+  RESERVED_HOLD
+  ISSUED
   LOST
   DAMAGED
+  IN_REPAIR
+  DISPOSED
+}
+
+// ADR-LIB-001 §2 -- borrowers are existing platform entities
+// (Student, Staff), resolved via BorrowerResolver. No LibraryMember.
+enum BorrowerType {
+  STUDENT
+  STAFF
 }
 
 enum AssetStatus {

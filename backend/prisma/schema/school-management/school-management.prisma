@@ -67,6 +67,10 @@ model Branch {
   libraryRacks          Rack[]
   libraryBranchSettings LibraryBranchSettings[]
 
+  // Library (ADR-LIB-001 Phase 2)
+  libraryBookCopies       BookCopy[]
+  libraryBarcodeSequences BarcodeSequence[]
+
   @@unique([tenantId, name])
   @@unique([tenantId, branchCode])
   @@index([tenantId])

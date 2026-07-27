@@ -112,6 +112,7 @@ model Shelf {
   deletedAt DateTime?
 
   rack Rack @relation(fields: [rackId], references: [id], onDelete: Restrict)
+  copies BookCopy[]
 
   @@unique([rackId, code])
   @@index([tenantId])
@@ -141,30 +142,80 @@ model LibraryBranchSettings {
   @@index([tenantId])
 }
 
-model Book {
-  id              String      @id @default(cuid())
-  tenantId        String
-  isbn            String?
-  title           String
-  author          String?
-  publisher       String?
-  subject         String?
-  totalCopies     Int         @default(1)
-  availableCopies Int         @default(1)
-  location        String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  issues          BookIssue[]
+// ---------- Phase 2: physical inventory core ----------
+// ADR-LIB-001 §3: Book (catalog) -> BookCopy (physical item, branch-
+// scoped) -> BookIssue (references copyId, not bookId).
 
-  // Phase 1 additions (nullable -- Phase 2 will backfill from the
-  // free-text author/publisher columns above and, once backfilled,
-  // those columns are dropped; kept optional here so this migration
-  // has zero impact on existing create/read paths).
+model BookCopy {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+  bookId   String
+
+  barcode String
+  rfidTag String?
+  shelfId String?
+
+  status    BookCopyStatus @default(AVAILABLE)
+  condition String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  book   Book        @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  branch Branch      @relation(fields: [branchId], references: [id])
+  shelf  Shelf?      @relation(fields: [shelfId], references: [id])
+  issues BookIssue[]
+
+  // NOTE (ADR-LIB-001 §3 invariant 2): a BookCopy may have at most one
+  // OPEN issue at a time. Prisma cannot express a partial unique index
+  // (WHERE "status" = 'ISSUED') declaratively -- it is created via raw
+  // SQL in this phase's migration
+  // (prisma/migrations/20260727090000_library_phase2_bookcopy_core/
+  // migration.sql, index "BookIssue_copyId_open_issue_key"). This is
+  // the structural fix for the double-issue race (audit finding C1) --
+  // do not remove it, and do not assume `prisma migrate dev`/`db pull`
+  // will regenerate it, since it is invisible to `schema.prisma`.
+  @@unique([tenantId, barcode])
+  @@unique([rfidTag])
+  @@index([tenantId, branchId, status])
+  @@index([bookId])
+}
+
+// Barcode number generator -- identical shape to InvoiceSequence /
+// ReceiptSequence (student-billing/sequences.prisma), reusing the
+// same atomic-increment discipline for the same reason (ADR-LIB-001
+// §12).
+model BarcodeSequence {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
+  year       Int
+  lastNumber Int @default(0)
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([tenantId, branchId, year])
+  @@index([tenantId, branchId])
+}
+
+model Book {
+  id       String @id @default(cuid())
+  tenantId String
+  isbn     String?
+  title    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   categoryId      String?
   publisherId     String?
   category        BookCategory? @relation(fields: [categoryId], references: [id])
   publisherRecord Publisher?    @relation(fields: [publisherId], references: [id])
   authors         BookAuthor[]
+  copies          BookCopy[]
 
   @@index([tenantId])
   @@index([isbn])
@@ -172,21 +223,45 @@ model Book {
   @@index([publisherId])
 }
 
+// ADR-LIB-001 §2/§5/§7 -- re-pointed to copyId (not bookId).
+// Borrower is polymorphic (BorrowerType + borrowerId, no FK -- see
+// ADR §2 for why) with a point-in-time snapshot of name/branch/
+// display-id, so history stays accurate independent of what happens
+// to the Student/Staff row afterward (transfer, TC, alumni, etc.).
+// branchId is snapshotted from the copy's branch at issue time (ADR
+// §5), not a live join -- a copy transferred between branches later
+// must not silently rewrite past issue history.
 model BookIssue {
-  id         String          @id @default(cuid())
-  tenantId   String
-  bookId     String
-  studentId  String
-  issuedAt   DateTime        @default(now())
-  dueDate    DateTime
-  returnedAt DateTime?
-  status     BookIssueStatus @default(ISSUED)
-  fine       Decimal?        @db.Decimal(10, 2)
-  finePaid   Boolean         @default(false)
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
+  copyId String
+
+  borrowerType              BorrowerType
+  borrowerId                String
+  borrowerNameSnapshot      String
+  borrowerBranchIdSnapshot  String?
+  borrowerDisplayIdSnapshot String?
+
+  issuedAt     DateTime        @default(now())
+  dueDate      DateTime
+  returnedAt   DateTime?
+  renewalCount Int             @default(0)
+  status       BookIssueStatus @default(ISSUED)
+
+  // Fine fields predate Phase 2 and are left untouched here -- the
+  // Fine/LibraryChargeRequest redesign (ADR §9) is Phase 4 scope.
+  fine     Decimal? @db.Decimal(10, 2)
+  finePaid Boolean  @default(false)
+
   issuedBy   String
-  book       Book            @relation(fields: [bookId], references: [id])
+  returnedBy String?
+
+  copy BookCopy @relation(fields: [copyId], references: [id], onDelete: Restrict)
 
   @@index([tenantId])
-  @@index([studentId])
-  @@index([status])
+  @@index([tenantId, branchId, status, dueDate])
+  @@index([copyId])
+  @@index([borrowerType, borrowerId])
 }
