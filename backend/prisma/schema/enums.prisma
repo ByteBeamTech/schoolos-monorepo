@@ -590,6 +590,7 @@ enum LibraryMemberType {
   ALUMNI
   EXTERNAL
 }
+
 // NOTE (ADR-LIB-001): the above enum predates the Library domain
 // architecture freeze and is UNUSED (no model field references it).
 // It represents the "LibraryMember" concept the ADR explicitly

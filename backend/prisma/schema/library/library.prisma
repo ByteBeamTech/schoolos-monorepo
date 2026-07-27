@@ -111,7 +111,7 @@ model Shelf {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  rack Rack @relation(fields: [rackId], references: [id], onDelete: Restrict)
+  rack   Rack       @relation(fields: [rackId], references: [id], onDelete: Restrict)
   copies BookCopy[]
 
   @@unique([rackId, code])
@@ -202,7 +202,7 @@ model BarcodeSequence {
 }
 
 model Book {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   tenantId String
   isbn     String?
   title    String

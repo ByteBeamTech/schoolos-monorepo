@@ -563,7 +563,7 @@ model TransportSettings {
   capacityBufferSeats     Int                     @default(0) // seats allowed past nominal capacity, when mode permits
 
   // Assignment Policy
-  allowMultipleActiveAssignments      Boolean @default(false) // a student normally has exactly one active StudentTransportAssignment
+  allowMultipleActiveAssignments       Boolean @default(false) // a student normally has exactly one active StudentTransportAssignment
   requireApprovalForMidSessionTransfer Boolean @default(false)
 
   // Trip Generation Policy (AF-004 Daily Trip Generation)
