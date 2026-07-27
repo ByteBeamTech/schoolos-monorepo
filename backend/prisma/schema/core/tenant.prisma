@@ -109,6 +109,7 @@ model Tenant {
   fuelLogs                    FuelLog[]
   maintenanceRecords          Maintenance[]
   complianceItems             ComplianceItem[]
+  transportSettings           TransportSettings[]
   cronLogs                    CronExecutionLog[]
   jobSchedules                TenantJobSchedule[]
   calendarEvents              AcademicCalendarEvent[]

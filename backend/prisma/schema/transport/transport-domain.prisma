@@ -1,5 +1,7 @@
 // ============================================================================
-// TRN-SCH-001A — Transport Domain: Additive Schema Foundation
+// Transport Domain — Additive Schema
+//   TRN-SCH-001A: Schema Foundation (Planning/Fleet/Operations core tables)
+//   Phase 0.5:    Transport Settings (AF-002 config-driven policies)
 // ============================================================================
 // Ref: SchoolOS Transport Architecture Freeze v1.1 (frozen)
 //      SchoolOS Transport SAD Chapters 1-15 (approved draft)
@@ -113,6 +115,25 @@ enum TripIncidentSeverity {
   MEDIUM
   HIGH
   CRITICAL
+}
+
+// AF-002 Capacity Policy
+enum CapacityEnforcementMode {
+  STRICT // reject assignment once vehicle capacity is reached
+  ALLOW_OVERBOOK_WITH_APPROVAL // allow past capacity, requires approval
+  SOFT_WARNING // allow past capacity, warn only
+}
+
+// AF-002 Attendance Mode
+enum TransportAttendanceMode {
+  MANUAL
+  APP_BASED // parent/driver app marks boarding — SAD Ch.14 future enhancement
+}
+
+// AF-002 Trip Generation Policy
+enum TripGenerationMode {
+  AUTOMATIC // AF-004 Daily Trip Generation job creates Trips from TripSchedule
+  MANUAL // Transport Manager generates Trips on demand
 }
 
 // ----------------------------------------------------------------------------
@@ -521,4 +542,64 @@ model ComplianceItem {
   @@index([tenantId])
   @@index([vehicleId])
   @@index([expiryDate])
+}
+
+// ----------------------------------------------------------------------------
+// Transport Settings (AF-002, Phase 0.5) — configuration-driven policies.
+// "Business rules must not be hardcoded" (AF-002): every policy below is a
+// DB-persisted, branch-scoped value; application code reads it through
+// TransportSettingsService rather than embedding these as constants.
+// One row per branch — mirrors the existing TenantSecuritySettings pattern
+// (school-management/school-management.prisma).
+// ----------------------------------------------------------------------------
+
+model TransportSettings {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
+  // Capacity Policy
+  capacityEnforcementMode CapacityEnforcementMode @default(STRICT)
+  capacityBufferSeats     Int                     @default(0) // seats allowed past nominal capacity, when mode permits
+
+  // Assignment Policy
+  allowMultipleActiveAssignments      Boolean @default(false) // a student normally has exactly one active StudentTransportAssignment
+  requireApprovalForMidSessionTransfer Boolean @default(false)
+
+  // Trip Generation Policy (AF-004 Daily Trip Generation)
+  tripGenerationMode     TripGenerationMode @default(AUTOMATIC)
+  tripGenerationLeadDays Int                @default(1) // how many days ahead Trips are generated from TripSchedule
+
+  // Attendance Mode
+  attendanceMode TransportAttendanceMode @default(MANUAL)
+
+  // Reminder Policy (AF-004 Reminder Jobs)
+  complianceExpiryReminderDays Int @default(30) // ComplianceItem.expiryDate lead time
+  licenseExpiryReminderDays    Int @default(30) // Driver.licenseExpiryDate lead time
+  feeReminderDaysBeforeDue     Int @default(7)
+
+  // Route Suspend Policy (AF-007 wizard: Route Suspend)
+  routeSuspendRequiresApproval Boolean @default(false)
+  routeSuspendNotifyGuardians  Boolean @default(true)
+
+  // Fee Revision Policy (AF-007 wizard: Bulk Pricing Revision)
+  feeRevisionRequiresApproval Boolean @default(true)
+  feeRevisionMinNoticeDays    Int     @default(7) // minimum notice before a new TransportStopPricing.effectiveFrom
+
+  // Calendar Policy (SAD Ch.5 Transport Calendar — integrates with Academic Calendar)
+  followAcademicCalendarHolidays Boolean @default(true)
+  runTripsOnHalfDays             Boolean @default(true)
+
+  // Escape hatch for settings not yet modeled as discrete columns. Not the
+  // primary storage mechanism — see AF-002 "must not be hardcoded" note above.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([tenantId, branchId])
+  @@index([tenantId])
 }

@@ -33,6 +33,7 @@ model Branch {
   conductors                  Conductor[]
   tripSchedules               TripSchedule[]
   trips                       Trip[]
+  transportSettings           TransportSettings?
   // 🔥 ADD THESE BACK-RELATIONS (Mandatory for Validation)
   tenant                      Tenant                       @relation(fields: [tenantId], references: [id])
   students                    Student[]
