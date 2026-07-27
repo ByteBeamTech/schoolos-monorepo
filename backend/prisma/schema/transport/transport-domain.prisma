@@ -556,7 +556,7 @@ model ComplianceItem {
 model TransportSettings {
   id       String @id @default(cuid())
   tenantId String
-  branchId String
+  branchId String @unique // 1:1 with Branch — a branch belongs to exactly one Tenant, so branchId alone is sufficient for uniqueness (Prisma requires @unique, not just the tenantId+branchId composite, on the defining side of a one-to-one relation)
 
   // Capacity Policy
   capacityEnforcementMode CapacityEnforcementMode @default(STRICT)
