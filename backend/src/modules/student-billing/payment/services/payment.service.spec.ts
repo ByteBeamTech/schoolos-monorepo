@@ -20,6 +20,7 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../../core/compliance/audit.service';
 import { InvoiceService } from '../../invoice/services/invoice.service';
 import { LateFeeService } from '../../late-fee/late-fee.service';
+import { LedgerService } from '../../ledger/services/ledger.service';
 
 const REAL_SECRET = 'real_secret_for_tests';
 const PLACEHOLDER_SECRET = 'rzp_test_xxxxxxxxxx';
@@ -98,6 +99,7 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: InvoiceService, useValue: {} },
         { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
       ],
     }).compile();
 
@@ -268,6 +270,20 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
       expect(lateFee.allocatePayment).toHaveBeenCalledTimes(1);
     });
 
+    it('posts exactly one PAYMENT_COMPLETED ledger entry, never a second one on replay', async () => {
+      await buildModule();
+      const ledger = (service as any).ledger;
+
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+
+      expect(ledger.recordPaymentCompleted).toHaveBeenCalledTimes(1);
+      expect(ledger.recordPaymentCompleted).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ referenceId: 'pay-1' }),
+      );
+    });
+
     it('never resurrects a FAILED payment — it is not a replay', async () => {
       await buildModule('FAILED');
 
@@ -328,6 +344,7 @@ describe('PaymentService.getPaymentHistory — FEE-0 branch scoping', () => {
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: InvoiceService, useValue: {} },
         { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -415,6 +432,7 @@ describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () =
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: InvoiceService, useValue: invoiceService },
         { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -620,6 +638,7 @@ describe('PaymentService.generateReceipt — one receipt per payment (FEE-1)', (
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: InvoiceService, useValue: invoiceService },
         { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -751,6 +770,7 @@ describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: InvoiceService, useValue: { generateReceiptNumber: jest.fn().mockResolvedValue('RCP-2026-00001') } },
         { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -800,6 +820,18 @@ describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
       expect(result.receipt).toBe(recorded.receipt);
       expect(prisma.payment.create).not.toHaveBeenCalled();
       expect(prisma.invoice.update).not.toHaveBeenCalled();   // not credited twice
+      expect((service as any).ledger.recordPaymentCompleted).not.toHaveBeenCalled();
+    });
+
+    it('a fresh (non-retry) offline payment posts exactly one PAYMENT_COMPLETED ledger entry', async () => {
+      const result = await service.recordOffline('t-1', dto({ referenceNumber: 'CHQ-1' }), 'a-1');
+      const ledger = (service as any).ledger;
+
+      expect(ledger.recordPaymentCompleted).toHaveBeenCalledTimes(1);
+      expect(ledger.recordPaymentCompleted).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ referenceId: result.payment.id }),
+      );
     });
 
     it('the retry check runs BEFORE the due-amount validation', async () => {

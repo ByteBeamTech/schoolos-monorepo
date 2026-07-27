@@ -42,10 +42,11 @@ model Branch {
   feePlans       FeePlan[]
   feeAssignments FeeAssignment[]
 
-  invoices Invoice[]
-  payments Payment[]
-  receipts Receipt[]
-  refunds  Refund[]
+  invoices      Invoice[]
+  payments      Payment[]
+  ledgerEntries Ledger[]
+  receipts      Receipt[]
+  refunds       Refund[]
 
   // Number Sequences
   invoiceSequences InvoiceSequence[]

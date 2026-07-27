@@ -29,6 +29,7 @@ import { Prisma }           from '@prisma/client';
 import { AuditService }     from '../../../../core/compliance/audit.service';
 import { InvoiceService }   from '../../invoice/services/invoice.service';
 import { LateFeeService }   from '../../late-fee/late-fee.service';
+import { LedgerService }    from '../../ledger/services/ledger.service';
 import { InitiatePaymentDto, VerifyRazorpayPaymentDto, RecordOfflinePaymentDto } from '../../dto/billing.dto';
 import * as crypto           from 'crypto';
 
@@ -43,6 +44,7 @@ export class PaymentService {
     private readonly emitter:         EventEmitter2,
     private readonly invoiceService:  InvoiceService,
     private readonly lateFeeService:  LateFeeService,
+    private readonly ledger:          LedgerService,
   ) {}
 
   // ── Initiate Razorpay ─────────────────────────────────────────────────────
@@ -189,6 +191,21 @@ export class PaymentService {
       // payment.amount (a Decimal) is passed through without Number() (D-9).
       await this.lateFeeService.allocatePayment(tx, tenantId, payment.invoiceId, payment.id, payment.amount);
       const receipt = await this.generateReceipt(tx, tenantId, payment.invoiceId, payment.id);
+
+      // M2 (redesigned roadmap, §4.9): PAYMENT_COMPLETED, posted exactly
+      // once per settlement -- this code path is only reached when the
+      // compare-and-swap above actually won (a replay returns early from
+      // the count===0 branch and never reaches here, so a replayed
+      // verification never double-posts).
+      await this.ledger.recordPaymentCompleted(tx, {
+        tenantId,
+        branchId:  payment.invoice.branchId,
+        studentId: payment.invoice.studentId,
+        occurredAt: new Date(),
+        amount: payment.amount,
+        referenceId: payment.id,
+        metadata: { gateway: payment.gateway, invoiceId: payment.invoiceId },
+      });
 
       // Post-write read: the return value needs the full settled row.
       const updated = await tx.payment.findFirst({ where: { id: payment.id, tenantId } });
@@ -355,6 +372,24 @@ export class PaymentService {
         // reasoning for running inside this transaction.
         await this.lateFeeService.allocatePayment(tx, tenantId, dto.invoiceId, payment.id, dto.amount);
         const receipt = await this.generateReceipt(tx, tenantId, dto.invoiceId, payment.id);
+
+        // M2 (redesigned roadmap, §4.9): PAYMENT_COMPLETED, posted exactly
+        // once. The idempotent fast path above returns before this
+        // transaction ever opens on a retry, so a replayed offline
+        // recording never reaches this line a second time; the unique
+        // index catches the remaining concurrent-retry race identically
+        // (the whole transaction, ledger write included, rolls back on a
+        // unique-violation, matching the existing catch block below).
+        await this.ledger.recordPaymentCompleted(tx, {
+          tenantId,
+          branchId:  invoice.branchId,
+          studentId: invoice.studentId,
+          occurredAt: new Date(),
+          amount: dto.amount,
+          referenceId: payment.id,
+          metadata: { gateway: 'CASH', paymentMethod: dto.paymentMethod, invoiceId: dto.invoiceId },
+        });
+
         return { payment, receipt };
       });
     } catch (err: any) {

@@ -4,6 +4,7 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { Prisma } from '@prisma/client';
 import { AuditService }  from '../../../core/compliance/audit.service';
 import { ConfigService } from '@nestjs/config';
+import { LedgerService } from '../ledger/services/ledger.service';
 
 export interface InitiateRefundDto {
   paymentId: string;
@@ -26,6 +27,7 @@ export class RefundService {
     private readonly prisma:  PrismaService,
     private readonly audit:   AuditService,
     private readonly config:  ConfigService,
+    private readonly ledger:  LedgerService,
   ) {}
 
   /**
@@ -200,7 +202,7 @@ export class RefundService {
       // that from the remaining payments and derive due/status from it.
       const invoice = await tx.invoice.findFirst({
         where:  { id: payment.invoiceId, tenantId },
-        select: { id: true, totalAmount: true },
+        select: { id: true, totalAmount: true, studentId: true },
       });
 
       if (invoice) {
@@ -240,6 +242,23 @@ export class RefundService {
           },
         });
       }
+
+      // M2 (redesigned roadmap, §4.9): REFUND_COMPLETED, posted exactly
+      // once per settlement -- this is Phase 3, reached only once the
+      // gateway refund has actually completed; a retry of a failed Phase 3
+      // write rolls back the whole transaction (ledger entry included)
+      // via Prisma's own transaction semantics, so no partial post is
+      // possible. completedRefund.amount is THIS refund's amount, not the
+      // cumulative totalRefunded figure computed above.
+      await this.ledger.recordRefundCompleted(tx, {
+        tenantId,
+        branchId:  payment.branchId,
+        studentId: invoice?.studentId ?? null,
+        occurredAt: new Date(),
+        amount: completedRefund.amount,
+        referenceId: completedRefund.id,
+        metadata: { paymentId: dto.paymentId, invoiceId: payment.invoiceId },
+      });
 
       // IMM-022/023: the audit row now joins THIS transaction, so it commits
       // or rolls back with the settlement it describes. AuditService.log()

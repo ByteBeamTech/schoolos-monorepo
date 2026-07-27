@@ -1,0 +1,81 @@
+// M2 (redesigned roadmap, Ledger as cross-cutting infrastructure): the
+// authoritative, append-only financial history table. Per C-6
+// (FINANCE_ARCHITECTURE_FREEZE_v1.2.md), this is history, not current
+// state -- Invoice/Payment/Refund/etc. each continue to own their own
+// current-state balance; nothing reconstructs a balance by replaying
+// these rows. Event sourcing is explicitly not the model.
+//
+// Partitioning (§4.7, frozen): by financial year, NOT tenant. Per-tenant
+// partitioning produces an unbounded partition count as tenants are
+// onboarded -- a known Postgres planner-overhead anti-pattern at
+// SchoolOS's multi-tenant scale. financialYear bounds partition growth to
+// exactly one new partition per year regardless of tenant count, and
+// matches the existing D-2 semantics already used by InvoiceSequence/
+// ReceiptSequence: the FY START year (2026 means FY 2026-27, 1 April - 31
+// March), never getFullYear(). tenantId remains an indexed column WITHIN
+// each partition for tenant-scoped pruning; it is NOT the partition key.
+// The actual PARTITION BY DDL is applied by hand in this model's
+// migration (Prisma's schema DSL has no native partition-declaration
+// syntax) -- see that migration's own header comment for the mechanics
+// and for the operational note on pre-creating future-year partitions.
+//
+// Event contract immutability (§4.8, frozen): once an eventType's shape
+// ships, it is never modified by a later milestone -- only extended via
+// the `metadata` field below. Do not add new required top-level columns
+// to this model for a new event type; every event type shares this same
+// base shape (tenant/branch/student scope, amount, occurredAt, a
+// polymorphic reference to what produced it) and differentiates only via
+// `eventType` and `metadata`.
+//
+// Posting ownership (§4.9, frozen): each eventType has exactly one
+// posting-logic owner (the milestone that first ships it). Later
+// milestones touching the same underlying fact call that owner's
+// function; they do not author a second entry for the same fact. See
+// ledger.service.ts for the enforced single entry point.
+
+model Ledger {
+  id            String  @id @default(cuid())
+  tenantId      String
+  branchId      String
+  studentId     String? // denormalised for query convenience; not every event type is necessarily student-scoped
+  financialYear Int // FY start year, same semantics as InvoiceSequence/ReceiptSequence.year (D-2)
+
+  eventType  LedgerEventType
+  amount     Decimal         @db.Decimal(12, 2)
+  occurredAt DateTime        @default(now())
+
+  // Polymorphic reference to the record that produced this entry -- e.g.
+  // ("Payment", <id>) or ("Refund", <id>). Deliberately not a typed Prisma
+  // relation: a live FK to one specific model would make every future
+  // event-producing aggregate require a schema change here, which is
+  // exactly the kind of forward coupling §4.8 exists to prevent.
+  referenceType String
+  referenceId   String
+
+  // Append-only extension point. A later milestone enriching an existing
+  // event type (e.g. attaching allocation detail to PaymentCompleted once
+  // M10 lands) adds fields here, never restructures the columns above.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  // No hard delete, no soft-delete flag, no update path anywhere in this
+  // model's service layer -- IMM-009/IMM-010/invariant 12. Enforced in
+  // code (ledger.service.ts exposes no update/delete function at all),
+  // not just by convention.
+  @@index([tenantId, financialYear])
+  @@index([tenantId, branchId, financialYear])
+  @@index([studentId])
+  @@index([referenceType, referenceId])
+  @@index([eventType])
+}
+
+// Additive-only per §4.8. A new event type may be appended for a future
+// milestone (e.g. LATE_FEE_ASSESSED at M4, INVOICE_ISSUED at M8); an
+// existing value's meaning must never be repurposed.
+enum LedgerEventType {
+  PAYMENT_COMPLETED
+  REFUND_COMPLETED
+}

@@ -21,12 +21,13 @@ import { GatewayFactory }           from './payment/gateway/gateway.factory';
 import { StudentBillingAccessService } from './access/student-billing-access.service';
 import { DiscountCategoryProvisioningService } from './discounts/services/discount-category-provisioning.service';
 import { StorageModule }            from '../../infra/storage/storage.module';
+import { LedgerService }            from './ledger/services/ledger.service';
 
 
 @Module({
   imports: [ComplianceModule, StorageModule, AnalyticsModule,],
   providers: [FeePlansService, InvoiceService, PaymentService, DiscountService, ReconciliationService, ReceiptService, RefundService,
-    LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService, DiscountCategoryProvisioningService],
+    LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService, DiscountCategoryProvisioningService, LedgerService],
   controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController, LateFeeController],
   // DiscountCategoryProvisioningService is exported so the branch-creation
   // paths (OnboardingService, SchoolManagementService) can provision a new

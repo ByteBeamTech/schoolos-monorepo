@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { RefundService } from './refund.service';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../core/compliance/audit.service';
+import { LedgerService } from '../ledger/services/ledger.service';
 
 const PAYMENT_AMOUNT = 10_000;
 
@@ -63,6 +64,7 @@ describe('RefundService.initiate (FEE-1)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('') } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
       ],
     }).compile();
 
@@ -274,6 +276,7 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { log: jest.fn() } },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('') } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
       ],
     }).compile();
     service = module.get(RefundService);
@@ -375,6 +378,16 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
     expect(Number(drainedData.paidAmount)).toBe(0);
     expect(Number(drainedData.dueAmount)).toBe(PAYMENT_AMOUNT);
     expect(drainedData.status).toBe('SENT');
+
+    // M2 (redesigned roadmap, §4.9): exactly one REFUND_COMPLETED entry,
+    // posted from within this same settlement transaction, referencing the
+    // completed Refund row (not the Payment) as the originating record.
+    const ledger = (service as any).ledger;
+    expect(ledger.recordRefundCompleted).toHaveBeenCalledTimes(1);
+    expect(ledger.recordRefundCompleted).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ referenceId: 'ref-new', tenantId: 't-1', branchId: 'b-1' }),
+    );
   });
 
   // The core M2 regression: an invoice paid by TWO payments, one fully
