@@ -76,6 +76,9 @@ model Branch {
   libraryReservations     Reservation[]
   libraryInventoryAudits  InventoryAudit[]
 
+  // Library (ADR-LIB-001 Phase 4)
+  libraryChargeRequests   LibraryChargeRequest[]
+
   @@unique([tenantId, name])
   @@unique([tenantId, branchCode])
   @@index([tenantId])

@@ -648,6 +648,23 @@ enum InventoryAuditStatus {
   CANCELLED
 }
 
+// ADR-LIB-001 §9 -- Library generates charge REQUESTS; it never holds
+// money. These two enums describe Library's own bookkeeping of that
+// request, not a financial instrument.
+enum ChargeReason {
+  OVERDUE
+  LOST
+  DAMAGED
+}
+
+enum BillingStatus {
+  PENDING
+  SENT_TO_BILLING
+  BILLED
+  WAIVED
+  CANCELLED
+}
+
 enum AssetStatus {
   FUNCTIONAL
   DAMAGED

@@ -4,6 +4,7 @@ import { AuditService } from '../../../core/compliance/audit.service';
 import { AuthenticatedUser } from '../../../core/auth/guards/jwt.strategy';
 import { BorrowerResolverService } from './borrower-resolver.service';
 import { BookCopyService } from './book-copy.service';
+import { LibraryChargeRequestService } from './charge-request.service';
 import { CreateBookDto, CreateBookCopyDto, IssueBookDto, ReturnBookDto } from '../dto/library.dto';
 
 /** Prisma Client's error code for a unique constraint violation (wraps the underlying Postgres 23505 regardless of whether the index is one schema.prisma knows about — this partial index isn't). */
@@ -16,6 +17,7 @@ export class LibraryService {
     private readonly audit:            AuditService,
     private readonly borrowerResolver: BorrowerResolverService,
     private readonly bookCopyService:  BookCopyService,
+    private readonly chargeRequests:   LibraryChargeRequestService,
   ) {}
 
   // ------------------------------------------------------------------
@@ -67,6 +69,8 @@ export class LibraryService {
       maxActiveLoansPerBorrower: 1,
       reservationHoldHours:      48,
       fineRatePerDay:            2.0,
+      lostBookReplacementFee:    500.0,
+      damagedBookFee:            200.0,
     };
   }
 
@@ -354,6 +358,34 @@ export class LibraryService {
         data:  { status: 'RETURNED', returnedAt: new Date(), returnedBy: actor.id },
       });
 
+      // ADR §9: Library computes and proposes, never bills directly. Both
+      // charges can legitimately apply to the same return (late AND
+      // damaged) -- modeled as two separate ChargeReason rows, not one
+      // combined amount, since Billing may want to itemize them
+      // separately on whatever it eventually generates.
+      const settings = await this.getOrDefaultSettings(tx, tenantId, issue.branchId);
+      if (wasOverdue) {
+        const overdueDays = Math.ceil(
+          (Date.now() - new Date(freshIssue.dueDate).getTime()) / (24 * 60 * 60 * 1000),
+        );
+        await this.chargeRequests.createChargeRequest(tx, {
+          tenantId, branchId: issue.branchId, issueId: issue.id,
+          borrowerType: issue.borrowerType, borrowerId: issue.borrowerId,
+          borrowerNameSnapshot: issue.borrowerNameSnapshot,
+          reason: 'OVERDUE', computedAmount: overdueDays * Number(settings.fineRatePerDay),
+          actorId: actor.id, actorRole: actor.role,
+        });
+      }
+      if (dto.damaged) {
+        await this.chargeRequests.createChargeRequest(tx, {
+          tenantId, branchId: issue.branchId, issueId: issue.id,
+          borrowerType: issue.borrowerType, borrowerId: issue.borrowerId,
+          borrowerNameSnapshot: issue.borrowerNameSnapshot,
+          reason: 'DAMAGED', computedAmount: Number(settings.damagedBookFee),
+          actorId: actor.id, actorRole: actor.role,
+        });
+      }
+
       await this.audit.logUpdate(
         {
           tenantId, actorId: actor.id, actorRole: actor.role,
@@ -386,6 +418,15 @@ export class LibraryService {
       const updated = await tx.bookIssue.update({
         where: { id: issueId },
         data:  { status: 'LOST', returnedAt: new Date(), returnedBy: actor.id },
+      });
+
+      const settings = await this.getOrDefaultSettings(tx, tenantId, issue.branchId);
+      await this.chargeRequests.createChargeRequest(tx, {
+        tenantId, branchId: issue.branchId, issueId: issue.id,
+        borrowerType: issue.borrowerType, borrowerId: issue.borrowerId,
+        borrowerNameSnapshot: issue.borrowerNameSnapshot,
+        reason: 'LOST', computedAmount: Number(settings.lostBookReplacementFee),
+        actorId: actor.id, actorRole: actor.role,
       });
 
       await this.audit.logUpdate(

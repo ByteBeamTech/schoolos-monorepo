@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { LibraryService } from '../services/library.service';
 import { ReservationService } from '../services/reservation.service';
 import { InventoryAuditService } from '../services/inventory-audit.service';
+import { LibraryChargeRequestService } from '../services/charge-request.service';
 import {
   CreateBookDto, CreateBookCopyDto, IssueBookDto, ReturnBookDto,
   ReserveBookDto, BulkScanAuditDto, ResolveAuditItemDto,
@@ -22,6 +23,7 @@ export class LibraryController {
     private readonly svc:           LibraryService,
     private readonly reservations:  ReservationService,
     private readonly audits:        InventoryAuditService,
+    private readonly chargeRequests: LibraryChargeRequestService,
   ) {}
 
   @Get('stats')
@@ -197,5 +199,42 @@ export class LibraryController {
     @CurrentUser() u: AuthenticatedUser,
   ) {
     return this.audits.resolveDiscrepancy(u.tenantId, auditId, itemId, dto.toStatus, u);
+  }
+
+  // ------------------------------------------------------------------
+  // Charge Requests (ADR-LIB-001 §9) -- Library proposes, Billing owns
+  // the money. No amountPaid/receipt/refund/ledger endpoint exists here
+  // and never will; that is all Student Billing's surface, reached only
+  // via the LIBRARY_CHARGE_REQUESTED event once sent.
+  // ------------------------------------------------------------------
+
+  @Get('charge-requests')
+  @ApiQuery({ name: 'billingStatus', required: false })
+  listChargeRequests(
+    @CurrentUser() u: AuthenticatedUser,
+    @Query('billingStatus') billingStatus?: string,
+  ) {
+    return this.chargeRequests.list(u.tenantId, { branchId: u.branchId, billingStatus });
+  }
+
+  @Get('charge-requests/borrower/:borrowerType/:borrowerId')
+  chargeRequestsForBorrower(
+    @Param('borrowerType') borrowerType: 'STUDENT' | 'STAFF',
+    @Param('borrowerId') borrowerId: string,
+    @CurrentUser() u: AuthenticatedUser,
+  ) {
+    return this.chargeRequests.listForBorrower(u.tenantId, borrowerType, borrowerId);
+  }
+
+  @Post('charge-requests/:chargeRequestId/send-to-billing')
+  @Roles('SCHOOL_ADMIN', 'LIBRARIAN')
+  sendChargeRequestToBilling(@Param('chargeRequestId') id: string, @CurrentUser() u: AuthenticatedUser) {
+    return this.chargeRequests.sendToBilling(u.tenantId, id, u);
+  }
+
+  @Post('charge-requests/:chargeRequestId/waive')
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
+  waiveChargeRequest(@Param('chargeRequestId') id: string, @CurrentUser() u: AuthenticatedUser) {
+    return this.chargeRequests.waive(u.tenantId, id, u);
   }
 }

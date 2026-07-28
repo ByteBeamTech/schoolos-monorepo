@@ -60,6 +60,15 @@ export const EVENTS = {
   // firing"). Emitting it now costs nothing and means Phase 6 has nothing
   // to add on the producer side.
   LIBRARY_RESERVATION_READY:     'library.reservation.ready',
+  // ADR-LIB-001 §9 -- the ENTIRE Library -> Student Billing contract, one-
+  // directional. Library publishes this and is done; it does not call
+  // Billing, does not know Billing's internal models, and does not block
+  // if Billing is slow/down (outbox retry/backoff already handles that).
+  // Payload shape: { core: { tenantId }, chargeRequestId, branchId,
+  // issueId, borrowerType, borrowerId, reason, amount, currency }.
+  // No consumer exists in this codebase yet -- Student Billing owns
+  // building it, on its own schedule (see IMPLEMENTATION_STATE.md).
+  LIBRARY_CHARGE_REQUESTED:      'library.charge.requested',
  // ── Feature Flags ─────────────────────────────────────────────────────────
   FLAG_OVERRIDE_REQUESTED:       'flag.override.requested',
   FLAG_OVERRIDE_APPROVED:        'flag.override.approved',
