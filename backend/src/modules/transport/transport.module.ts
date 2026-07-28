@@ -6,9 +6,11 @@ import { TransportSettingsController } from './controllers/transport-settings.co
 import { VehicleService } from './services/vehicle.service';
 import { DriverService } from './services/driver.service';
 import { ConductorService } from './services/conductor.service';
+import { StopService } from './services/stop.service';
 import { VehicleController } from './controllers/vehicle.controller';
 import { DriverController } from './controllers/driver.controller';
 import { ConductorController } from './controllers/conductor.controller';
+import { StopController } from './controllers/stop.controller';
 import { PrismaModule }      from '../../infra/database/prisma.module';
 import { ComplianceModule }  from '../../core/compliance/compliance.module';
 import { RolesModule }       from '../../core/roles/roles.module';
@@ -21,6 +23,7 @@ import { RolesModule }       from '../../core/roles/roles.module';
     VehicleService,
     DriverService,
     ConductorService,
+    StopService,
   ],
   controllers: [
     TransportController,
@@ -28,6 +31,7 @@ import { RolesModule }       from '../../core/roles/roles.module';
     VehicleController,
     DriverController,
     ConductorController,
+    StopController,
   ],
   exports:     [
     TransportService,
@@ -35,6 +39,7 @@ import { RolesModule }       from '../../core/roles/roles.module';
     VehicleService,
     DriverService,
     ConductorService,
+    StopService,
   ],
 })
 export class TransportModule {}
