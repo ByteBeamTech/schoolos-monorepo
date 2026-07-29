@@ -46,6 +46,14 @@ export const EVENTS = {
   ALERT_FEE_DROP:                'alert.fee.drop',
   ALERT_ATTENDANCE_DROP:         'alert.attendance.drop',
 
+  // ── Transport (SAD Ch.3 Domain Events; only the ones with a producer so ──
+  //    far — Phase 3/4 Route lifecycle. Others in the frozen Ch.3 list
+  //    (StudentAssigned, TripScheduled, VehicleAssigned, etc.) get added as
+  //    each later phase actually starts firing them, same convention as
+  //    LIBRARY_RESERVATION_READY below.) ──────────────────────────────────
+  ROUTE_ACTIVATED:               'transport.route.activated',
+  ROUTE_SUSPENDED:               'transport.route.suspended',
+
   // ── Library (ADR-LIB-001 §8 -- Reservation auto-allocation) ────────────────
   // Fired by BookCopyService.transitionCopyStatus()/createCopy() any time a
   // copy becomes AVAILABLE (return, cancelled hold, new copy added).
