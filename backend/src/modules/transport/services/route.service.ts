@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, RouteStatus } from '@prisma/client';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '@core/compliance/audit.service';
 import type { AuthenticatedUser } from '@core/auth/interfaces/authenticated-user.interface';
@@ -189,9 +189,7 @@ export class RouteService {
       throw new BadRequestException('A route needs at least one stop before it can be activated');
     }
 
-    const after = await this.prisma.route.update({ where: { id }, data: { status: 'ACTIVE' } });
-
-    await this.publishAndAudit(user, before, after, EVENTS.ROUTE_ACTIVATED);
+    const after = await this.publishAndAudit(user, before, 'ACTIVE', EVENTS.ROUTE_ACTIVATED);
     return after;
   }
 
@@ -328,9 +326,7 @@ export class RouteService {
       );
     }
 
-    const after = await this.prisma.route.update({ where: { id }, data: { status: 'SUSPENDED' } });
-
-    await this.publishAndAudit(user, route, after, EVENTS.ROUTE_SUSPENDED, {
+    const after = await this.publishAndAudit(user, route, 'SUSPENDED', EVENTS.ROUTE_SUSPENDED, {
       reason: dto.reason,
       affectedStudentCount: affectedAssignments.length,
       upcomingTripCount: upcomingTrips.length,
@@ -359,45 +355,61 @@ export class RouteService {
     return createHash('sha256').update(material).digest('hex').slice(0, 16);
   }
 
-  /** AF-008 event envelope, written via the same EventOutbox pattern already used across the codebase. */
+  /**
+   * Atomically applies the Route status transition and writes the AF-008
+   * domain event (EventOutbox), then logs the audit entry best-effort
+   * afterwards. Audit is intentionally not part of the DB transaction: no
+   * other call site in this codebase passes a transaction client into
+   * AuditService (`grep -rn "audit\.log.*,\s*tx"` turns up nothing), and
+   * PrismaTransactionClient — derived from the PrismaService wrapper class
+   * (onModuleInit/onModuleDestroy/isHealthy/forTenant) — doesn't structurally
+   * match what `$transaction`'s callback actually infers (based on the raw
+   * PrismaClient), so passing tx through fails to compile (TS2345). The
+   * route-status-change + event-publish pair is the part that must be
+   * atomic; audit logging follows the same best-effort convention already
+   * used everywhere else.
+   */
   private async publishAndAudit(
     user: AuthenticatedUser,
     before: { id: string; tenantId: string; branchId: string | null; status: string },
-    after: { id: string; status: string },
+    newStatus: RouteStatus,
     eventType: string,
     extraPayload: Record<string, unknown> = {},
   ) {
-    await this.prisma.$transaction(async (tx) => {
+    const after = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.route.update({ where: { id: before.id }, data: { status: newStatus } });
+
       await tx.eventOutbox.create({
         data: {
-          uniqueKey: `${eventType}:${after.id}:${Date.now()}`,
+          uniqueKey: `${eventType}:${before.id}:${Date.now()}`,
           type: eventType,
           payload: {
             core: { tenantId: before.tenantId, branchId: before.branchId },
             eventType,
             aggregateType: 'Route',
-            aggregateId: after.id,
+            aggregateId: before.id,
             performedBy: user.id,
-            routeId: after.id,
+            routeId: before.id,
             previousStatus: before.status,
-            newStatus: after.status,
+            newStatus: updated.status,
             ...extraPayload,
           },
         },
       });
 
-      await this.audit.logUpdate(
-        {
-          tenantId: before.tenantId,
-          actorId: user.id,
-          actorRole: user.role,
-          entityType: 'Route',
-          entityId: after.id,
-          before: { status: before.status },
-          after: { status: after.status },
-        },
-        tx,
-      );
+      return updated;
     });
+
+    await this.audit.logUpdate({
+      tenantId: before.tenantId,
+      actorId: user.id,
+      actorRole: user.role,
+      entityType: 'Route',
+      entityId: before.id,
+      before: { status: before.status },
+      after: { status: after.status },
+    });
+
+    return after;
   }
 }
