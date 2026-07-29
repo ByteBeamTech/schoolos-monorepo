@@ -117,6 +117,22 @@ describe('LedgerService', () => {
     });
   });
 
+  describe('recordInvoiceIssued', () => {
+    it('writes eventType INVOICE_ISSUED with referenceType Invoice', async () => {
+      await service.recordInvoiceIssued(tx, {
+        tenantId: 't-1', branchId: 'b-1', studentId: 's-1',
+        occurredAt: new Date('2026-06-15T00:00:00Z'),
+        amount: 12360, referenceId: 'inv-1',
+      });
+
+      const written = tx.ledger.create.mock.calls[0][0].data;
+      expect(written.eventType).toBe('INVOICE_ISSUED');
+      expect(written.referenceType).toBe('Invoice');
+      expect(written.referenceId).toBe('inv-1');
+      expect(written.amount).toBe(12360);
+    });
+  });
+
   // Invariant 12 / IMM-009 / IMM-010: enforced by absence, not convention.
   it('exposes no update or delete method', () => {
     expect((service as any).update).toBeUndefined();

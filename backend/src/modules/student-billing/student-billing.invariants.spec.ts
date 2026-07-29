@@ -140,6 +140,7 @@ describe('student-billing invariant suite (INV-1 … INV-13)', () => {
       const { PrismaService } = require('@infra/database/prisma.service');
       const { AuditService } = require('../../core/compliance/audit.service');
       const { EventEmitter2 } = require('@nestjs/event-emitter');
+      const { LedgerService } = require('./ledger/services/ledger.service');
       const prisma = {
         invoice: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
       };
@@ -149,6 +150,7 @@ describe('student-billing invariant suite (INV-1 … INV-13)', () => {
           { provide: PrismaService, useValue: prisma },
           { provide: AuditService, useValue: {} },
           { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+          { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn(), recordInvoiceIssued: jest.fn() } },
         ],
       }).compile();
       await mod.get(InvoiceService).findAll('t-1', {}, 1, 20, ['b-1']);

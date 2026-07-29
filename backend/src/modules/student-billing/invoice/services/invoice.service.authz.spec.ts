@@ -10,6 +10,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InvoiceService } from './invoice.service';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../../core/compliance/audit.service';
+import { LedgerService } from '../../ledger/services/ledger.service';
 
 describe('InvoiceService — FEE-0 branch scoping', () => {
   let service: InvoiceService;
@@ -29,6 +30,7 @@ describe('InvoiceService — FEE-0 branch scoping', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { logCreate: jest.fn(), logUpdate: jest.fn() } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn(), recordInvoiceIssued: jest.fn() } },
       ],
     }).compile();
     service = module.get(InvoiceService);
@@ -101,6 +103,7 @@ describe('InvoiceService.getDefaulters — AUTH-054 branch intersection', () => 
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { logCreate: jest.fn(), logUpdate: jest.fn() } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn(), recordInvoiceIssued: jest.fn() } },
       ],
     }).compile();
     service = module.get(InvoiceService);

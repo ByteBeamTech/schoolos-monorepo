@@ -1,10 +1,11 @@
 import { Test, TestingModule }  from '@nestjs/testing';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InvoiceService }  from './invoice.service';
 import { OVERDUE_STATUS_MATCH } from '../overdue.util';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }    from '../../../../core/compliance/audit.service';
 import { EventEmitter2 }   from '@nestjs/event-emitter';
+import { LedgerService } from '../../ledger/services/ledger.service';
 
 const mockFeePlan = {
   id: 'plan-1', tenantId: 't-1', name: 'Annual Fee', academicYear: '2025-26',
@@ -55,6 +56,7 @@ describe('InvoiceService', () => {
         },
         { provide: AuditService,  useValue: { logCreate: jest.fn(), logUpdate: jest.fn() } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn(), recordInvoiceIssued: jest.fn() } },
       ],
     }).compile();
 
@@ -231,6 +233,7 @@ describe('InvoiceService', () => {
         { provide: PrismaService, useValue: { feePlan: { findFirst: jest.fn().mockResolvedValue(mockFeePlan) }, student: { findFirst: jest.fn().mockResolvedValue(mockStudent) }, transportAssignment: { findFirst: jest.fn().mockResolvedValue(null) }, discount: { findMany: jest.fn().mockResolvedValue([]) }, invoice: { count: jest.fn().mockResolvedValue(0), create: jest.fn().mockResolvedValue({ id: 'inv-1', invoiceNumber: 'INV-2025-00001', totalAmount: 12360 }) }, $transaction: jest.fn().mockImplementation(async (fn) => fn({ $executeRawUnsafe: jest.fn(), invoiceSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 1 }) } })) } },
         { provide: AuditService, useValue: { logCreate: jest.fn() } },
         { provide: EventEmitter2, useValue: emitter },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn(), recordInvoiceIssued: jest.fn() } },
       ],
     }).compile();
     const svc = mod.get<InvoiceService>(InvoiceService);
@@ -239,6 +242,62 @@ describe('InvoiceService', () => {
   });
 
   // ── P0: getStats() branch scoping + collectedAmount fix ──────────────────
+  describe('send', () => {
+    function sendTx(overrides: any = {}) {
+      return {
+        $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+        invoice: {
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'inv-1', tenantId: 't-1', branchId: 'b-1', studentId: 'stu-1',
+            invoiceNumber: 'INV-2026-00001', totalAmount: 12360, status: 'SENT', dueDate: new Date('2026-05-01'),
+          }),
+          ...overrides,
+        },
+      };
+    }
+
+    it('posts exactly one INVOICE_ISSUED entry, referencing the invoice, on a successful DRAFT -> SENT transition', async () => {
+      const tx = sendTx();
+      (prisma.$transaction as jest.Mock).mockImplementation(async (fn) => fn(tx));
+
+      await service.send('t-1', 'inv-1', 'actor-1');
+
+      expect((service as any).ledger.recordInvoiceIssued).toHaveBeenCalledTimes(1);
+      expect((service as any).ledger.recordInvoiceIssued).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({
+          tenantId: 't-1', branchId: 'b-1', studentId: 'stu-1',
+          referenceId: 'inv-1', amount: 12360,
+        }),
+      );
+    });
+
+    it('does not post when the invoice is already SENT/CANCELLED/PAID (CAS guard rejects before the ledger write)', async () => {
+      const tx = sendTx({
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findFirst: jest.fn().mockResolvedValue({ status: 'SENT' }),
+      });
+      (prisma.$transaction as jest.Mock).mockImplementation(async (fn) => fn(tx));
+
+      await expect(service.send('t-1', 'inv-1', 'actor-1')).rejects.toThrow(ConflictException);
+
+      expect((service as any).ledger.recordInvoiceIssued).not.toHaveBeenCalled();
+    });
+
+    it('does not post when the invoice does not exist at all', async () => {
+      const tx = sendTx({
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findFirst: jest.fn().mockResolvedValue(null),
+      });
+      (prisma.$transaction as jest.Mock).mockImplementation(async (fn) => fn(tx));
+
+      await expect(service.send('t-1', 'inv-nonexistent', 'actor-1')).rejects.toThrow(NotFoundException);
+
+      expect((service as any).ledger.recordInvoiceIssued).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getStats', () => {
     it('passes tenantId-only filters through when authorizedBranchIds is omitted (backward compatible)', async () => {
       (prisma.invoice.aggregate as jest.Mock).mockResolvedValue({ _sum: { totalAmount: 0, paidAmount: 0 }, _count: 0 });

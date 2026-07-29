@@ -62,6 +62,17 @@ interface RecordLateFeeAssessedParams {
   metadata?: Record<string, unknown>;
 }
 
+interface RecordInvoiceIssuedParams {
+  tenantId: string;
+  branchId: string;
+  studentId?: string | null;
+  occurredAt: Date;
+  amount: Prisma.Decimal | number | string;
+  /** Invoice.id -- the record that produced this fact. */
+  referenceId: string;
+  metadata?: Record<string, unknown>;
+}
+
 @Injectable()
 export class LedgerService {
   /**
@@ -142,6 +153,32 @@ export class LedgerService {
         amount: params.amount,
         occurredAt: params.occurredAt,
         referenceType: 'LateFee',
+        referenceId: params.referenceId,
+        metadata: params.metadata as Prisma.InputJsonValue | undefined,
+      },
+    });
+  }
+
+  /**
+   * The single owner of INVOICE_ISSUED, established here at M8. An
+   * invoice is "issued" at send() (DRAFT -> SENT), not at generate()
+   * (DRAFT creation) -- a draft that is never sent has not been issued to
+   * anyone in the real-world sense this event is meant to record.
+   */
+  async recordInvoiceIssued(
+    tx: Prisma.TransactionClient,
+    params: RecordInvoiceIssuedParams,
+  ): Promise<void> {
+    await tx.ledger.create({
+      data: {
+        tenantId: params.tenantId,
+        branchId: params.branchId,
+        studentId: params.studentId ?? null,
+        financialYear: financialYearFor(params.occurredAt),
+        eventType: 'INVOICE_ISSUED',
+        amount: params.amount,
+        occurredAt: params.occurredAt,
+        referenceType: 'Invoice',
         referenceId: params.referenceId,
         metadata: params.metadata as Prisma.InputJsonValue | undefined,
       },

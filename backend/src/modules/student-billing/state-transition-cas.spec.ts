@@ -18,6 +18,7 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../core/compliance/audit.service';
 import { DiscountService } from './discounts/services/discount.service';
 import { InvoiceService } from './invoice/services/invoice.service';
+import { LedgerService } from './ledger/services/ledger.service';
 
 /**
  * Minimal conditional-update engine over a single in-memory row. `t.row` is
@@ -165,6 +166,7 @@ describe('Invoice send / cancel CAS (FEE-1)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { logCreate: jest.fn(), logUpdate: jest.fn() } },
         { provide: EventEmitter2, useValue: emitter },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn(), recordInvoiceIssued: jest.fn() } },
       ],
     }).compile();
     service = module.get(InvoiceService);

@@ -19,6 +19,7 @@ import { AuditService }      from '../../../../core/compliance/audit.service';
 import { GenerateInvoiceDto, BulkGenerateInvoicesDto } from '../../dto/billing.dto';
 import { overdueWhere, isInvoiceOverdue } from '../overdue.util';
 import { financialYearFor } from '../../ledger/financial-year.util';
+import { LedgerService } from '../../ledger/services/ledger.service';
 
 
 export interface GenerateInvoiceOptions {
@@ -36,6 +37,7 @@ export class InvoiceService {
     private readonly prisma:  PrismaService,
     private readonly audit:   AuditService,
     private readonly emitter: EventEmitter2,
+    private readonly ledger:  LedgerService,
   ) {}
 
   // ── Invoice number — advisory-lock-safe ───────────────────────────────────
@@ -334,7 +336,25 @@ export class InvoiceService {
       }
 
       // Post-write read: the event payload and return value need the full row.
-      return tx.invoice.findFirst({ where: { id, tenantId } });
+      const fullInvoice = await tx.invoice.findFirst({ where: { id, tenantId } });
+
+      // M8 (redesigned roadmap, §4.9): INVOICE_ISSUED, posted exactly once
+      // per issuance. This code path is only reached when the CAS above
+      // actually moved DRAFT -> SENT (count > 0) -- the "already sent"
+      // conflict branch above throws before this line, so a repeated
+      // send() call on an already-SENT invoice never reaches here to
+      // double-post.
+      await this.ledger.recordInvoiceIssued(tx, {
+        tenantId,
+        branchId:  fullInvoice.branchId,
+        studentId: fullInvoice.studentId,
+        occurredAt: new Date(),
+        amount: fullInvoice.totalAmount,
+        referenceId: fullInvoice.id,
+        metadata: { invoiceNumber: fullInvoice.invoiceNumber },
+      });
+
+      return fullInvoice;
     });
 
     this.emitter.emit(EVENTS.INVOICE_SENT, {
