@@ -48,6 +48,9 @@ export class RouteStopService {
       where: { id: dto.stopId, tenantId: route.tenantId, deletedAt: null },
     });
     if (!stop) throw new NotFoundException('Stop not found');
+    if (route.branchId && stop.branchId && stop.branchId !== route.branchId) {
+      throw new NotFoundException('Stop not found');
+    }
 
     try {
       const routeStop = await this.prisma.routeStop.create({

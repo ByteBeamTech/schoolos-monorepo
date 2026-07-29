@@ -73,6 +73,16 @@ describe('RouteStopService', () => {
         ConflictException,
       );
     });
+
+    it('rejects a stop that belongs to a different branch than the route', async () => {
+      prisma.route.findFirst.mockResolvedValue(route); // branchId: 'b-1'
+      prisma.stop.findFirst.mockResolvedValue({ id: 's-1', tenantId: 't-1', branchId: 'b-OTHER' });
+
+      await expect(service.add(branchUser, 'r-1', { stopId: 's-1', sequence: 0 })).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.routeStop.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('reorder', () => {

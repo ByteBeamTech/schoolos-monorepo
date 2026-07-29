@@ -10,6 +10,9 @@ import { StopService } from './services/stop.service';
 import { RouteService } from './services/route.service';
 import { RouteStopService } from './services/route-stop.service';
 import { TransportStopPricingService } from './services/transport-stop-pricing.service';
+import { TripScheduleService } from './services/trip-schedule.service';
+import { TripService } from './services/trip.service';
+import { TripGenerationWorker } from './services/trip-generation.worker';
 import { VehicleController } from './controllers/vehicle.controller';
 import { DriverController } from './controllers/driver.controller';
 import { ConductorController } from './controllers/conductor.controller';
@@ -17,6 +20,8 @@ import { StopController } from './controllers/stop.controller';
 import { RouteController } from './controllers/route.controller';
 import { RouteStopController } from './controllers/route-stop.controller';
 import { TransportStopPricingController } from './controllers/transport-stop-pricing.controller';
+import { TripScheduleController } from './controllers/trip-schedule.controller';
+import { TripController } from './controllers/trip.controller';
 import { PrismaModule }      from '../../infra/database/prisma.module';
 import { ComplianceModule }  from '../../core/compliance/compliance.module';
 import { RolesModule }       from '../../core/roles/roles.module';
@@ -33,6 +38,9 @@ import { RolesModule }       from '../../core/roles/roles.module';
     RouteService,
     RouteStopService,
     TransportStopPricingService,
+    TripScheduleService,
+    TripService,
+    TripGenerationWorker,
   ],
   controllers: [
     TransportController,
@@ -44,6 +52,8 @@ import { RolesModule }       from '../../core/roles/roles.module';
     RouteController,
     RouteStopController,
     TransportStopPricingController,
+    TripScheduleController,
+    TripController,
   ],
   exports:     [
     TransportService,
@@ -55,6 +65,8 @@ import { RolesModule }       from '../../core/roles/roles.module';
     RouteService,
     RouteStopService,
     TransportStopPricingService,
+    TripScheduleService,
+    TripService,
   ],
 })
 export class TransportModule {}
