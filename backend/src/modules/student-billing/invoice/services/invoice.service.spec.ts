@@ -14,7 +14,7 @@ const mockFeePlan = {
   ],
 };
 
-const mockStudent = { id: 'stu-1', tenantId: 't-1', firstName: 'Aarav', lastName: 'Shah', admissionNumber: 'ADM001' };
+const mockStudent = { id: 'stu-1', tenantId: 't-1', branchId: 'b-1', firstName: 'Aarav', lastName: 'Shah', admissionNumber: 'ADM001' };
 
 describe('InvoiceService', () => {
   let service: InvoiceService;
@@ -49,6 +49,7 @@ describe('InvoiceService', () => {
             $transaction: jest.fn().mockImplementation(async (fn) => fn({
               $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
               invoice: { count: jest.fn().mockResolvedValue(0) },
+              invoiceSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 1 }) },
             })),
           },
         },
@@ -114,18 +115,93 @@ describe('InvoiceService', () => {
   });
 
   // TEST 8
-  it('generates sequential invoice numbers: INV-YYYY-00001', async () => {
+  it('generates the invoice number from InvoiceSequence.upsert, scoped by tenant+branch+financial year', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-15T00:00:00Z')); // FY 2026
+    const upsert = jest.fn().mockResolvedValue({ lastNumber: 5 });
     const mockTx = {
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
-      invoice: { count: jest.fn().mockResolvedValue(4) },
+      invoiceSequence: { upsert },
     };
     (prisma.$transaction as jest.Mock).mockImplementation(async (fn) => fn(mockTx));
     (prisma.invoice.create as jest.Mock).mockImplementation(({ data }) =>
       Promise.resolve({ id: 'inv-5', invoiceNumber: data.invoiceNumber, totalAmount: 10000 }),
     );
+
     await service.generate('t-1', { studentId: 'stu-1', feePlanId: 'plan-1', dueDate: '2025-04-30' }, 'actor-1');
+
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where:  { tenantId_branchId_year: { tenantId: 't-1', branchId: 'b-1', year: 2026 } },
+      create: { tenantId: 't-1', branchId: 'b-1', year: 2026, lastNumber: 1 },
+      update: { lastNumber: { increment: 1 } },
+    }));
     const callArg = (prisma.invoice.create as jest.Mock).mock.calls[0][0];
-    expect(callArg.data.invoiceNumber).toMatch(/INV-\d{4}-00005/);
+    expect(callArg.data.invoiceNumber).toBe('INV-2026-00005');
+    jest.useRealTimers();
+  });
+
+  it('derives the financial year from the FY boundary (1 April), not the calendar year', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2027-01-15T00:00:00Z')); // calendar 2027, FY 2026
+    const upsert = jest.fn().mockResolvedValue({ lastNumber: 1 });
+    const mockTx = {
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+      invoiceSequence: { upsert },
+    };
+    (prisma.$transaction as jest.Mock).mockImplementation(async (fn) => fn(mockTx));
+    (prisma.invoice.create as jest.Mock).mockImplementation(({ data }) =>
+      Promise.resolve({ id: 'inv-1', invoiceNumber: data.invoiceNumber, totalAmount: 10000 }),
+    );
+
+    await service.generate('t-1', { studentId: 'stu-1', feePlanId: 'plan-1', dueDate: '2025-04-30' }, 'actor-1');
+
+    const callArg = (prisma.invoice.create as jest.Mock).mock.calls[0][0];
+    expect(callArg.data.invoiceNumber).toBe('INV-2026-00001'); // NOT INV-2027-...
+    jest.useRealTimers();
+  });
+
+  describe('generateReceiptNumber', () => {
+    it('is scoped by tenant+branch+financial year via ReceiptSequence.upsert, using an injected transaction client', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-06-15T00:00:00Z')); // FY 2026
+      const upsert = jest.fn().mockResolvedValue({ lastNumber: 3 });
+      const tx = { $executeRawUnsafe: jest.fn().mockResolvedValue(undefined), receiptSequence: { upsert } };
+
+      const number = await service.generateReceiptNumber('t-1', 'b-1', tx);
+
+      expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+        where:  { tenantId_branchId_year: { tenantId: 't-1', branchId: 'b-1', year: 2026 } },
+        create: { tenantId: 't-1', branchId: 'b-1', year: 2026, lastNumber: 1 },
+        update: { lastNumber: { increment: 1 } },
+      }));
+      expect(number).toBe('RCP-2026-00003');
+      jest.useRealTimers();
+    });
+
+    it('opens its own transaction when no client is injected', async () => {
+      const upsert = jest.fn().mockResolvedValue({ lastNumber: 1 });
+      (prisma.$transaction as jest.Mock).mockImplementation(async (fn) =>
+        fn({ $executeRawUnsafe: jest.fn().mockResolvedValue(undefined), receiptSequence: { upsert } }),
+      );
+
+      await service.generateReceiptNumber('t-1', 'b-1');
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses a different advisory lock key range from invoice numbering (no unnecessary cross-serialization)', async () => {
+      const executeRawUnsafe = jest.fn().mockResolvedValue(undefined);
+      const tx = { $executeRawUnsafe: executeRawUnsafe, receiptSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 1 }) } };
+
+      await service.generateReceiptNumber('t-1', 'b-1', tx);
+      const receiptLockKey = executeRawUnsafe.mock.calls[0][1];
+
+      const invTx = { $executeRawUnsafe: jest.fn().mockResolvedValue(undefined), invoiceSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 1 }) } };
+      (prisma.$transaction as jest.Mock).mockImplementation(async (fn) => fn(invTx));
+      (prisma.invoice.create as jest.Mock).mockImplementation(({ data }) => Promise.resolve({ id: 'inv-1', invoiceNumber: data.invoiceNumber, totalAmount: 10000 }));
+      await service.generate('t-1', { studentId: 'stu-1', feePlanId: 'plan-1', dueDate: '2025-04-30' }, 'actor-1');
+      const invoiceLockKey = invTx.$executeRawUnsafe.mock.calls[0][1];
+
+      expect(receiptLockKey).not.toBe(invoiceLockKey);
+    });
   });
 
   // TEST 9
@@ -152,7 +228,7 @@ describe('InvoiceService', () => {
     const mod = await Test.createTestingModule({
       providers: [
         InvoiceService,
-        { provide: PrismaService, useValue: { feePlan: { findFirst: jest.fn().mockResolvedValue(mockFeePlan) }, student: { findFirst: jest.fn().mockResolvedValue(mockStudent) }, transportAssignment: { findFirst: jest.fn().mockResolvedValue(null) }, discount: { findMany: jest.fn().mockResolvedValue([]) }, invoice: { count: jest.fn().mockResolvedValue(0), create: jest.fn().mockResolvedValue({ id: 'inv-1', invoiceNumber: 'INV-2025-00001', totalAmount: 12360 }) }, $transaction: jest.fn().mockImplementation(async (fn) => fn({ $executeRawUnsafe: jest.fn(), invoice: { count: jest.fn().mockResolvedValue(0) } })) } },
+        { provide: PrismaService, useValue: { feePlan: { findFirst: jest.fn().mockResolvedValue(mockFeePlan) }, student: { findFirst: jest.fn().mockResolvedValue(mockStudent) }, transportAssignment: { findFirst: jest.fn().mockResolvedValue(null) }, discount: { findMany: jest.fn().mockResolvedValue([]) }, invoice: { count: jest.fn().mockResolvedValue(0), create: jest.fn().mockResolvedValue({ id: 'inv-1', invoiceNumber: 'INV-2025-00001', totalAmount: 12360 }) }, $transaction: jest.fn().mockImplementation(async (fn) => fn({ $executeRawUnsafe: jest.fn(), invoiceSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 1 }) } })) } },
         { provide: AuditService, useValue: { logCreate: jest.fn() } },
         { provide: EventEmitter2, useValue: emitter },
       ],

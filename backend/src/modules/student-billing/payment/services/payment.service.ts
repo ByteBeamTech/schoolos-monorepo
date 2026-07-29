@@ -484,11 +484,14 @@ export class PaymentService {
     const existing = await tx.receipt.findUnique({ where: { paymentId } });
     if (existing) return existing;
 
-    // P0 FIX: delegate number generation to InvoiceService which uses advisory lock
-    const receiptNumber = await this.invoiceService.generateReceiptNumber(tenantId, tx);
-    const payment       = await tx.payment.findUnique({ where: { id: paymentId } });
-
     const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
+
+    // P0 FIX: delegate number generation to InvoiceService which uses
+    // advisory lock. M7: branchId now required -- fetched above (invoice
+    // is needed for its own branchId here regardless) rather than adding
+    // an extra query just for this.
+    const receiptNumber = await this.invoiceService.generateReceiptNumber(tenantId, invoice!.branchId, tx);
+    const payment       = await tx.payment.findUnique({ where: { id: paymentId } });
 
     return tx.receipt.create({
       data: {

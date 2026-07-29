@@ -524,7 +524,11 @@ describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () =
 
     it('generates the receipt number with the SAME tx, so its lock spans count -> insert', async () => {
       await service.recordOffline('t-1', dto as any, 'actor-1');
-      expect(invoiceService.generateReceiptNumber).toHaveBeenCalledWith('t-1', prisma);
+      // M7: branchId is now the required second argument, sourced from the
+      // invoice fetched inside this same transaction (branchId: 'b-1' in
+      // the invoice mock above) -- tx (prisma here) remains the third,
+      // unchanged from before this fix.
+      expect(invoiceService.generateReceiptNumber).toHaveBeenCalledWith('t-1', 'b-1', prisma);
     });
 
     it('writes nothing when the invoice update fails — the whole settlement rolls back', async () => {
@@ -704,7 +708,8 @@ describe('PaymentService.generateReceipt — one receipt per payment (FEE-1)', (
     expect(invoiceService.generateReceiptNumber).toHaveBeenCalledTimes(2);
     for (const call of invoiceService.generateReceiptNumber.mock.calls) {
       expect(call[0]).toBe('t-1');   // tenant-scoped, as before
-      expect(call[1]).toBe(prisma);  // still passed the transaction client
+      expect(call[1]).toBe('b-1');   // M7: branch-scoped, sourced from the invoice
+      expect(call[2]).toBe(prisma);  // still passed the transaction client
     }
     expect(receipts.map((r) => r.receiptNumber)).toEqual([
       'RCP-2026-00001',

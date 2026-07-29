@@ -18,6 +18,7 @@ import { Prisma }            from '@prisma/client';
 import { AuditService }      from '../../../../core/compliance/audit.service';
 import { GenerateInvoiceDto, BulkGenerateInvoicesDto } from '../../dto/billing.dto';
 import { overdueWhere, isInvoiceOverdue } from '../overdue.util';
+import { financialYearFor } from '../../ledger/financial-year.util';
 
 
 export interface GenerateInvoiceOptions {
@@ -38,21 +39,47 @@ export class InvoiceService {
   ) {}
 
   // ── Invoice number — advisory-lock-safe ───────────────────────────────────
-  private async generateInvoiceNumber(tenantId: string): Promise<string> {
-    const year    = new Date().getFullYear();
-    const lockKey = tenantId
+  // M7 (redesigned roadmap): sequence-backed numbering. The previous
+  // implementation had three real bugs, not just an architecture
+  // preference: (1) new Date().getFullYear() used the calendar year, not
+  // the financial-year boundary (D-2, financialYearFor) every other part
+  // of this system uses -- a January invoice was tagged with the wrong
+  // FY; (2) count({ where: { tenantId } }) never scoped by year at all,
+  // so the {year} in the printed number was cosmetic text on an
+  // ever-growing global counter, not an actually-resetting per-year
+  // sequence; (3) branchId was ignored entirely, even though
+  // InvoiceSequence's own schema (@@unique([tenantId, branchId, year]))
+  // was already designed for per-branch sequences. This fixes all three
+  // by using InvoiceSequence as what it was always meant to be.
+  private async generateInvoiceNumber(tenantId: string, branchId: string): Promise<string> {
+    const year = financialYearFor(new Date());
+    const lockKey = `${tenantId}:${branchId}`
       .split('')
       .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) & 0x7FFFFFFF), 0);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock($1)`, lockKey);
-      const count = await tx.invoice.count({ where: { tenantId } });
-      return `INV-${year}-${String(count + 1).padStart(5, '0')}`;
+      // Atomic get-or-create-and-increment: Prisma compiles upsert + an
+      // `increment` update to a single INSERT ... ON CONFLICT DO UPDATE,
+      // which Postgres serializes at the row level on its own -- the
+      // advisory lock above is defense-in-depth and consistency with the
+      // rest of this codebase's numbering/settlement pattern, not the
+      // only thing preventing a race here.
+      const seq = await tx.invoiceSequence.upsert({
+        where:  { tenantId_branchId_year: { tenantId, branchId, year } },
+        create: { tenantId, branchId, year, lastNumber: 1 },
+        update: { lastNumber: { increment: 1 } },
+      });
+      return `INV-${year}-${String(seq.lastNumber).padStart(5, '0')}`;
     });
   }
 
   // ── Receipt number — P0 FIX: advisory-lock-safe (was race condition) ──────
   /**
+   * @param branchId M7: numbering is scoped per (tenantId, branchId,
+   *   financial year) via InvoiceSequence/ReceiptSequence -- required, not
+   *   optional, since a missing branch scope was one of the three bugs
+   *   this milestone fixed.
    * @param client Optional transaction client. When the caller is already
    *   inside a transaction that will INSERT the receipt, it must pass its tx
    *   here (FEE-1): the advisory lock then belongs to that transaction and is
@@ -71,17 +98,23 @@ export class InvoiceService {
    *   Omitting it preserves the original self-contained behavior for callers
    *   that only need a number.
    */
-  async generateReceiptNumber(tenantId: string, client?: any): Promise<string> {
-    const year = new Date().getFullYear();
-    // Use a different lock key range from invoice (offset by 0x40000000)
-    const lockKey = (tenantId
+  async generateReceiptNumber(tenantId: string, branchId: string, client?: any): Promise<string> {
+    const year = financialYearFor(new Date());
+    // Different lock-key range from invoice (offset by 0x40000000), same
+    // reasoning as before this fix -- now scoped by branch too, since the
+    // underlying sequence is per (tenantId, branchId, year), not per tenant.
+    const lockKey = (`${tenantId}:${branchId}`
       .split('')
       .reduce((acc, ch) => ((acc * 31 + ch.charCodeAt(0)) & 0x7FFFFFFF), 0) + 0x40000000) & 0x7FFFFFFF;
 
     const generate = async (tx: any) => {
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock($1)`, lockKey);
-      const count = await tx.receipt.count({ where: { tenantId } });
-      return `RCP-${year}-${String(count + 1).padStart(5, '0')}`;
+      const seq = await tx.receiptSequence.upsert({
+        where:  { tenantId_branchId_year: { tenantId, branchId, year } },
+        create: { tenantId, branchId, year, lastNumber: 1 },
+        update: { lastNumber: { increment: 1 } },
+      });
+      return `RCP-${year}-${String(seq.lastNumber).padStart(5, '0')}`;
     };
 
     return client ? generate(client) : this.prisma.$transaction(generate);
@@ -155,7 +188,7 @@ export class InvoiceService {
     const totalRaw    = subtotal.plus(gstTotal).minus(totalDiscount);
     const totalAmount = totalRaw.isNegative() ? new Prisma.Decimal(0) : totalRaw;
 
-    const invoiceNumber = await this.generateInvoiceNumber(tenantId);
+    const invoiceNumber = await this.generateInvoiceNumber(tenantId, student.branchId);
 
     const invoice = await this.prisma.invoice.create({
       data: {
