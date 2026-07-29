@@ -160,6 +160,21 @@ export class ReservationService {
     });
   }
 
+  /** Branch-wide view, for the ops UI's Reservations tab -- listForBook()/listForBorrower() require already knowing a specific book or borrower, which a librarian scanning the whole queue doesn't start from. */
+  async listAll(tenantId: string, branchId?: string, status?: string) {
+    let statusFilter: any;
+    if (status !== undefined) {
+      const valid = ['QUEUED', 'READY_FOR_PICKUP', 'FULFILLED', 'CANCELLED', 'EXPIRED'];
+      if (!valid.includes(status)) throw new BadRequestException(`Unsupported reservation status: ${status}`);
+      statusFilter = status;
+    }
+    return this.prisma.reservation.findMany({
+      where:   { tenantId, branchId, status: statusFilter },
+      include: { book: { select: { title: true, isbn: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
   async listForBorrower(tenantId: string, borrowerType: 'STUDENT' | 'STAFF', borrowerId: string) {
     return this.prisma.reservation.findMany({
       where:   { tenantId, borrowerType, borrowerId },

@@ -81,5 +81,35 @@ A second, unplanned deviation was also required: the ADR's Phase 1 listing names
 - **No automated/bulk send.** `sendToBilling` is per-charge-request only; a scheduled job to auto-release all `PENDING` requests after some grace period (or a bulk "release all" endpoint) was considered and deliberately not built, to avoid inventing a policy (how long is the review window?) the ADR doesn't specify. Easy to add later as a `@Cron`, matching `ReservationService.expireHolds()`'s pattern, once that policy is decided.
 - **Borrower-facing fine display** (Student/Parent Portal showing "you owe ₹X") is Phase 6 scope, and per ADR §9 rule 6 must read from Billing once a request is past `PENDING`, not from Library's own `computedAmount` — not built here.
 
+## Ops UI catch-up (out of band, ahead of Phase 5) — **DONE**
+
+Not a numbered roadmap phase -- the frontend for `(operations)/library` had not
+been touched since Phase 2's minimal contract-compatibility patch, so
+Phases 3/4's backend work (Reservation, Inventory Audit, Renewal, Fine)
+had zero UI. Delivered before Phase 5 on request, matching the existing
+page's own design system exactly (`PageHeader`/`StatCard`/`Badge`, hand-
+rolled tab bar, inline show/hide forms) rather than introducing a new
+pattern -- same idiom as `(operations)/transport/page.tsx`.
+
+- New tabs: **Active loans** (all `ISSUED` issues, not just overdue --
+  Return / Return damaged / Renew / Lost actions), **Reservations**
+  (reserve, cancel, check-out a `READY_FOR_PICKUP` hold), **Fines**
+  (list, Send to Billing / Waive on `PENDING` rows only, matching the
+  backend's own state-gating), **Inventory audits** (start, scan
+  (barcode + status), complete, resolve a flagged discrepancy).
+- **Overdue** tab gained Renew/Lost actions alongside the existing Return.
+- One small backend addition required to support this, added alongside:
+  `ReservationService.listAll()` + `GET /library/reservations` --
+  `listForBook()`/`listForBorrower()` both require already knowing a
+  specific book or borrower, which a librarian scanning the whole queue
+  doesn't start from. Same validation-guard pattern as
+  `LibraryChargeRequestService.list()`'s `billingStatus` filter.
+- Borrower picker throughout is still student-only (hardcoded
+  `borrowerType: "STUDENT"`) -- a staff-borrower UI picker was not built;
+  the backend already supports it, this is a frontend gap only.
+- Not built: BookCopy/Rack/Shelf management UI, barcode-scanner hardware
+  integration (the scan input is a plain text field), and any borrower-
+  facing (Student/Parent Portal) surface -- all remain Phase 6 scope.
+
 ## Phase 5–6 — **NOT STARTED**
 Per roadmap §19, unchanged.

@@ -137,6 +137,12 @@ export class LibraryController {
     return this.reservations.fulfill(u.tenantId, id, u);
   }
 
+  @Get('reservations')
+  @ApiQuery({ name: 'status', required: false })
+  listReservations(@CurrentUser() u: AuthenticatedUser, @Query('status') status?: string) {
+    return this.reservations.listAll(u.tenantId, u.branchId, status);
+  }
+
   @Get('reservations/book/:bookId')
   reservationsForBook(@Param('bookId') bookId: string, @CurrentUser() u: AuthenticatedUser) {
     return this.reservations.listForBook(u.tenantId, bookId, u.branchId);
