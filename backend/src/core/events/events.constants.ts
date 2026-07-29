@@ -53,6 +53,8 @@ export const EVENTS = {
   //    LIBRARY_RESERVATION_READY below.) ──────────────────────────────────
   ROUTE_ACTIVATED:               'transport.route.activated',
   ROUTE_SUSPENDED:               'transport.route.suspended',
+  STUDENT_ASSIGNED:              'transport.student.assigned',
+  STUDENT_TRANSFERRED:           'transport.student.transferred',
 
   // ── Library (ADR-LIB-001 §8 -- Reservation auto-allocation) ────────────────
   // Fired by BookCopyService.transitionCopyStatus()/createCopy() any time a
