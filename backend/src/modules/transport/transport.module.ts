@@ -14,6 +14,7 @@ import { TripScheduleService } from './services/trip-schedule.service';
 import { TripService } from './services/trip.service';
 import { TripGenerationWorker } from './services/trip-generation.worker';
 import { StudentTransportAssignmentService } from './services/student-transport-assignment.service';
+import { TransportPricingService } from './services/transport-pricing.service';
 import { VehicleController } from './controllers/vehicle.controller';
 import { DriverController } from './controllers/driver.controller';
 import { ConductorController } from './controllers/conductor.controller';
@@ -24,6 +25,7 @@ import { TransportStopPricingController } from './controllers/transport-stop-pri
 import { TripScheduleController } from './controllers/trip-schedule.controller';
 import { TripController } from './controllers/trip.controller';
 import { StudentTransportAssignmentController } from './controllers/student-transport-assignment.controller';
+import { TransportPricingController } from './controllers/transport-pricing.controller';
 import { PrismaModule }      from '../../infra/database/prisma.module';
 import { ComplianceModule }  from '../../core/compliance/compliance.module';
 import { RolesModule }       from '../../core/roles/roles.module';
@@ -44,6 +46,7 @@ import { RolesModule }       from '../../core/roles/roles.module';
     TripService,
     TripGenerationWorker,
     StudentTransportAssignmentService,
+    TransportPricingService,
   ],
   controllers: [
     TransportController,
@@ -58,6 +61,7 @@ import { RolesModule }       from '../../core/roles/roles.module';
     TripScheduleController,
     TripController,
     StudentTransportAssignmentController,
+    TransportPricingController,
   ],
   exports:     [
     TransportService,
@@ -72,6 +76,7 @@ import { RolesModule }       from '../../core/roles/roles.module';
     TripScheduleService,
     TripService,
     StudentTransportAssignmentService,
+    TransportPricingService,
   ],
 })
 export class TransportModule {}

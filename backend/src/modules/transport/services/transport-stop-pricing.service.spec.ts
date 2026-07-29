@@ -34,6 +34,7 @@ describe('TransportStopPricingService', () => {
     prisma = {
       routeStop: { findFirst: jest.fn() },
       transportStopPricing: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
+      studentTransportAssignment: { count: jest.fn() },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     audit = {
@@ -144,6 +145,49 @@ describe('TransportStopPricingService', () => {
       });
 
       await expect(service.end(branchUser, 'rs-1', 'p-1', {})).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('previewPriceChange (Ch.9 Fee Preview)', () => {
+    it('computes revenue impact and affected student count without throwing on a would-be violation', async () => {
+      prisma.routeStop.findFirst.mockResolvedValue(routeStopWithRoute);
+      prisma.transportStopPricing.findFirst.mockResolvedValue({
+        id: 'p-old',
+        feeAmount: 500,
+        effectiveFrom: new Date('2026-01-01'),
+        effectiveTo: null,
+      });
+      settings.getOrCreate.mockResolvedValue({ feeRevisionMinNoticeDays: 7 });
+      prisma.studentTransportAssignment.count.mockResolvedValue(4);
+
+      // effectiveFrom is tomorrow -- violates a 7-day min-notice policy, but
+      // preview must return validationErrors instead of throwing.
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const result = await service.previewPriceChange(branchUser, 'rs-1', {
+        feeAmount: 700,
+        effectiveFrom: tomorrow,
+      });
+
+      expect(result.affectedStudentCount).toBe(4);
+      expect(result.currentFee).toBe(500);
+      expect(result.newFee).toBe(700);
+      expect(result.currentRevenue).toBe(2000);
+      expect(result.projectedRevenue).toBe(2800);
+      expect(result.revenueDelta).toBe(800);
+      expect(result.validationErrors.length).toBeGreaterThan(0);
+      expect(prisma.transportStopPricing.create).not.toHaveBeenCalled();
+    });
+
+    it('reports no validation errors and null currentFee for a stop with no existing price', async () => {
+      prisma.routeStop.findFirst.mockResolvedValue(routeStopWithRoute);
+      prisma.transportStopPricing.findFirst.mockResolvedValue(null); // no current price
+      prisma.studentTransportAssignment.count.mockResolvedValue(0);
+
+      const result = await service.previewPriceChange(branchUser, 'rs-1', { feeAmount: 500 });
+
+      expect(result.currentFee).toBeNull();
+      expect(result.currentRevenue).toBe(0);
+      expect(result.validationErrors).toEqual([]);
     });
   });
 });

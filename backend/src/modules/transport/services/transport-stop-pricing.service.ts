@@ -66,19 +66,11 @@ export class TransportStopPricingService {
     // active price) must respect the branch's minimum-notice window. The
     // very first price for a stop isn't a "revision", so it's exempt.
     if (currentOpenEnded && routeStop.route.branchId) {
-      // TransportSettingsService (Phase 0.5) expects branchIds as a required
-      // array (it comes from core/auth/guards/jwt.strategy.ts's
-      // AuthenticatedUser); this file's AuthenticatedUser (interfaces/
-      // authenticated-user.interface.ts, matching the rest of Phase 1-3) has
-      // it optional. Normalize here rather than assuming — see the
-      // "two AuthenticatedUser interfaces" note on the Phase 1 commit.
-      const settingsCaller = {
-        id: user.id,
-        role: user.role,
-        branchId: user.branchId,
-        branchIds: user.branchIds ?? [],
-      };
-      const branchSettings = await this.settings.getOrCreate(tenantId, routeStop.route.branchId, settingsCaller);
+      const branchSettings = await this.settings.getOrCreate(
+        tenantId,
+        routeStop.route.branchId,
+        this.toSettingsCaller(user),
+      );
       const minNoticeMs = branchSettings.feeRevisionMinNoticeDays * 24 * 60 * 60 * 1000;
       if (effectiveFrom.getTime() < Date.now() + minNoticeMs) {
         throw new BadRequestException(
@@ -159,5 +151,69 @@ export class TransportStopPricingService {
     });
 
     return after;
+  }
+
+  /**
+   * SAD Ch.9 Fee Preview: "Before pricing changes: Students affected,
+   * Revenue impact, Effective date, Validation errors." Read-only — mirrors
+   * create()'s validation checks but collects problems into
+   * `validationErrors` instead of throwing, since a preview's whole point is
+   * to show the caller what *would* go wrong before they commit.
+   */
+  async previewPriceChange(user: AuthenticatedUser, routeStopId: string, dto: CreateStopPricingDto) {
+    const routeStop = await this.loadRouteStop(user, routeStopId);
+    const tenantId = routeStop.tenantId;
+    const effectiveFrom = dto.effectiveFrom ? new Date(dto.effectiveFrom) : new Date();
+    const validationErrors: string[] = [];
+
+    const currentOpenEnded = await this.prisma.transportStopPricing.findFirst({
+      where: { routeStopId, isActive: true, effectiveTo: null },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+
+    if (currentOpenEnded && routeStop.route.branchId) {
+      const branchSettings = await this.settings.getOrCreate(
+        tenantId,
+        routeStop.route.branchId,
+        this.toSettingsCaller(user),
+      );
+      const minNoticeMs = branchSettings.feeRevisionMinNoticeDays * 24 * 60 * 60 * 1000;
+      if (effectiveFrom.getTime() < Date.now() + minNoticeMs) {
+        validationErrors.push(
+          `This branch's Fee Revision Policy requires at least ${branchSettings.feeRevisionMinNoticeDays} ` +
+            `day(s) notice before a price change takes effect.`,
+        );
+      }
+    }
+
+    if (currentOpenEnded && currentOpenEnded.effectiveFrom >= effectiveFrom) {
+      validationErrors.push('New pricing must take effect after the currently active pricing started');
+    }
+
+    const affectedStudentCount = await this.prisma.studentTransportAssignment.count({
+      where: { pickupRouteStopId: routeStopId, status: 'ACTIVE' },
+    });
+
+    const currentFee = currentOpenEnded ? Number(currentOpenEnded.feeAmount) : null;
+    const newFee = dto.feeAmount;
+    const currentRevenue = (currentFee ?? 0) * affectedStudentCount;
+    const projectedRevenue = newFee * affectedStudentCount;
+
+    return {
+      routeStopId,
+      affectedStudentCount,
+      currentFee,
+      newFee,
+      currentRevenue,
+      projectedRevenue,
+      revenueDelta: projectedRevenue - currentRevenue,
+      effectiveFrom,
+      validationErrors,
+    };
+  }
+
+  /** TransportSettingsService (Phase 0.5) expects branchIds as a required array (from core/auth/guards/jwt.strategy.ts's AuthenticatedUser); this file's AuthenticatedUser (interfaces/ variant, matching the rest of Phase 1-6) has it optional. Normalize rather than assume — see the "two AuthenticatedUser interfaces" note on the Phase 1 commit. */
+  private toSettingsCaller(user: AuthenticatedUser) {
+    return { id: user.id, role: user.role, branchId: user.branchId, branchIds: user.branchIds ?? [] };
   }
 }

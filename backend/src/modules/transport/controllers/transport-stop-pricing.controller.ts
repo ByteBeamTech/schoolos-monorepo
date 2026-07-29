@@ -30,6 +30,17 @@ export class TransportStopPricingController {
     return this.service.create(user, routeStopId, dto);
   }
 
+  // Ch.9 Fee Preview — read-only, call before create() to see impact.
+  @Post('preview')
+  @Roles(...FLEET_ROLES)
+  preview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('routeStopId') routeStopId: string,
+    @Body() dto: CreateStopPricingDto,
+  ) {
+    return this.service.previewPriceChange(user, routeStopId, dto);
+  }
+
   @Patch(':pricingId/end')
   @Roles(...FLEET_ROLES)
   end(
