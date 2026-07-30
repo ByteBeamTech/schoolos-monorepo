@@ -12,6 +12,7 @@ import {
   GenerateTripsDto,
   ListTripsQueryDto,
 } from '../dto/trip.dto';
+import { ReplaceTripResourceDto } from '../dto/trip-incident.dto';
 
 const FLEET_ROLES = ['SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'TRANSPORT_MANAGER'];
 
@@ -52,6 +53,17 @@ export class TripController {
     @Body() dto: AssignTripResourcesDto,
   ) {
     return this.service.assignResources(user, id, dto);
+  }
+
+  // Ch.5 Daily Operations: Driver Replacement / Vehicle Breakdown — allowed while RUNNING.
+  @Patch(':id/replace-resource')
+  @Roles(...FLEET_ROLES)
+  replaceResource(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ReplaceTripResourceDto,
+  ) {
+    return this.service.replaceResource(user, id, dto);
   }
 
   @Post(':id/start')

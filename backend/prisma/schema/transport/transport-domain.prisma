@@ -70,11 +70,13 @@ enum VehicleFuelType {
   OTHER
 }
 
-// SAD Ch.5: Morning Trips / Evening Trips / Special Trips
+// SAD Ch.5: Morning Trips / Evening Trips / Special Trips (+ EMERGENCY,
+// Ch.5 Daily Operations: "Emergency Trips" — additive, Phase 8)
 enum TripType {
   MORNING
   EVENING
   SPECIAL
+  EMERGENCY
 }
 
 enum TripBoardingType {
@@ -115,6 +117,16 @@ enum TripIncidentSeverity {
   MEDIUM
   HIGH
   CRITICAL
+}
+
+// SAD Ch.5 Daily Operations categories. OTHER is the default so existing
+// TripIncident semantics (severity + free-text description) keep working
+// for anything not one of these four named categories.
+enum TripIncidentType {
+  DRIVER_REPLACEMENT
+  VEHICLE_BREAKDOWN
+  ROUTE_DIVERSION
+  OTHER
 }
 
 // AF-002 Capacity Policy
@@ -447,6 +459,7 @@ model TripIncident {
   tripId          String
   vehicleId       String?
   driverId        String?
+  type            TripIncidentType     @default(OTHER)
   severity        TripIncidentSeverity @default(LOW)
   description     String
   reportedBy      String?

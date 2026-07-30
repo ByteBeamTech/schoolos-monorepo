@@ -4,12 +4,14 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '@core/compliance/audit.service';
 import type { AuthenticatedUser } from '@core/auth/interfaces/authenticated-user.interface';
 import { buildReadScope, requireWriteBranch } from '@modules/crm/services/branch-scope.util';
+import { EVENTS } from '@core/events/events.constants';
 import {
   AssignTripResourcesDto,
   CancelTripDto,
   CreateTripDto,
   ListTripsQueryDto,
 } from '../dto/trip.dto';
+import { ReplaceTripResourceDto } from '../dto/trip-incident.dto';
 
 /**
  * SAD Ch.5/Ch.8/Ch.15 ADR-003: Vehicle, Driver and Conductor are assigned at
@@ -186,6 +188,87 @@ export class TripService {
     return after;
   }
 
+  /**
+   * Ch.5 Daily Operations: Driver Replacement / Vehicle Breakdown. Unlike
+   * assignResources() above (Phase 5, SCHEDULED-only), this is allowed while
+   * a trip is RUNNING — that's the whole point: something went wrong
+   * mid-trip and a resource needs swapping without cancelling the trip.
+   * Logs a TripIncident (VEHICLE_BREAKDOWN and/or DRIVER_REPLACEMENT)
+   * against the *previous* resource, atomically with the swap.
+   */
+  async replaceResource(user: AuthenticatedUser, id: string, dto: ReplaceTripResourceDto) {
+    const before = await this.getOne(user, id);
+    if (before.status !== 'RUNNING' && before.status !== 'SCHEDULED') {
+      throw new BadRequestException(`Cannot replace resources on a trip in status ${before.status}`);
+    }
+    if (!dto.vehicleId && !dto.driverId) {
+      throw new BadRequestException('Provide at least a new vehicleId or driverId');
+    }
+
+    await this.assertResourcesAvailable(
+      before.tenantId,
+      before.tripDate,
+      before.tripType,
+      { vehicleId: dto.vehicleId ?? before.vehicleId, driverId: dto.driverId ?? before.driverId },
+      id,
+    );
+
+    const after = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.trip.update({
+        where: { id },
+        data: {
+          ...(dto.vehicleId ? { vehicle: { connect: { id: dto.vehicleId } } } : {}),
+          ...(dto.driverId ? { driver: { connect: { id: dto.driverId } } } : {}),
+        },
+      });
+
+      if (dto.vehicleId) {
+        await tx.tripIncident.create({
+          data: {
+            tenantId: before.tenantId,
+            tripId: id,
+            vehicleId: before.vehicleId,
+            driverId: before.driverId,
+            type: 'VEHICLE_BREAKDOWN',
+            severity: 'MEDIUM',
+            description: dto.reason,
+            reportedBy: user.id,
+          },
+        });
+        await this.writeTripEvent(tx, EVENTS.VEHICLE_ASSIGNED, before, user, { newVehicleId: dto.vehicleId });
+      }
+      if (dto.driverId) {
+        await tx.tripIncident.create({
+          data: {
+            tenantId: before.tenantId,
+            tripId: id,
+            vehicleId: before.vehicleId,
+            driverId: before.driverId,
+            type: 'DRIVER_REPLACEMENT',
+            severity: 'MEDIUM',
+            description: dto.reason,
+            reportedBy: user.id,
+          },
+        });
+        await this.writeTripEvent(tx, EVENTS.DRIVER_ASSIGNED, before, user, { newDriverId: dto.driverId });
+      }
+
+      return updated;
+    });
+
+    await this.audit.logUpdate({
+      tenantId: before.tenantId,
+      actorId: user.id,
+      actorRole: user.role,
+      entityType: 'Trip',
+      entityId: id,
+      before: { vehicleId: before.vehicleId, driverId: before.driverId },
+      after: { vehicleId: after.vehicleId, driverId: after.driverId },
+    });
+
+    return after;
+  }
+
   /** SCHEDULED -> RUNNING. Requires a Vehicle and Driver already assigned. */
   async start(user: AuthenticatedUser, id: string) {
     const before = await this.getOne(user, id);
@@ -196,9 +279,13 @@ export class TripService {
       throw new BadRequestException('A trip needs a Vehicle and a Driver assigned before it can start');
     }
 
-    const after = await this.prisma.trip.update({
-      where: { id },
-      data: { status: 'RUNNING', startedAt: new Date() },
+    const after = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.trip.update({
+        where: { id },
+        data: { status: 'RUNNING', startedAt: new Date() },
+      });
+      await this.writeTripEvent(tx, EVENTS.TRIP_STARTED, before, user);
+      return updated;
     });
 
     await this.audit.logUpdate({
@@ -221,9 +308,13 @@ export class TripService {
       throw new BadRequestException(`Cannot complete a trip in status ${before.status}`);
     }
 
-    const after = await this.prisma.trip.update({
-      where: { id },
-      data: { status: 'COMPLETED', completedAt: new Date() },
+    const after = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.trip.update({
+        where: { id },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+      });
+      await this.writeTripEvent(tx, EVENTS.TRIP_COMPLETED, before, user);
+      return updated;
     });
 
     await this.audit.logUpdate({
@@ -317,5 +408,31 @@ export class TripService {
     });
 
     return result;
+  }
+
+  /** AF-008 event envelope via EventOutbox, written inside the caller's transaction. */
+  private async writeTripEvent(
+    tx: Prisma.TransactionClient,
+    eventType: string,
+    trip: { id: string; tenantId: string; branchId: string | null; routeId: string },
+    user: AuthenticatedUser,
+    extraPayload: Record<string, unknown> = {},
+  ) {
+    await tx.eventOutbox.create({
+      data: {
+        uniqueKey: `${eventType}:${trip.id}:${Date.now()}`,
+        type: eventType,
+        payload: {
+          core: { tenantId: trip.tenantId, branchId: trip.branchId },
+          eventType,
+          aggregateType: 'Trip',
+          aggregateId: trip.id,
+          performedBy: user.id,
+          tripId: trip.id,
+          routeId: trip.routeId,
+          ...extraPayload,
+        },
+      },
+    });
   }
 }

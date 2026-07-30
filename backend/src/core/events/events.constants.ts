@@ -55,6 +55,10 @@ export const EVENTS = {
   ROUTE_SUSPENDED:               'transport.route.suspended',
   STUDENT_ASSIGNED:              'transport.student.assigned',
   STUDENT_TRANSFERRED:           'transport.student.transferred',
+  TRIP_STARTED:                  'transport.trip.started',
+  TRIP_COMPLETED:                'transport.trip.completed',
+  VEHICLE_ASSIGNED:              'transport.trip.vehicle_assigned',
+  DRIVER_ASSIGNED:               'transport.trip.driver_assigned',
 
   // ── Library (ADR-LIB-001 §8 -- Reservation auto-allocation) ────────────────
   // Fired by BookCopyService.transitionCopyStatus()/createCopy() any time a

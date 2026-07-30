@@ -15,6 +15,8 @@ import { TripService } from './services/trip.service';
 import { TripGenerationWorker } from './services/trip-generation.worker';
 import { StudentTransportAssignmentService } from './services/student-transport-assignment.service';
 import { TransportPricingService } from './services/transport-pricing.service';
+import { TripIncidentService } from './services/trip-incident.service';
+import { TripAttendanceService } from './services/trip-attendance.service';
 import { VehicleController } from './controllers/vehicle.controller';
 import { DriverController } from './controllers/driver.controller';
 import { ConductorController } from './controllers/conductor.controller';
@@ -26,6 +28,8 @@ import { TripScheduleController } from './controllers/trip-schedule.controller';
 import { TripController } from './controllers/trip.controller';
 import { StudentTransportAssignmentController } from './controllers/student-transport-assignment.controller';
 import { TransportPricingController } from './controllers/transport-pricing.controller';
+import { TripIncidentController } from './controllers/trip-incident.controller';
+import { TripAttendanceController } from './controllers/trip-attendance.controller';
 import { PrismaModule }      from '../../infra/database/prisma.module';
 import { ComplianceModule }  from '../../core/compliance/compliance.module';
 import { RolesModule }       from '../../core/roles/roles.module';
@@ -47,6 +51,8 @@ import { RolesModule }       from '../../core/roles/roles.module';
     TripGenerationWorker,
     StudentTransportAssignmentService,
     TransportPricingService,
+    TripIncidentService,
+    TripAttendanceService,
   ],
   controllers: [
     TransportController,
@@ -62,6 +68,8 @@ import { RolesModule }       from '../../core/roles/roles.module';
     TripController,
     StudentTransportAssignmentController,
     TransportPricingController,
+    TripIncidentController,
+    TripAttendanceController,
   ],
   exports:     [
     TransportService,
@@ -77,6 +85,8 @@ import { RolesModule }       from '../../core/roles/roles.module';
     TripService,
     StudentTransportAssignmentService,
     TransportPricingService,
+    TripIncidentService,
+    TripAttendanceService,
   ],
 })
 export class TransportModule {}

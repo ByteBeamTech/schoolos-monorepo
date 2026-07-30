@@ -40,7 +40,9 @@ describe('TripService', () => {
       route: { findFirst: jest.fn() },
       trip: { findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), update: jest.fn(), createMany: jest.fn() },
       tripSchedule: { findMany: jest.fn() },
-      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+      tripIncident: { create: jest.fn().mockResolvedValue({ id: 'inc-1' }) },
+      eventOutbox: { create: jest.fn().mockResolvedValue(undefined) },
+      $transaction: jest.fn((arg: any) => (typeof arg === 'function' ? arg(prisma) : Promise.all(arg))),
     };
     audit = {
       logCreate: jest.fn().mockResolvedValue(undefined),
@@ -136,12 +138,25 @@ describe('TripService', () => {
       await expect(service.start(branchUser, 'trip-1')).rejects.toThrow(BadRequestException);
     });
 
-    it('start() succeeds once vehicle+driver are assigned', async () => {
+    it('start() succeeds once vehicle+driver are assigned and publishes TripStarted', async () => {
       prisma.trip.findFirst.mockResolvedValue({ ...scheduledTrip, vehicleId: 'v-1', driverId: 'd-1' });
       prisma.trip.update.mockResolvedValue({ ...scheduledTrip, status: 'RUNNING' });
 
       const result = await service.start(branchUser, 'trip-1');
       expect(result.status).toBe('RUNNING');
+      expect(prisma.eventOutbox.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ type: 'transport.trip.started' }) }),
+      );
+    });
+
+    it('complete() publishes TripCompleted', async () => {
+      prisma.trip.findFirst.mockResolvedValue({ ...scheduledTrip, status: 'RUNNING' });
+      prisma.trip.update.mockResolvedValue({ ...scheduledTrip, status: 'COMPLETED' });
+
+      await service.complete(branchUser, 'trip-1');
+      expect(prisma.eventOutbox.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ type: 'transport.trip.completed' }) }),
+      );
     });
 
     it('complete() requires the trip to be RUNNING', async () => {
@@ -154,6 +169,55 @@ describe('TripService', () => {
       await expect(service.cancel(branchUser, 'trip-1', { reason: 'test' })).rejects.toThrow(
         BadRequestException,
       );
+    });
+  });
+
+  describe('replaceResource (Ch.5 Daily Operations)', () => {
+    const runningTrip = { ...scheduledTrip, status: 'RUNNING', vehicleId: 'v-old', driverId: 'd-old' };
+
+    it('swaps the vehicle on a RUNNING trip and logs a VEHICLE_BREAKDOWN incident', async () => {
+      prisma.trip.findFirst.mockResolvedValueOnce(runningTrip); // getOne
+      prisma.trip.findFirst.mockResolvedValue(null); // no double-booking clash
+      prisma.trip.update.mockResolvedValue({ ...runningTrip, vehicleId: 'v-new' });
+
+      const result = await service.replaceResource(branchUser, 'trip-1', {
+        vehicleId: 'v-new',
+        reason: 'Flat tyre',
+      });
+
+      expect(result.vehicleId).toBe('v-new');
+      expect(prisma.tripIncident.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ type: 'VEHICLE_BREAKDOWN', vehicleId: 'v-old', description: 'Flat tyre' }),
+      });
+      expect(prisma.eventOutbox.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ type: 'transport.trip.vehicle_assigned' }) }),
+      );
+    });
+
+    it('swaps the driver and logs a DRIVER_REPLACEMENT incident', async () => {
+      prisma.trip.findFirst.mockResolvedValueOnce(runningTrip);
+      prisma.trip.findFirst.mockResolvedValue(null);
+      prisma.trip.update.mockResolvedValue({ ...runningTrip, driverId: 'd-new' });
+
+      await service.replaceResource(branchUser, 'trip-1', { driverId: 'd-new', reason: 'Driver unwell' });
+
+      expect(prisma.tripIncident.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ type: 'DRIVER_REPLACEMENT', driverId: 'd-old' }),
+      });
+    });
+
+    it('rejects when neither vehicleId nor driverId is provided', async () => {
+      prisma.trip.findFirst.mockResolvedValue(runningTrip);
+      await expect(
+        service.replaceResource(branchUser, 'trip-1', { reason: 'no-op' } as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects when the replacement trip is not RUNNING or SCHEDULED', async () => {
+      prisma.trip.findFirst.mockResolvedValue({ ...runningTrip, status: 'COMPLETED' });
+      await expect(
+        service.replaceResource(branchUser, 'trip-1', { vehicleId: 'v-new', reason: 'x' }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
