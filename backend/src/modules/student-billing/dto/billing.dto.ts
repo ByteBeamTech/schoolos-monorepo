@@ -5,6 +5,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { AccountingNature } from '@prisma/client';
 
 export class CreateFeeItemDto {
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
@@ -112,4 +113,24 @@ export class InitiateRefundDto {
   @ApiProperty() @IsString() @IsNotEmpty() paymentId!: string;
   @ApiProperty() @IsNumber() @IsPositive() amount!: number;
   @ApiProperty() @IsString() @IsNotEmpty() reason!: string;
+}
+
+// M9: FeeHead catalog. accountingNature is REQUIRED on create -- there is
+// no sensible default between REVENUE and LIABILITY, unlike isActive/
+// displayOrder which have obvious ones. Its mutability is enforced in the
+// service layer (invariant 19: immutable once referenced by an issued
+// invoice), not here -- this DTO only validates shape, not business rules.
+export class CreateFeeHeadDto {
+  @ApiProperty() @IsString() @IsNotEmpty() name!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() code!: string;
+  @ApiProperty({ enum: AccountingNature }) @IsEnum(AccountingNature) accountingNature!: AccountingNature;
+  @ApiPropertyOptional() @IsString() @IsOptional() parentId?: string;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() displayOrder?: number;
+}
+
+export class UpdateFeeHeadDto {
+  @ApiPropertyOptional() @IsString() @IsOptional() name?: string;
+  @ApiPropertyOptional({ enum: AccountingNature }) @IsEnum(AccountingNature) @IsOptional() accountingNature?: AccountingNature;
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() isActive?: boolean;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() displayOrder?: number;
 }

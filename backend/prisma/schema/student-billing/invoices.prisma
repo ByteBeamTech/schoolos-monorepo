@@ -57,5 +57,13 @@ model InvoiceItem {
   invoice        Invoice  @relation(fields: [invoiceId], references: [id])
   chargeCategory String   @default("ACADEMIC")
 
+  // M9: nullable during transition (frozen spec, explicit). Existing rows
+  // are back-linked by migration where chargeCategory maps unambiguously
+  // to a seeded default head; the free-text chargeCategory field itself
+  // is retained until M23, not replaced here.
+  feeHeadId String?
+  feeHead   FeeHead? @relation(fields: [feeHeadId], references: [id])
+
   @@index([invoiceId])
+  @@index([feeHeadId])
 }

@@ -22,13 +22,15 @@ import { StudentBillingAccessService } from './access/student-billing-access.ser
 import { DiscountCategoryProvisioningService } from './discounts/services/discount-category-provisioning.service';
 import { StorageModule }            from '../../infra/storage/storage.module';
 import { LedgerService }            from './ledger/services/ledger.service';
+import { FeeHeadService }           from './fee-heads/services/fee-head.service';
+import { FeeHeadController }        from './fee-heads/controllers/fee-head.controller';
 
 
 @Module({
   imports: [ComplianceModule, StorageModule, AnalyticsModule,],
   providers: [FeePlansService, InvoiceService, PaymentService, DiscountService, ReconciliationService, ReceiptService, RefundService,
-    LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService, DiscountCategoryProvisioningService, LedgerService],
-  controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController, LateFeeController],
+    LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService, DiscountCategoryProvisioningService, LedgerService, FeeHeadService],
+  controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController, LateFeeController, FeeHeadController],
   // DiscountCategoryProvisioningService is exported so the branch-creation
   // paths (OnboardingService, SchoolManagementService) can provision a new
   // branch's default categories inside their own transaction, without

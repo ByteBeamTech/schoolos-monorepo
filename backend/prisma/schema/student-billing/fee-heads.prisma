@@ -1,0 +1,48 @@
+// M9 (redesigned roadmap): FeeHead is the single charge catalog (C-2,
+// C-13), a prerequisite for M10's charge-targeted allocation. No ledger
+// event -- per the frozen milestone spec, "Events. None." -- this is
+// configuration, not a financial fact.
+
+model FeeHead {
+  id       String  @id @default(cuid())
+  tenantId String
+  branchId String
+  name     String
+  code     String // e.g. "ACADEMIC", "TRANSPORT" -- stable, not renamed once referenced
+
+  // C-13: whether this head represents income to the school (REVENUE,
+  // e.g. tuition) or an obligation the school owes back (LIABILITY, e.g.
+  // a refundable deposit head, once M16's deposit work exists). Immutable
+  // once any InvoiceItem referencing this head belongs to an issued
+  // (non-DRAFT) invoice -- invariant 19, enforced in the service layer
+  // (fee-head.service.ts) since a query-time constraint can't express
+  // "immutable only once referenced by a NON-DRAFT invoice" cleanly in
+  // Postgres DDL alone.
+  accountingNature AccountingNature
+
+  isActive     Boolean @default(true)
+  displayOrder Int     @default(0)
+
+  // C-1: depth capped at 2 (a root head, and its direct children -- no
+  // grandchildren). Enforced in fee-head.service.ts on create/update, not
+  // just documented here: Postgres has no native "max self-reference
+  // depth" constraint, so this MUST be checked in code, and is.
+  parentId String?
+  parent   FeeHead?  @relation("FeeHeadHierarchy", fields: [parentId], references: [id])
+  children FeeHead[] @relation("FeeHeadHierarchy")
+
+  invoiceItems InvoiceItem[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, code])
+  @@index([tenantId])
+  @@index([branchId])
+  @@index([parentId])
+}
+
+enum AccountingNature {
+  REVENUE
+  LIABILITY
+}
