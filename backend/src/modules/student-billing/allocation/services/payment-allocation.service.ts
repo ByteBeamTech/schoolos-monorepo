@@ -13,14 +13,25 @@
 // No domain event: per v1.2 §3.4 (frozen), "no separate PaymentAllocated
 // event exists -- allocation and completion are the same moment." The
 // PAYMENT_COMPLETED ledger entry (M2) already covers this financial fact.
+//
+// M11 (redesigned roadmap, C-15): the funding source is now generalized
+// (fundingSourceType/fundingSourceId) rather than a bare paymentId --
+// callers must be explicit about which source they mean, no implicit
+// "assume payment" default, matching how chargeType/chargeId already
+// work. STUDENT_ACCOUNT is structurally representable (so M17's
+// StudentAccount work doesn't need to reshape this table) but actively
+// rejected here: there is no StudentAccount aggregate yet to enforce its
+// own ceiling against, and creating an allocation with no real source to
+// validate against would be worse than refusing outright.
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 interface RecordAllocationParams {
   tenantId: string;
   branchId: string;
-  paymentId: string;
+  fundingSourceType: 'PAYMENT' | 'STUDENT_ACCOUNT';
+  fundingSourceId: string;
   chargeType: 'INVOICE' | 'LATE_FEE';
   chargeId: string;
   amount: Prisma.Decimal | number | string;
@@ -30,11 +41,24 @@ interface RecordAllocationParams {
 @Injectable()
 export class PaymentAllocationService {
   async record(tx: Prisma.TransactionClient, params: RecordAllocationParams): Promise<void> {
+    if (params.fundingSourceType === 'STUDENT_ACCOUNT') {
+      // M17 has not landed -- there is no StudentAccount aggregate to
+      // enforce a held-balance ceiling against yet. Reject outright
+      // rather than create an allocation with nothing real backing it.
+      throw new BadRequestException(
+        'STUDENT_ACCOUNT-sourced allocations are not yet supported.',
+      );
+    }
+
     await tx.paymentAllocation.create({
       data: {
         tenantId:   params.tenantId,
         branchId:   params.branchId,
-        paymentId:  params.paymentId,
+        fundingSourceType: params.fundingSourceType,
+        fundingSourceId:   params.fundingSourceId,
+        // Convenience FK, always populated alongside fundingSourceId for
+        // a PAYMENT source -- never the sole reference (M11).
+        paymentId:  params.fundingSourceId,
         chargeType: params.chargeType,
         chargeId:   params.chargeId,
         amount:     params.amount,

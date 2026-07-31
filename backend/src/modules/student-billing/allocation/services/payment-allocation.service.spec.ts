@@ -1,4 +1,5 @@
 // backend/src/modules/student-billing/allocation/services/payment-allocation.service.spec.ts
+import { BadRequestException } from '@nestjs/common';
 import { PaymentAllocationService } from './payment-allocation.service';
 
 describe('PaymentAllocationService', () => {
@@ -12,13 +13,16 @@ describe('PaymentAllocationService', () => {
 
   it('writes chargeType/chargeId/amount/rule exactly as given, targeting an invoice', async () => {
     await service.record(tx, {
-      tenantId: 't-1', branchId: 'b-1', paymentId: 'pay-1',
+      tenantId: 't-1', branchId: 'b-1',
+      fundingSourceType: 'PAYMENT', fundingSourceId: 'pay-1',
       chargeType: 'INVOICE', chargeId: 'inv-1', amount: 5000, rule: 'OLDEST_DUE_FIRST',
     });
 
     expect(tx.paymentAllocation.create).toHaveBeenCalledWith({
       data: {
-        tenantId: 't-1', branchId: 'b-1', paymentId: 'pay-1',
+        tenantId: 't-1', branchId: 'b-1',
+        fundingSourceType: 'PAYMENT', fundingSourceId: 'pay-1',
+        paymentId: 'pay-1',
         chargeType: 'INVOICE', chargeId: 'inv-1', amount: 5000, rule: 'OLDEST_DUE_FIRST',
       },
     });
@@ -26,7 +30,8 @@ describe('PaymentAllocationService', () => {
 
   it('writes a LATE_FEE-targeted allocation identically, differing only by chargeType/chargeId', async () => {
     await service.record(tx, {
-      tenantId: 't-1', branchId: 'b-1', paymentId: 'pay-1',
+      tenantId: 't-1', branchId: 'b-1',
+      fundingSourceType: 'PAYMENT', fundingSourceId: 'pay-1',
       chargeType: 'LATE_FEE', chargeId: 'lf-1', amount: 250, rule: 'OLDEST_DUE_FIRST',
     });
 
@@ -39,11 +44,40 @@ describe('PaymentAllocationService', () => {
     const otherTx = { paymentAllocation: { create: jest.fn().mockResolvedValue({}) } };
 
     await service.record(tx, {
-      tenantId: 't-1', branchId: 'b-1', paymentId: 'pay-1',
+      tenantId: 't-1', branchId: 'b-1',
+      fundingSourceType: 'PAYMENT', fundingSourceId: 'pay-1',
       chargeType: 'INVOICE', chargeId: 'inv-1', amount: 100, rule: 'MANUAL',
     });
 
     expect(tx.paymentAllocation.create).toHaveBeenCalledTimes(1);
     expect(otherTx.paymentAllocation.create).not.toHaveBeenCalled();
+  });
+
+  // M11 (redesigned roadmap, C-15)
+  describe('funding source generalisation', () => {
+    it('a PAYMENT-sourced allocation always populates the convenience paymentId FK alongside fundingSourceId', async () => {
+      await service.record(tx, {
+        tenantId: 't-1', branchId: 'b-1',
+        fundingSourceType: 'PAYMENT', fundingSourceId: 'pay-7',
+        chargeType: 'INVOICE', chargeId: 'inv-1', amount: 100, rule: 'OLDEST_DUE_FIRST',
+      });
+
+      const written = tx.paymentAllocation.create.mock.calls[0][0].data;
+      expect(written.fundingSourceType).toBe('PAYMENT');
+      expect(written.fundingSourceId).toBe('pay-7');
+      expect(written.paymentId).toBe('pay-7');
+    });
+
+    it('rejects a STUDENT_ACCOUNT-sourced allocation -- no producer exists until M17', async () => {
+      await expect(
+        service.record(tx, {
+          tenantId: 't-1', branchId: 'b-1',
+          fundingSourceType: 'STUDENT_ACCOUNT', fundingSourceId: 'movement-1',
+          chargeType: 'INVOICE', chargeId: 'inv-1', amount: 100, rule: 'MANUAL',
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(tx.paymentAllocation.create).not.toHaveBeenCalled();
+    });
   });
 });

@@ -19,14 +19,32 @@
 // event exists -- allocation and completion are the same moment." The
 // PAYMENT_COMPLETED ledger entry (M2) already covers this financial fact;
 // PaymentAllocation is a structural record, not an additional event.
+//
+// M11 addendum: the funding source (originally just paymentId) is now
+// generalized the same way -- see fundingSourceType/fundingSourceId below.
 
 model PaymentAllocation {
   id       String @id @default(cuid())
   tenantId String
   branchId String
 
-  paymentId String
-  payment   Payment @relation(fields: [paymentId], references: [id])
+  // M11 (redesigned roadmap, C-15): the generalized funding source. The
+  // typed reference pair follows the SAME reasoning as chargeType/
+  // chargeId below -- STUDENT_ACCOUNT has no table to hold a live FK
+  // against yet (its first producer arrives in M17), so this cannot be a
+  // literal FK to one model. paymentId is kept, now nullable, purely for
+  // query convenience when the source IS a payment -- it is always
+  // populated ALONGSIDE fundingSourceId in that case (never the sole
+  // reference), and stays null for a STUDENT_ACCOUNT-sourced row.
+  // PaymentAllocationService actively rejects creating a STUDENT_ACCOUNT-
+  // sourced row today (§ "Tests" in the frozen spec: "correctly rejected
+  // while no account balance exists") -- the branch is structurally
+  // representable now so M17 doesn't need a reshape, not usable yet.
+  fundingSourceType FundingSourceType
+  fundingSourceId   String
+
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id])
 
   chargeType ChargeType
   chargeId   String
@@ -42,7 +60,13 @@ model PaymentAllocation {
   @@index([tenantId])
   @@index([branchId])
   @@index([paymentId])
+  @@index([fundingSourceType, fundingSourceId])
   @@index([chargeType, chargeId])
+}
+
+enum FundingSourceType {
+  PAYMENT
+  STUDENT_ACCOUNT
 }
 
 enum ChargeType {

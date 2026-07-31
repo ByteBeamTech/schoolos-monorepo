@@ -311,7 +311,8 @@ describe('LateFeeService.allocatePayment', () => {
 
     expect(allocation.record).toHaveBeenCalledTimes(1);
     const call = allocation.record.mock.calls[0][1];
-    expect(call.paymentId).toBe('pay-1');
+    expect(call.fundingSourceType).toBe('PAYMENT');
+    expect(call.fundingSourceId).toBe('pay-1');
     expect(call.chargeType).toBe('LATE_FEE');
     expect(call.chargeId).toBe('lf-1');
     expect(call.rule).toBe('OLDEST_DUE_FIRST');

@@ -461,8 +461,12 @@ export class PaymentService {
       // candidate charge, the invoice this payment was created against) --
       // the mechanism is ready for a future multi-invoice flow to pass a
       // real MANUAL override without needing to reshape this record.
+      // M11: funding source is always PAYMENT here -- this method is only
+      // ever invoked from settlement, never from a StudentAccount-sourced
+      // path (that arrives in M17).
       await this.allocation.record(tx, {
-        tenantId, branchId, paymentId,
+        tenantId, branchId,
+        fundingSourceType: 'PAYMENT', fundingSourceId: paymentId,
         chargeType: 'INVOICE', chargeId: invoiceId,
         amount: pay, rule: 'OLDEST_DUE_FIRST',
       });

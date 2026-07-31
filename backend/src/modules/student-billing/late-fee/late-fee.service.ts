@@ -307,9 +307,11 @@ export class LateFeeService {
       // touches (a single payment can partially cover several fees in
       // this same loop, oldest-appliedAt-first, so this can run more than
       // once per call). The arithmetic above is unchanged from before this
-      // milestone; this is additive.
+      // milestone; this is additive. M11: funding source is always
+      // PAYMENT here, same reasoning as PaymentService.
       await this.allocation.record(tx, {
-        tenantId, branchId: fee.branchId, paymentId,
+        tenantId, branchId: fee.branchId,
+        fundingSourceType: 'PAYMENT', fundingSourceId: paymentId,
         chargeType: 'LATE_FEE', chargeId: fee.id,
         amount: allocated, rule: 'OLDEST_DUE_FIRST',
       });

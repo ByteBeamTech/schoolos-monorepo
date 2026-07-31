@@ -310,7 +310,8 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
 
       expect(allocation.record).toHaveBeenCalledTimes(1);
       const call = allocation.record.mock.calls[0][1];
-      expect(call.paymentId).toBe('pay-1');
+      expect(call.fundingSourceType).toBe('PAYMENT');
+      expect(call.fundingSourceId).toBe('pay-1');
       expect(call.chargeType).toBe('INVOICE');
       expect(call.chargeId).toBe('inv-1');
       expect(call.rule).toBe('OLDEST_DUE_FIRST');
@@ -883,7 +884,8 @@ describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
 
       expect(allocation.record).toHaveBeenCalledTimes(1);
       const call = allocation.record.mock.calls[0][1];
-      expect(call.paymentId).toBe(result.payment.id);
+      expect(call.fundingSourceType).toBe('PAYMENT');
+      expect(call.fundingSourceId).toBe(result.payment.id);
       expect(call.chargeType).toBe('INVOICE');
       expect(call.chargeId).toBe('inv-1');
       expect(call.rule).toBe('OLDEST_DUE_FIRST');
