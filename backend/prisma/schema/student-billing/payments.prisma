@@ -2,7 +2,21 @@ model Payment {
   id               String                 @id @default(cuid())
   tenantId         String
   branchId         String
-  invoiceId        String
+  // M10: nullable per the frozen spec ("not dropped in this milestone").
+  // IMPORTANT, not yet exercised by any code path this milestone touches:
+  // every payment-creating call site today (recordOffline, verifyRazorpay)
+  // still always supplies an invoiceId, so this relaxation is currently
+  // structural only -- nothing in this codebase produces a Payment with
+  // invoiceId: null yet. The idempotency constraint below
+  // (@@unique([tenantId, invoiceId, gatewayPaymentId])) depends on that:
+  // Postgres treats NULL as never equal to itself in a unique index, so
+  // TWO payments with invoiceId: null and the same gatewayPaymentId would
+  // NOT be caught as duplicates by this constraint. Whichever future
+  // milestone introduces a payment-creation path that can leave invoiceId
+  // null MUST revisit this constraint (most likely moving idempotency
+  // detection to be PaymentAllocation-based instead) -- flagged here
+  // deliberately rather than left as a silent trap.
+  invoiceId        String?
   gateway          PaymentGatewayProvider
   gatewayOrderId   String?
   gatewayPaymentId String?
@@ -19,10 +33,11 @@ model Payment {
   paidAt           DateTime?
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
-  invoice          Invoice                @relation(fields: [invoiceId], references: [id])
+  invoice          Invoice?               @relation(fields: [invoiceId], references: [id])
   branch           Branch                 @relation(fields: [branchId], references: [id])
   receipt          Receipt?
   refunds          Refund[]
+  allocations      PaymentAllocation[]
 
   // FEE-1 (IMM-017/018): idempotency for payment recording. gatewayPaymentId
   // holds the payment's external identity -- the gateway payment id online, a

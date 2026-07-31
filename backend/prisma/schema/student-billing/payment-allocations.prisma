@@ -1,0 +1,56 @@
+// M10 (redesigned roadmap): PaymentAllocation is the durable record of
+// where a payment's money actually went (C-10). It does not replace the
+// existing, already-correct crediting logic in PaymentService.updateInvoice()
+// or LateFeeService.allocatePayment() -- both already implement the
+// oldest-due-first, cap-at-outstanding mechanism this model exists to make
+// durable. This milestone makes them ALSO write PaymentAllocation rows
+// alongside what they already correctly compute, not rebuild that
+// arithmetic from scratch.
+//
+// Charge target is a typed reference pair (chargeType, chargeId), not a
+// literal Charge supertype table -- per the architecture review: Invoice
+// and LateFee remain independent tables; nothing requires them to be rows
+// of a shared parent to be valid allocation targets. Deliberately not a
+// Prisma relation for the same reason Ledger's referenceType/referenceId
+// aren't: a live FK to one specific model would force every future charge
+// type to be a schema change here.
+//
+// No domain event: per v1.2 §3.4 (frozen), "no separate PaymentAllocated
+// event exists -- allocation and completion are the same moment." The
+// PAYMENT_COMPLETED ledger entry (M2) already covers this financial fact;
+// PaymentAllocation is a structural record, not an additional event.
+
+model PaymentAllocation {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id])
+
+  chargeType ChargeType
+  chargeId   String
+
+  amount Decimal        @db.Decimal(12, 2)
+  rule   AllocationRule
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@index([tenantId])
+  @@index([branchId])
+  @@index([paymentId])
+  @@index([chargeType, chargeId])
+}
+
+enum ChargeType {
+  INVOICE
+  LATE_FEE
+}
+
+enum AllocationRule {
+  OLDEST_DUE_FIRST
+  MANUAL
+}

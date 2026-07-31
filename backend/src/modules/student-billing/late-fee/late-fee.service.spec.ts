@@ -7,6 +7,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../core/compliance/audit.service';
 import { LateFeeService } from './late-fee.service';
+import { PaymentAllocationService } from '../allocation/services/payment-allocation.service';
 import { LedgerService } from '../ledger/services/ledger.service';
 import { OVERDUE_STATUS_MATCH } from '../invoice/overdue.util';
 
@@ -20,6 +21,7 @@ describe('LateFeeService.calculateLateFee — Decimal rounding (D-9)', () => {
         { provide: PrismaService, useValue: {} },
         { provide: AuditService, useValue: { logUpdate: jest.fn() } },
         { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn() } },
+        { provide: PaymentAllocationService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(LateFeeService);
@@ -103,6 +105,7 @@ describe('LateFeeService.applyLateFees — invoice lock (M4)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { logUpdate: jest.fn() } },
         { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn() } },
+        { provide: PaymentAllocationService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(LateFeeService);
@@ -277,6 +280,7 @@ describe('LateFeeService.allocatePayment', () => {
         { provide: PrismaService, useValue: {} },
         { provide: AuditService, useValue: { logUpdate: jest.fn() } },
         { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn() } },
+        { provide: PaymentAllocationService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(LateFeeService);
@@ -297,6 +301,21 @@ describe('LateFeeService.allocatePayment', () => {
     expect(Number(fees[0].finalAmount)).toBe(0);
     expect(fees[0].status).toBe('PAID');
     expect(fees[0].paymentId).toBe('pay-1');
+  });
+
+  it('M10: records exactly one LATE_FEE-targeted PaymentAllocation for a single-fee payment, capped at the outstanding amount (not the full payment)', async () => {
+    fees.push(makeFee({ amount: 60 }));
+    const allocation = (service as any).allocation;
+
+    await service.allocatePayment(tx, 't-1', 'inv-1', 'pay-1', 100); // payment exceeds the fee -- only 60 should be allocated
+
+    expect(allocation.record).toHaveBeenCalledTimes(1);
+    const call = allocation.record.mock.calls[0][1];
+    expect(call.paymentId).toBe('pay-1');
+    expect(call.chargeType).toBe('LATE_FEE');
+    expect(call.chargeId).toBe('lf-1');
+    expect(call.rule).toBe('OLDEST_DUE_FIRST');
+    expect(Number(call.amount)).toBe(60); // NOT 100 -- capped at outstanding
   });
 
   it('partially pays a fee when the payment is smaller than the outstanding amount', async () => {
@@ -325,6 +344,25 @@ describe('LateFeeService.allocatePayment', () => {
     expect(old.status).toBe('PAID');   // fully covered first
     expect(Number(nw.paidAmount)).toBe(10);    // remainder spills into the next fee
     expect(nw.status).toBe('ACTIVE');
+  });
+
+  it('M10: a payment split across two fees records TWO PaymentAllocation rows, one per fee, summing to the payment amount', async () => {
+    fees.push(
+      makeFee({ id: 'lf-old', amount: 30, appliedAt: new Date('2026-01-01') }),
+      makeFee({ id: 'lf-new', amount: 30, appliedAt: new Date('2026-01-05') }),
+    );
+    const allocation = (service as any).allocation;
+
+    await service.allocatePayment(tx, 't-1', 'inv-1', 'pay-1', 40);
+
+    expect(allocation.record).toHaveBeenCalledTimes(2);
+    const calls = allocation.record.mock.calls.map((c: any) => c[1]);
+    expect(calls[0]).toMatchObject({ chargeId: 'lf-old' });
+    expect(Number(calls[0].amount)).toBe(30); // the older fee, fully covered first
+    expect(calls[1]).toMatchObject({ chargeId: 'lf-new' });
+    expect(Number(calls[1].amount)).toBe(10); // the remainder spills into the second
+    const total = calls.reduce((sum: number, c: any) => sum + Number(c.amount), 0);
+    expect(total).toBe(40); // sums to exactly the payment amount -- invariant 2
   });
 
   it('requests oldest-first ordering from the database', async () => {
@@ -418,6 +456,7 @@ describe('LateFeeService.waiveLateFee', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
         { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn(), recordLateFeeAssessed: jest.fn() } },
+        { provide: PaymentAllocationService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(LateFeeService);

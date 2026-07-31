@@ -6,6 +6,7 @@ import { AuditService } from '../../../core/compliance/audit.service';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { overdueWhere } from '../invoice/overdue.util';
 import { LedgerService } from '../ledger/services/ledger.service';
+import { PaymentAllocationService } from '../allocation/services/payment-allocation.service';
 
 export interface LateFeeConfig {
   gracePeriodDays: number;
@@ -31,6 +32,7 @@ export class LateFeeService {
     private readonly prisma: PrismaService,
     private readonly audit:  AuditService,
     private readonly ledger: LedgerService,
+    private readonly allocation: PaymentAllocationService,
   ) {}
 
   calculateLateFee(
@@ -298,6 +300,18 @@ export class LateFeeService {
           // with a payment that didn't finish the job.
           ...(isSettled ? { paymentId } : {}),
         },
+      });
+
+      // M10 (redesigned roadmap): PaymentAllocation, the durable record of
+      // this crediting -- one row per late fee this payment actually
+      // touches (a single payment can partially cover several fees in
+      // this same loop, oldest-appliedAt-first, so this can run more than
+      // once per call). The arithmetic above is unchanged from before this
+      // milestone; this is additive.
+      await this.allocation.record(tx, {
+        tenantId, branchId: fee.branchId, paymentId,
+        chargeType: 'LATE_FEE', chargeId: fee.id,
+        amount: allocated, rule: 'OLDEST_DUE_FIRST',
       });
 
       remaining = remaining.minus(allocated);

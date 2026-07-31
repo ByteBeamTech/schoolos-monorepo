@@ -30,6 +30,7 @@ import { AuditService }     from '../../../../core/compliance/audit.service';
 import { InvoiceService }   from '../../invoice/services/invoice.service';
 import { LateFeeService }   from '../../late-fee/late-fee.service';
 import { LedgerService }    from '../../ledger/services/ledger.service';
+import { PaymentAllocationService } from '../../allocation/services/payment-allocation.service';
 import { InitiatePaymentDto, VerifyRazorpayPaymentDto, RecordOfflinePaymentDto } from '../../dto/billing.dto';
 import * as crypto           from 'crypto';
 
@@ -45,6 +46,7 @@ export class PaymentService {
     private readonly invoiceService:  InvoiceService,
     private readonly lateFeeService:  LateFeeService,
     private readonly ledger:          LedgerService,
+    private readonly allocation:      PaymentAllocationService,
   ) {}
 
   // ── Initiate Razorpay ─────────────────────────────────────────────────────
@@ -181,7 +183,7 @@ export class PaymentService {
 
       // payment.amount is a Prisma.Decimal; pass it through without Number()
       // coercion so the invoice arithmetic stays in Decimal (D-9).
-      await this.updateInvoice(tx, tenantId, payment.invoiceId, payment.amount);
+      await this.updateInvoice(tx, tenantId, payment.invoice.branchId, payment.invoiceId, payment.id, payment.amount);
       // P0 FIX: keep LateFee.paidAmount/status in sync with the payment that
       // just cleared. Purely additive bookkeeping -- does not affect the
       // invoice totals above. See LateFeeService.allocatePayment() for why
@@ -367,7 +369,7 @@ export class PaymentService {
           },
         });
 
-        await this.updateInvoice(tx, tenantId, dto.invoiceId, dto.amount);
+        await this.updateInvoice(tx, tenantId, invoice.branchId, dto.invoiceId, payment.id, dto.amount);
         // P0 FIX: see verifyRazorpay -- same late-fee allocation, same
         // reasoning for running inside this transaction.
         await this.lateFeeService.allocatePayment(tx, tenantId, dto.invoiceId, payment.id, dto.amount);
@@ -426,7 +428,7 @@ export class PaymentService {
    * creation meant a crash between the two could leave a SUCCESS payment
    * against an invoice that never recorded it.
    */
-  private async updateInvoice(tx: any, tenantId: string, invoiceId: string, amount: Prisma.Decimal.Value) {
+  private async updateInvoice(tx: any, tenantId: string, branchId: string, invoiceId: string, paymentId: string, amount: Prisma.Decimal.Value) {
     {
       const inv = await tx.invoice.findFirst({ where: { id: invoiceId, tenantId } });
       if (!inv) return;
@@ -450,6 +452,19 @@ export class PaymentService {
           status:     status as any,
           paidAt:     newDue.lessThanOrEqualTo(0) ? new Date() : null,
         },
+      });
+
+      // M10 (redesigned roadmap): PaymentAllocation, the durable record of
+      // this crediting -- the arithmetic above is unchanged from before
+      // this milestone; this is additive. Single-invoice settlement, so
+      // the "rule" is OLDEST_DUE_FIRST trivially (there is exactly one
+      // candidate charge, the invoice this payment was created against) --
+      // the mechanism is ready for a future multi-invoice flow to pass a
+      // real MANUAL override without needing to reshape this record.
+      await this.allocation.record(tx, {
+        tenantId, branchId, paymentId,
+        chargeType: 'INVOICE', chargeId: invoiceId,
+        amount: pay, rule: 'OLDEST_DUE_FIRST',
       });
     }
   }

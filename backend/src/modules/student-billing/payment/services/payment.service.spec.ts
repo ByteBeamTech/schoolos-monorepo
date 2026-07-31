@@ -20,6 +20,7 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../../core/compliance/audit.service';
 import { InvoiceService } from '../../invoice/services/invoice.service';
 import { LateFeeService } from '../../late-fee/late-fee.service';
+import { PaymentAllocationService } from '../../allocation/services/payment-allocation.service';
 import { LedgerService } from '../../ledger/services/ledger.service';
 
 const REAL_SECRET = 'real_secret_for_tests';
@@ -76,6 +77,17 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
       receipt: {
         findUnique: jest.fn().mockResolvedValue({ id: 'rcpt-1' }),
       },
+      // M10: no default resolved value, deliberately -- matches this
+      // describe block's established convention elsewhere (see the
+      // branch-scoping tests further down) of each test configuring it
+      // explicitly when it needs one. Leaving it unset here preserves the
+      // exact prior behavior for every test that doesn't touch it:
+      // updateInvoice()'s `if (!inv) return` silently no-ops, same as
+      // before this key existed at all.
+      invoice: {
+        findFirst: jest.fn(),
+        update: jest.fn().mockResolvedValue({}),
+      },
       // FEE-1: settlement (payment + invoice totals + receipt) now runs in one
       // transaction guarded by a per-invoice advisory lock. The mock hands the
       // callback this same object as its tx client.
@@ -100,6 +112,7 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
         { provide: InvoiceService, useValue: {} },
         { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
         { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
+        { provide: PaymentAllocationService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 
@@ -284,6 +297,26 @@ describe('PaymentService.verifyRazorpay — fail-closed gateway config (FEE-0)',
       );
     });
 
+    it('M10: records exactly one INVOICE-targeted PaymentAllocation, never a second one on replay', async () => {
+      await buildModule();
+      (service as any).updateInvoice.mockRestore(); // buildModule() stubs this out by default; this test needs the real thing
+      prisma.invoice.findFirst.mockResolvedValue({
+        id: 'inv-1', branchId: 'b-1', paidAmount: 0, totalAmount: 1000, status: 'SENT',
+      });
+      const allocation = (service as any).allocation;
+
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+      await service.verifyRazorpay('t-1', signed() as any, 'actor-1');
+
+      expect(allocation.record).toHaveBeenCalledTimes(1);
+      const call = allocation.record.mock.calls[0][1];
+      expect(call.paymentId).toBe('pay-1');
+      expect(call.chargeType).toBe('INVOICE');
+      expect(call.chargeId).toBe('inv-1');
+      expect(call.rule).toBe('OLDEST_DUE_FIRST');
+      expect(Number(call.amount)).toBe(1000); // Decimal, not a plain number -- compare numerically
+    });
+
     it('never resurrects a FAILED payment — it is not a replay', async () => {
       await buildModule('FAILED');
 
@@ -345,6 +378,7 @@ describe('PaymentService.getPaymentHistory — FEE-0 branch scoping', () => {
         { provide: InvoiceService, useValue: {} },
         { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
         { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
+        { provide: PaymentAllocationService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -433,6 +467,7 @@ describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () =
         { provide: InvoiceService, useValue: invoiceService },
         { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
         { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
+        { provide: PaymentAllocationService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -643,6 +678,7 @@ describe('PaymentService.generateReceipt — one receipt per payment (FEE-1)', (
         { provide: InvoiceService, useValue: invoiceService },
         { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
         { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
+        { provide: PaymentAllocationService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -776,6 +812,7 @@ describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
         { provide: InvoiceService, useValue: { generateReceiptNumber: jest.fn().mockResolvedValue('RCP-2026-00001') } },
         { provide: LateFeeService, useValue: { allocatePayment: jest.fn() } },
         { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
+        { provide: PaymentAllocationService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(PaymentService);
@@ -826,6 +863,7 @@ describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
       expect(prisma.payment.create).not.toHaveBeenCalled();
       expect(prisma.invoice.update).not.toHaveBeenCalled();   // not credited twice
       expect((service as any).ledger.recordPaymentCompleted).not.toHaveBeenCalled();
+      expect((service as any).allocation.record).not.toHaveBeenCalled();
     });
 
     it('a fresh (non-retry) offline payment posts exactly one PAYMENT_COMPLETED ledger entry', async () => {
@@ -837,6 +875,19 @@ describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
         expect.anything(),
         expect.objectContaining({ referenceId: result.payment.id }),
       );
+    });
+
+    it('M10: a fresh offline payment records exactly one INVOICE-targeted PaymentAllocation', async () => {
+      const result = await service.recordOffline('t-1', dto({ referenceNumber: 'CHQ-1' }), 'a-1');
+      const allocation = (service as any).allocation;
+
+      expect(allocation.record).toHaveBeenCalledTimes(1);
+      const call = allocation.record.mock.calls[0][1];
+      expect(call.paymentId).toBe(result.payment.id);
+      expect(call.chargeType).toBe('INVOICE');
+      expect(call.chargeId).toBe('inv-1');
+      expect(call.rule).toBe('OLDEST_DUE_FIRST');
+      expect(Number(call.amount)).toBe(1000); // Decimal, not a plain number -- compare numerically
     });
 
     it('the retry check runs BEFORE the due-amount validation', async () => {
