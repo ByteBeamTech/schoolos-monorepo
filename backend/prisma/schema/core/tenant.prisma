@@ -82,6 +82,8 @@ model Tenant {
   communicationLogs    CommunicationLog[]
   bulkNotificationJobs BulkNotificationJob[]
   discountCategories   DiscountCategory[]
+  paymentAllocations   PaymentAllocation[]
+  feeHeads             FeeHead[]
   subjects             Subject[]
   staffMembers         Staff[]                    @relation("TenantMembers")
   staffProfiles        StaffProfile[]             @relation("TenantProfiles")

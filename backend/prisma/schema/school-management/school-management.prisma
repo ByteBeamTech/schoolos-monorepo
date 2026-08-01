@@ -46,6 +46,8 @@ model Branch {
   cronLogs                    CronExecutionLog[]
   // Billing links (Jo humne billing.prisma mein banaye hain)
   discountCategories          DiscountCategory[]
+  paymentAllocations           PaymentAllocation[]
+  feeHeads                     FeeHead[]
   discounts                   Discount[]
   lateFees                    LateFee[]
   calendarEvents              AcademicCalendarEvent[]
