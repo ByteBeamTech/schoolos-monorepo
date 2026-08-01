@@ -98,7 +98,16 @@ export interface Student {
   id: string; admissionNumber: string; firstName: string; lastName: string;
   status: string; rollNumber?: string;
   section?:       { id: string; name: string; class: { id: string; name: string } };
-  guardianLinks?: { guardian: { firstName: string; lastName: string; phone?: string; email?: string } }[];
+  // Widened for Collect Fee (Sprint 1): isPrimary and relation already
+  // exist on GuardianStudent (backend/prisma/schema/students/relations.prisma)
+  // -- this type never typed them. Needed for FR-SUMMARY-04 (Father's Name)
+  // and the primary-guardian default (FDD Section 8.1, FR-PANEL-05, built
+  // in a later sprint but the type is widened once here rather than twice).
+  guardianLinks?: {
+    isPrimary?: boolean;
+    relation?: "FATHER" | "MOTHER" | "GRANDFATHER" | "GRANDMOTHER" | "UNCLE" | "AUNT" | "SIBLING" | "LEGAL_GUARDIAN";
+    guardian: { id?: string; firstName: string; lastName: string; phone?: string; email?: string };
+  }[];
   createdAt: string;
 }
 
@@ -252,7 +261,27 @@ export interface Invoice {
   // source of overdue-ness -- never re-derive this from status + dueDate.
   isOverdue?: boolean;
   student: { firstName: string; lastName: string; admissionNumber: string };
-  items: Array<{ name: string; amount: number; netAmount: number }>;
+  items: Array<{
+    name: string; amount: number; netAmount: number;
+    // Widened for Collect Fee (Sprint 1): these fields already come back
+    // from the backend's findAll()/findById() today -- this type simply
+    // never typed them. No backend change; a type correction matching
+    // what the response already contains.
+    chargeCategory?: string; discountAmount?: number; feeItemId?: string | null;
+  }>;
+  // Widened for Collect Fee (Sprint 1) -- same reasoning as items above.
+  // Optional because list-context callers (e.g. the Invoices page) may not
+  // need these and the endpoint's exact include shape can vary by route;
+  // Collect Fee's own data fetch (useStudentBilling below) is written
+  // defensively against any of these being absent.
+  lateFees?: Array<{ id: string; amount: number; amountWaived?: number; status?: string }>;
+  payments?: Array<{
+    id: string; amount: number; status: string; paidAt?: string; paymentMethod?: string;
+    // M6: derived field, replaces the removed PaymentStatus.REFUNDED/
+    // PARTIALLY_REFUNDED values -- see refund/refund-status.util.ts (backend).
+    refundState?: "NONE" | "PARTIAL" | "FULL";
+  }>;
+  receipts?: Array<{ id: string; receiptNumber: string; createdAt: string }>;
 }
 export interface InvoiceStats {
   totalInvoices: number; totalAmount: number; collectedAmount: number;
@@ -273,8 +302,47 @@ export function useInvoiceStats(academicYear?: string) {
   );
 }
 
+// ── Collect Fee (Sprint 1) ──────────────────────────────────────────────────
+// FDD Section 12: Collect Fee workspace. Composed from existing endpoints
+// only -- no new backend route. Three parallel calls per FDD Section 11.2's
+// data needs: every invoice for grouping (Section 12.4), active discounts
+// for the Fee Relaxation indicator (FR-SUMMARY-06), fee plans for Current
+// Fee Plan (FR-SUMMARY-11). Each already exists and is reused as-is per the
+// Student Billing reuse audit.
+export interface DiscountSummary {
+  id: string; category?: { name?: string }; isActive: boolean; approvalStatus: string; appliedAmount: number;
+}
+export interface FeePlanSummary {
+  id: string; name: string; academicYear?: string;
+}
+
+export function useStudentBilling(studentId?: string) {
+  const invoices = useApi<Invoice[]>(
+    studentId ? `/billing/invoices?studentId=${studentId}` : "",
+    [studentId],
+  );
+  const discounts = useApi<DiscountSummary[]>(
+    studentId ? `/billing/discounts?studentId=${studentId}&approvalStatus=APPROVED` : "",
+    [studentId],
+  );
+  const feePlans = useApi<FeePlanSummary[]>(
+    studentId ? `/billing/fee-plans/student/${studentId}` : "",
+    [studentId],
+  );
+
+  return {
+    invoices: invoices.data ?? [],
+    discounts: (discounts.data ?? []).filter((d) => d.isActive),
+    feePlans: feePlans.data ?? [],
+    loading: invoices.loading || discounts.loading || feePlans.loading,
+    error: invoices.error ?? discounts.error ?? feePlans.error,
+    refetch: () => { invoices.refetch(); discounts.refetch(); feePlans.refetch(); },
+  };
+}
+
 export function useBillingAnalytics(
   filters: {
+
     academicYear?: string;
     fromDate?: string;
     toDate?: string;
