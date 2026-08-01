@@ -72,10 +72,35 @@ export class VerifyRazorpayPaymentDto {
   @ApiProperty() @IsString() @IsNotEmpty() razorpaySignature!: string;
 }
 
+// Counter-collectible methods for MVP scope. Deliberately does NOT include
+// RAZORPAY: that flow is a separate, gateway-verified path
+// (initiateRazorpay/verifyRazorpay, distinguished by Payment.gateway, not
+// paymentMethod) and is never accepted through recordOffline. Also
+// deliberately excludes CHEQUE/DD/any batch-settled instrument -- Launch
+// Readiness Review (M13 reclassification): those carry deferred-clearance
+// risk this MVP has no instrument-lifecycle tracking for, and are
+// explicitly out of scope, not merely unsupported by omission. If this
+// enum is ever widened to include a non-instant method, M13 (PaymentTender
+// and instrument lifecycle) becomes a launch blocker again, not a P2 --
+// re-read that review before adding anything here.
+//
+// Unrelated to, and NOT the same enum as, the dead `PaymentMethod` in
+// prisma/schema/enums.prisma (CASH/CHEQUE/BANK_TRANSFER/UPI/CREDIT_CARD/
+// DEBIT_CARD/OTHER) -- that one is unused by any model or code path
+// (confirmed by search), predates this MVP scope decision, and is left
+// untouched here rather than repurposed, to avoid an unrelated schema
+// migration for what the review scoped as a DTO-layer validation only.
+export enum OfflinePaymentMethod {
+  CASH                  = 'CASH',
+  UPI                   = 'UPI',
+  CARD                  = 'CARD',
+  INSTANT_BANK_TRANSFER = 'INSTANT_BANK_TRANSFER',
+}
+
 export class RecordOfflinePaymentDto {
   @ApiProperty() @IsString() @IsNotEmpty() invoiceId!: string;
   @ApiProperty() @IsNumber() @IsPositive() amount!: number;
-  @ApiProperty() @IsString() @IsNotEmpty() paymentMethod!: string;
+  @ApiProperty({ enum: OfflinePaymentMethod }) @IsEnum(OfflinePaymentMethod) paymentMethod!: OfflinePaymentMethod;
   @ApiPropertyOptional() @IsString() @IsOptional() referenceNumber?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() notes?: string;
   // M12: payer identity -- exactly one of payerId/payerName required,
