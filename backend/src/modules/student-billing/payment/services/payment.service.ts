@@ -31,6 +31,7 @@ import { InvoiceService }   from '../../invoice/services/invoice.service';
 import { LateFeeService }   from '../../late-fee/late-fee.service';
 import { LedgerService }    from '../../ledger/services/ledger.service';
 import { PaymentAllocationService } from '../../allocation/services/payment-allocation.service';
+import { derivePaymentRefundState, refundedAmountFor } from '../../refund/refund-status.util';
 import { InitiatePaymentDto, VerifyRazorpayPaymentDto, RecordOfflinePaymentDto } from '../../dto/billing.dto';
 import * as crypto           from 'crypto';
 
@@ -566,6 +567,18 @@ export class PaymentService {
       select: { id: true },
     });
     if (!invoice) throw new NotFoundException(`Invoice not found: ${invoiceId}`);
-    return this.prisma.payment.findMany({ where: { tenantId, invoiceId }, orderBy: { createdAt: 'desc' } });
+    const payments = await this.prisma.payment.findMany({
+      where: { tenantId, invoiceId },
+      include: { refunds: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    // M6 (redesigned roadmap, D-3/D-4): refundState replaces the removed
+    // PaymentStatus.REFUNDED/PARTIALLY_REFUNDED values -- computed here,
+    // at the API boundary, the same way M5 added isOverdue rather than
+    // leaving callers to re-derive it themselves.
+    return payments.map((p) => ({
+      ...p,
+      refundState: derivePaymentRefundState(p, refundedAmountFor(p.refunds)),
+    }));
   }
 }

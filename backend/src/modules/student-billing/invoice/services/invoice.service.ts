@@ -20,6 +20,7 @@ import { GenerateInvoiceDto, BulkGenerateInvoicesDto } from '../../dto/billing.d
 import { overdueWhere, isInvoiceOverdue } from '../overdue.util';
 import { financialYearFor } from '../../ledger/financial-year.util';
 import { LedgerService } from '../../ledger/services/ledger.service';
+import { derivePaymentRefundState, refundedAmountFor } from '../../refund/refund-status.util';
 
 
 export interface GenerateInvoiceOptions {
@@ -294,7 +295,11 @@ export class InvoiceService {
       },
       include: {
         items:    { orderBy: { sortOrder: 'asc' } },
-        payments: { orderBy: { createdAt: 'desc' } },
+        // M6 (redesigned roadmap, D-3/D-4): refunds included so refundState
+        // can be derived below -- replaces the removed PaymentStatus.
+        // REFUNDED/PARTIALLY_REFUNDED values this frontend page's payment
+        // badges used to read directly.
+        payments: { orderBy: { createdAt: 'desc' }, include: { refunds: true } },
         // FEE-1: an invoice now has many receipts (one per payment), so this
         // returns an ARRAY where it previously returned a single object or
         // null. Ordered newest-first to match the sibling payments include.
@@ -304,8 +309,19 @@ export class InvoiceService {
       },
     });
     if (!invoice) throw new NotFoundException(`Invoice not found: ${id}`);
-    // M5 Commit 3: same reasoning as findAll() above.
-    return { ...invoice, isOverdue: isInvoiceOverdue(invoice) };
+    // M5 Commit 3: same reasoning as findAll() above. M6: same reasoning,
+    // applied to each payment's refund state.
+    return {
+      ...invoice,
+      isOverdue: isInvoiceOverdue(invoice),
+      // Defensive, same reasoning as isInvoiceOverdue's null-dueDate
+      // handling above: the include always requests payments, but this
+      // must not crash if that were ever absent.
+      payments: (invoice.payments ?? []).map((p: any) => ({
+        ...p,
+        refundState: derivePaymentRefundState(p, refundedAmountFor(p.refunds ?? [])),
+      })),
+    };
   }
 
   // ── Send ──────────────────────────────────────────────────────────────────

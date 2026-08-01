@@ -32,9 +32,20 @@ function statusVariant(s: string, isOverdue: boolean) {
   };
   return m[s] ?? "neutral";
 }
-function paymentVariant(s: string) {
-  const m: Record<string, any> = { SUCCESS: "success", PENDING: "warning", FAILED: "error", REFUNDED: "neutral" };
+// M6 (redesigned roadmap, D-3/D-4): PaymentStatus no longer has REFUNDED/
+// PARTIALLY_REFUNDED values -- refundState is a derived field the backend
+// now attaches to each payment (see InvoiceService.findById()), matching
+// how isOverdue above replaces the removed InvoiceStatus.OVERDUE value.
+function paymentVariant(s: string, refundState?: string) {
+  if (refundState === "FULL")    return "neutral";
+  if (refundState === "PARTIAL") return "warning";
+  const m: Record<string, any> = { SUCCESS: "success", PENDING: "warning", FAILED: "error" };
   return m[s] ?? "neutral";
+}
+function paymentLabel(s: string, refundState?: string) {
+  if (refundState === "FULL")    return "REFUNDED";
+  if (refundState === "PARTIAL") return "PARTIALLY REFUNDED";
+  return s;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -313,7 +324,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-semibold text-slate-900">{fmt(p.amount, cur)}</p>
-                      <Badge label={p.status} variant={paymentVariant(p.status)} />
+                      <Badge label={paymentLabel(p.status, p.refundState)} variant={paymentVariant(p.status, p.refundState)} />
                     </div>
                   </div>
                 ))}

@@ -5,19 +5,13 @@ import { Prisma } from '@prisma/client';
 import { AuditService }  from '../../../core/compliance/audit.service';
 import { ConfigService } from '@nestjs/config';
 import { LedgerService } from '../ledger/services/ledger.service';
+import { refundedAmountFor } from './refund-status.util';
 
 export interface InitiateRefundDto {
   paymentId: string;
   amount:    number;
   reason:    string;
 }
-
-/**
- * Refund statuses that have already committed money and therefore consume the
- * refundable balance. RefundStatus is PENDING | COMPLETED | FAILED; FAILED is
- * excluded because no money moved.
- */
-const CONSUMING_REFUND_STATUSES = ['PENDING', 'COMPLETED'];
 
 @Injectable()
 export class RefundService {
@@ -93,12 +87,14 @@ export class RefundService {
       });
 
       if (!payment) throw new NotFoundException('Payment not found');
-      if (payment.status !== 'SUCCESS' && payment.status !== 'PARTIALLY_REFUNDED') {
-        throw new BadRequestException('Only successful payments can be refunded');
-      }
 
-      // Calculate already-refunded amount from Refund records (Payment has no
-      // refundedAmount field).
+      // M6 (redesigned roadmap, D-3/D-4): refund state derived from Refund
+      // records, never persisted on Payment.status -- PaymentStatus no
+      // longer HAS a PARTIALLY_REFUNDED value to check here. Computed
+      // BEFORE the eligibility guard below (previously computed after) so
+      // both the guard and the max-refund check share the same value,
+      // rather than the guard checking a status field that could disagree
+      // with what this computation finds.
       //
       // PENDING is counted deliberately, not just COMPLETED: an in-flight
       // refund has already committed that money. Excluding it would let a
@@ -107,9 +103,18 @@ export class RefundService {
       // mid-gateway-call) holds its amount until an operator resolves it --
       // the correct failure direction for money movement.
       // FAILED is excluded: no money moved.
-      const alreadyRefunded = payment.refunds
-        .filter((r: any) => CONSUMING_REFUND_STATUSES.includes(r.status))
-        .reduce((sum: Prisma.Decimal, r: any) => sum.plus(new Prisma.Decimal(r.amount)), new Prisma.Decimal(0));
+      const alreadyRefunded = refundedAmountFor(payment.refunds);
+
+      // A payment is refund-eligible iff it genuinely succeeded (status
+      // never changes to anything else once a refund happens -- that is
+      // the whole point of deriving refund state instead of persisting it)
+      // AND has remaining balance not yet refunded.
+      if (
+        payment.status !== 'SUCCESS' ||
+        alreadyRefunded.greaterThanOrEqualTo(new Prisma.Decimal(payment.amount))
+      ) {
+        throw new BadRequestException('Only successful payments can be refunded');
+      }
 
       // Money comparison in Decimal (D-9). dto.amount is a validated number
       // from the DTO; the payment amount and prior refunds are Decimals.
@@ -179,10 +184,13 @@ export class RefundService {
       );
       const isFullRefund = totalRefunded.greaterThanOrEqualTo(new Prisma.Decimal(payment.amount));
 
-      await tx.payment.update({
-        where: { id: dto.paymentId },
-        data:  { status: isFullRefund ? 'REFUNDED' : 'PARTIALLY_REFUNDED' },
-      });
+      // M6 (redesigned roadmap, D-3/D-4): no write here anymore. This was
+      // the exact mechanism behind the defect M2 corrected -- persisting
+      // REFUNDED/PARTIALLY_REFUNDED independently of the Refund rows let
+      // the two disagree. payment.status stays whatever it already is
+      // (SUCCESS, for any payment that reaches this point); isFullRefund
+      // is still returned below for the caller, still correctly computed,
+      // just never written back onto the payment row.
 
       // Recompute the invoice from its OWN current state, inside this
       // transaction -- never from the Phase-1 snapshot, which predates the
@@ -206,11 +214,14 @@ export class RefundService {
       });
 
       if (invoice) {
-        // Sum, per successful payment on this invoice, the amount NOT yet
-        // refunded (COMPLETED refunds only -- PENDING has not moved money out
-        // of the invoice's retained total, FAILED never will).
+        // M6 (redesigned roadmap): status: 'SUCCESS' alone now, not
+        // {in: [...]} -- a payment that ever succeeded keeps that status
+        // permanently (refund state is derived, never persisted onto it),
+        // so this no longer needs to also match the old
+        // REFUNDED/PARTIALLY_REFUNDED overlay values to still find
+        // refunded-but-originally-successful payments.
         const invoicePayments = await tx.payment.findMany({
-          where:   { invoiceId: invoice.id, tenantId, status: { in: ['SUCCESS', 'PARTIALLY_REFUNDED', 'REFUNDED'] } },
+          where:   { invoiceId: invoice.id, tenantId, status: 'SUCCESS' },
           select:  { amount: true, refunds: { where: { status: 'COMPLETED' }, select: { amount: true } } },
         });
 

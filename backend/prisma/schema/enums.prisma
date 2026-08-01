@@ -261,13 +261,20 @@ enum OrderStatus {
   REFUNDED
 }
 
+// M6 (redesigned roadmap, D-3/D-4): REFUNDED and PARTIALLY_REFUNDED removed
+// -- refund state is derived from a payment's Refund records
+// (refund/refund-status.util.ts), never persisted here. This was the exact
+// mechanism behind the defect M2 corrected: writing a derived fact
+// independently of its source let the two disagree. REVERSED added now,
+// unused until M13 -- built ahead of its producer the same way M9's
+// FeeHead and M11's STUDENT_ACCOUNT branch were, so M13 doesn't need to
+// reshape this enum.
 enum PaymentStatus {
   PENDING
   PROCESSING
   SUCCESS
   FAILED
-  REFUNDED
-  PARTIALLY_REFUNDED
+  REVERSED
 }
 
 enum PaymentMethod {

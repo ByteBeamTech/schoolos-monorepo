@@ -116,9 +116,16 @@ describe('RefundService.initiate (FEE-1)', () => {
         payment([{ amount: 10_000, status: 'PENDING' }]),
       );
 
+      // M6: fully consumed (10,000 already committed against a 10,000
+      // payment) is now caught at the eligibility guard directly -- a
+      // payment with nothing left to refund is simply not eligible,
+      // rather than falling through to the max-refund check and failing
+      // there with "exceeds available 0". Clearer failure reason, same
+      // outcome: rejected, no refund created.
       await expect(
         service.initiate('t-1', { paymentId: 'pay-1', amount: 1, reason: 'x' }, 'actor-1', 'ACCOUNTANT'),
-      ).rejects.toThrow(/exceeds available 0/);
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.refund.create).not.toHaveBeenCalled();
     });
 
     it('excludes FAILED refunds — no money moved, so the amount is still available', async () => {
@@ -141,13 +148,15 @@ describe('RefundService.initiate (FEE-1)', () => {
         payment([{ amount: 10_000, status: 'COMPLETED' }]),
       );
 
+      // M6: same reasoning as the PENDING case above -- caught at the
+      // eligibility guard now, not the max-refund check.
       await expect(
         service.initiate(
           't-1',
           { paymentId: 'pay-1', amount: PAYMENT_AMOUNT, reason: 'duplicate' },
           'actor-1', 'ACCOUNTANT',
         ),
-      ).rejects.toThrow(/exceeds available 0/);
+      ).rejects.toThrow(BadRequestException);
       expect(prisma.refund.create).not.toHaveBeenCalled();
     });
 
@@ -179,10 +188,11 @@ describe('RefundService.initiate (FEE-1)', () => {
           data: expect.objectContaining({ amount: 2_500, status: 'PENDING', tenantId: 't-1' }),
         }),
       );
-      // Partial refund => payment is PARTIALLY_REFUNDED, invoice not reopened.
-      expect(prisma.payment.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { status: 'PARTIALLY_REFUNDED' } }),
-      );
+      // M6 (redesigned roadmap): partial refund no longer writes
+      // PARTIALLY_REFUNDED onto the payment -- refund state is derived,
+      // never persisted. payment.status is not touched by this call at
+      // all now.
+      expect(prisma.payment.update).not.toHaveBeenCalled();
       expect(prisma.invoice.update).not.toHaveBeenCalled();
     });
   });
@@ -370,9 +380,10 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
         where: { paymentId: 'pay-1', status: 'COMPLETED' },
       }),
     );
-    expect(prisma.payment.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: 'REFUNDED' } }),
-    );
+    // M6: full refund no longer writes REFUNDED onto the payment -- refund
+    // state is derived, never persisted. payment.status is not touched by
+    // this call at all now.
+    expect(prisma.payment.update).not.toHaveBeenCalled();
     // Invoice recomputed to fully-drained: nothing retained -> SENT, due back to full.
     const drainedData = prisma.invoice.update.mock.calls.at(-1)[0].data;
     expect(Number(drainedData.paidAmount)).toBe(0);
@@ -449,20 +460,24 @@ describe('RefundService.initiate — transactional boundaries (FEE-1)', () => {
 
     await service.initiate('t-1', { paymentId: 'pay-1', amount: 4_000, reason: 'x' }, 'a-1', 'ACCOUNTANT');
 
-    expect(prisma.payment.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: 'PARTIALLY_REFUNDED' } }),
-    );
+    // M6: partial refund no longer writes PARTIALLY_REFUNDED onto the
+    // payment -- refund state is derived, never persisted.
+    expect(prisma.payment.update).not.toHaveBeenCalled();
     const partialData = prisma.invoice.update.mock.calls.at(-1)[0].data;
     expect(Number(partialData.paidAmount)).toBe(6_000);
     expect(Number(partialData.dueAmount)).toBe(4_000);
     expect(partialData.status).toBe('PARTIALLY_PAID');
   });
 
-  it('allows a further refund against an already PARTIALLY_REFUNDED payment', async () => {
-    prisma.payment.findFirst.mockResolvedValue({
-      ...payment([{ amount: 4_000, status: 'COMPLETED' }]),
-      status: 'PARTIALLY_REFUNDED',
-    });
+  // M6 (redesigned roadmap): a payment carrying prior refunds stays
+  // status: 'SUCCESS' permanently now -- PARTIALLY_REFUNDED no longer
+  // exists as a value this mock (or the real database) could produce.
+  // Renamed from "...against an already PARTIALLY_REFUNDED payment" to
+  // reflect that.
+  it('allows a further refund against a SUCCESS payment that already has a prior partial refund', async () => {
+    prisma.payment.findFirst.mockResolvedValue(
+      payment([{ amount: 4_000, status: 'COMPLETED' }]),
+    );
 
     await service.initiate('t-1', { paymentId: 'pay-1', amount: 6_000, reason: 'x' }, 'a-1', 'ACCOUNTANT');
     expect(prisma.refund.create).toHaveBeenCalled();

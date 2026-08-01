@@ -538,6 +538,35 @@ describe('InvoiceService', () => {
       expect(result.isOverdue).toBe(false);
     });
 
+    // M6 (redesigned roadmap, D-3/D-4): refundState replaces the removed
+    // PaymentStatus.REFUNDED/PARTIALLY_REFUNDED values on each embedded
+    // payment -- this is the actual code path the invoice detail page's
+    // payment badges read from (not getPaymentHistory).
+    it('attaches a derived refundState to each embedded payment', async () => {
+      (prisma.invoice.findFirst as jest.Mock).mockResolvedValue({
+        id: 'inv-1', status: 'SENT', dueDate: new Date('2099-01-01'),
+        payments: [
+          { id: 'pay-1', amount: 1000, status: 'SUCCESS', refunds: [] },
+          { id: 'pay-2', amount: 1000, status: 'SUCCESS', refunds: [{ status: 'COMPLETED', amount: 1000 }] },
+        ],
+      });
+
+      const result = await service.findById('t-1', 'inv-1');
+
+      expect(result.payments.find((p: any) => p.id === 'pay-1').refundState).toBe('NONE');
+      expect(result.payments.find((p: any) => p.id === 'pay-2').refundState).toBe('FULL');
+    });
+
+    it('does not crash if payments were ever absent from the include result', async () => {
+      (prisma.invoice.findFirst as jest.Mock).mockResolvedValue({
+        id: 'inv-1', status: 'SENT', dueDate: new Date('2099-01-01'),
+      });
+
+      const result = await service.findById('t-1', 'inv-1');
+
+      expect(result.payments).toEqual([]);
+    });
+
     // Realistic edge case, same reasoning as findAll() above: a DRAFT
     // invoice has not been sent yet and must never read as overdue.
     it('reports isOverdue: false for a DRAFT invoice, even with a due date far in the past', async () => {

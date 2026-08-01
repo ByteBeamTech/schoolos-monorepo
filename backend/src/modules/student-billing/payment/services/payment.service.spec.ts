@@ -416,6 +416,25 @@ describe('PaymentService.getPaymentHistory — FEE-0 branch scoping', () => {
       .rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.invoice.findFirst.mock.calls[1][0].where.branchId).toEqual({ in: [] });
   });
+
+  // M6 (redesigned roadmap, D-3/D-4): refundState replaces the removed
+  // PaymentStatus.REFUNDED/PARTIALLY_REFUNDED values.
+  it('attaches a derived refundState to each payment, computed from its own refunds', async () => {
+    prisma.invoice.findFirst.mockResolvedValue({ id: 'inv-1' });
+    prisma.payment.findMany.mockResolvedValue([
+      { id: 'pay-1', amount: 1000, status: 'SUCCESS', refunds: [] },
+      { id: 'pay-2', amount: 1000, status: 'SUCCESS', refunds: [{ status: 'COMPLETED', amount: 400 }] },
+      { id: 'pay-3', amount: 1000, status: 'SUCCESS', refunds: [{ status: 'COMPLETED', amount: 1000 }] },
+    ]);
+
+    const result = await service.getPaymentHistory('t-1', 'inv-1', null);
+
+    expect(result.find((p: any) => p.id === 'pay-1').refundState).toBe('NONE');
+    expect(result.find((p: any) => p.id === 'pay-2').refundState).toBe('PARTIAL');
+    expect(result.find((p: any) => p.id === 'pay-3').refundState).toBe('FULL');
+    // Original payment fields survive the mapping, not just refundState.
+    expect(result.find((p: any) => p.id === 'pay-1').status).toBe('SUCCESS');
+  });
 });
 
 // ── FEE-1: payment-confirmation atomicity + per-invoice serialization ──────
