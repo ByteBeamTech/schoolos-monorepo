@@ -27,6 +27,8 @@ model Guardian {
   // 🔗 Relations
   studentLinks GuardianStudent[]
   documents    Document[]
+  // M12 (redesigned roadmap): payer identity on Payment.
+  paymentsMade Payment[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 

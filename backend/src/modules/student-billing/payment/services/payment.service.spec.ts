@@ -475,7 +475,7 @@ describe('PaymentService settlement — atomicity and concurrency (FEE-1)', () =
   });
 
   describe('recordOffline', () => {
-    const dto = { invoiceId: 'inv-1', amount: 1000, paymentMethod: 'CASH', referenceNumber: 'REF-1' };
+    const dto = { invoiceId: 'inv-1', amount: 1000, paymentMethod: 'CASH', referenceNumber: 'REF-1', payerName: 'Parent Name' };
 
     it('creates payment, updates the invoice and writes the receipt in ONE transaction', async () => {
       await service.recordOffline('t-1', dto as any, 'actor-1');
@@ -687,7 +687,7 @@ describe('PaymentService.generateReceipt — one receipt per payment (FEE-1)', (
 
   const offline = (amount: number, ref: string) =>
     service.recordOffline('t-1', {
-      invoiceId: 'inv-1', amount, paymentMethod: 'CASH', referenceNumber: ref,
+      invoiceId: 'inv-1', amount, paymentMethod: 'CASH', referenceNumber: ref, payerName: 'Parent Name',
     } as any, 'actor-1');
 
   it('two partial payments on the SAME invoice each get their own receipt', async () => {
@@ -820,7 +820,7 @@ describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
   });
 
   const dto = (over: any = {}) => ({
-    invoiceId: 'inv-1', amount: 1000, paymentMethod: 'CASH', ...over,
+    invoiceId: 'inv-1', amount: 1000, paymentMethod: 'CASH', payerName: 'Parent Name', ...over,
   });
 
   describe('key derivation', () => {
@@ -849,6 +849,43 @@ describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
       expect((service as any).offlinePaymentReference('t-1', dto({ paymentMethod: 'CHEQUE' }))).not.toBe(base);
       expect((service as any).offlinePaymentReference('t-1', dto({ invoiceId: 'inv-2' }))).not.toBe(base);
       expect((service as any).offlinePaymentReference('t-2', dto())).not.toBe(base);
+    });
+  });
+
+  describe('M12: payer identity (D-1)', () => {
+    it('rejects when neither payerId nor payerName is provided', async () => {
+      await expect(
+        service.recordOffline('t-1', dto({ payerName: undefined }), 'a-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects when BOTH payerId and payerName are provided -- exactly one, not either-or', async () => {
+      await expect(
+        service.recordOffline('t-1', dto({ payerId: 'guardian-1', payerName: 'Someone' }), 'a-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.payment.create).not.toHaveBeenCalled();
+    });
+
+    it('accepts payerName alone and writes it to the created payment', async () => {
+      await service.recordOffline('t-1', dto({ payerName: 'Driver Ramesh', payerId: undefined }), 'a-1');
+      const created = prisma.payment.create.mock.calls[0][0].data;
+      expect(created.payerName).toBe('Driver Ramesh');
+      expect(created.payerId).toBeNull();
+    });
+
+    it('accepts payerId alone and writes it to the created payment', async () => {
+      await service.recordOffline('t-1', dto({ payerId: 'guardian-1', payerName: undefined }), 'a-1');
+      const created = prisma.payment.create.mock.calls[0][0].data;
+      expect(created.payerId).toBe('guardian-1');
+      expect(created.payerName).toBeNull();
+    });
+
+    it('validates payer identity BEFORE the invoice lookup -- fails fast, no wasted query', async () => {
+      await expect(
+        service.recordOffline('t-1', dto({ payerName: undefined }), 'a-1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.invoice.findFirst).not.toHaveBeenCalled();
     });
   });
 
@@ -945,5 +982,86 @@ describe('PaymentService.recordOffline — idempotency (FEE-1)', () => {
       ).rejects.toThrow(/exceeds due/);
       expect(prisma.payment.create).not.toHaveBeenCalled();
     });
+  });
+});
+
+// M12 (redesigned roadmap, D-1): initiateRazorpay had zero test coverage
+// of any kind before this milestone -- confirmed by search, not assumed.
+// Scoped here specifically to what M12 actually requires ("payer recorded
+// on offline and gateway paths"), not a full initiateRazorpay test suite;
+// building exhaustive Razorpay-SDK/config-edge-case coverage would be
+// real scope creep beyond this milestone.
+describe('PaymentService.initiateRazorpay — payer identity (M12)', () => {
+  let service: PaymentService;
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      invoice: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'inv-1', branchId: 'b-1', status: 'SENT', currency: 'INR', invoiceNumber: 'INV-2026-00001',
+        }),
+      },
+      payment: {
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'pay-1', ...data })),
+      },
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        PaymentService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { logPayment: jest.fn() } },
+        // Deliberately empty string: not the ''.includes('xxxxxxxxxx')
+        // real-key branch, so initiateRazorpay takes its own
+        // "not configured -- mock order" path without needing to mock
+        // the Razorpay SDK at all.
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('') } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: InvoiceService, useValue: {} },
+        { provide: LateFeeService, useValue: {} },
+        { provide: LedgerService, useValue: { recordPaymentCompleted: jest.fn(), recordRefundCompleted: jest.fn() } },
+        { provide: PaymentAllocationService, useValue: { record: jest.fn() } },
+      ],
+    }).compile();
+    service = module.get(PaymentService);
+  });
+
+  const dto = (over: any = {}) => ({
+    invoiceId: 'inv-1', gateway: 'RAZORPAY', amount: 1000, payerName: 'Parent Name', ...over,
+  });
+
+  it('rejects when neither payerId nor payerName is provided', async () => {
+    await expect(
+      service.initiateRazorpay('t-1', dto({ payerName: undefined }) as any, 'actor-1'),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects when BOTH payerId and payerName are provided', async () => {
+    await expect(
+      service.initiateRazorpay('t-1', dto({ payerId: 'guardian-1' }) as any, 'actor-1'),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('validates payer identity BEFORE the invoice lookup -- fails fast, no wasted query', async () => {
+    await expect(
+      service.initiateRazorpay('t-1', dto({ payerName: undefined }) as any, 'actor-1'),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.invoice.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('accepts payerName alone and writes it to the created payment', async () => {
+    await service.initiateRazorpay('t-1', dto({ payerName: 'Driver Ramesh' }) as any, 'actor-1');
+    const created = prisma.payment.create.mock.calls[0][0].data;
+    expect(created.payerName).toBe('Driver Ramesh');
+    expect(created.payerId).toBeNull();
+  });
+
+  it('accepts payerId alone and writes it to the created payment', async () => {
+    await service.initiateRazorpay('t-1', dto({ payerId: 'guardian-1', payerName: undefined }) as any, 'actor-1');
+    const created = prisma.payment.create.mock.calls[0][0].data;
+    expect(created.payerId).toBe('guardian-1');
+    expect(created.payerName).toBeNull();
   });
 });

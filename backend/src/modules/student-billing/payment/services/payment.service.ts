@@ -51,6 +51,10 @@ export class PaymentService {
 
   // ── Initiate Razorpay ─────────────────────────────────────────────────────
   async initiateRazorpay(tenantId: string, dto: InitiatePaymentDto, actorId: string) {
+    // M12: payer identity, validated before any real work (gateway order
+    // creation, etc.) so a bad request fails fast.
+    this.validatePayerIdentity(dto.payerId, dto.payerName);
+
     const invoice = await this.prisma.invoice.findFirst({ where: { id: dto.invoiceId, tenantId } });
     if (!invoice) throw new NotFoundException(`Invoice not found: ${dto.invoiceId}`);
     if (invoice.status === 'PAID') throw new BadRequestException('Invoice already paid.');
@@ -74,7 +78,7 @@ export class PaymentService {
       data: {
         tenantId, branchId: invoice.branchId, invoiceId: dto.invoiceId, gateway: 'RAZORPAY',
         gatewayOrderId: razorpayOrder.id, amount: dto.amount, currency: invoice.currency,
-        status: 'PENDING', payerName: dto.payerName ?? null,
+        status: 'PENDING', payerId: dto.payerId ?? null, payerName: dto.payerName ?? null,
         payerEmail: dto.payerEmail ?? null, payerPhone: dto.payerPhone ?? null,
       },
     });
@@ -253,6 +257,21 @@ export class PaymentService {
    * process-wide, so a collision with another key costs spurious
    * serialization, never correctness.
    */
+  /**
+   * M12 (redesigned roadmap, D-1): "exactly one of payerId/payerName",
+   * per the frozen spec, literally -- neither both nor neither. Shared by
+   * initiateRazorpay and recordOffline rather than duplicated, since both
+   * need the identical rule at their identical "recording" moment.
+   */
+  private validatePayerIdentity(payerId?: string, payerName?: string): void {
+    if (!payerId && !payerName) {
+      throw new BadRequestException('Either payerId or payerName is required.');
+    }
+    if (payerId && payerName) {
+      throw new BadRequestException('Provide exactly one of payerId or payerName, not both.');
+    }
+  }
+
   private settlementLockKey(invoiceId: string): number {
     return invoiceId
       .split('')
@@ -329,6 +348,14 @@ export class PaymentService {
       return { payment: alreadyRecorded, receipt: alreadyRecorded.receipt };
     }
 
+    // M12: payer identity, validated before any real work (invoice lookup,
+    // due-amount check, etc.) so a bad request fails fast. Deliberately
+    // AFTER the retry check above: a retry that already succeeded should
+    // still return cleanly even if this specific call happened to omit
+    // payer fields a client normally sends -- the payer was already
+    // recorded on the original attempt.
+    this.validatePayerIdentity(dto.payerId, dto.payerName);
+
     const invoice = await this.prisma.invoice.findFirst({ where: { id: dto.invoiceId, tenantId } });
     if (!invoice) throw new NotFoundException(`Invoice not found: ${dto.invoiceId}`);
     if (invoice.status === 'PAID') throw new BadRequestException('Invoice already paid.');
@@ -365,6 +392,7 @@ export class PaymentService {
             amount: dto.amount, currency: invoice.currency, status: 'SUCCESS',
             paymentMethod:   dto.paymentMethod,
             gatewayPaymentId: reference,
+            payerId: dto.payerId ?? null, payerName: dto.payerName ?? null,
             paidAt: new Date(),
           },
         });

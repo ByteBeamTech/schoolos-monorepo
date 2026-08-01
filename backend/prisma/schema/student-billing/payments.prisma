@@ -28,6 +28,17 @@ model Payment {
   payerName        String?
   payerEmail       String?
   payerPhone       String?
+  // M12 (redesigned roadmap, D-1): nullable payer identity. Historical
+  // payments are NOT back-attributed by migration -- inferring a payer
+  // from old data would be fabrication, per the frozen spec. Validated
+  // "exactly one of payerId/payerName" in the service layer, not here --
+  // counter cash is sometimes tendered by a relative, driver, or
+  // employer, so payerName stays the required fallback when there's no
+  // Guardian record to point at. The guardian link is deliberately NOT
+  // required to match any allocated student -- a payer may legitimately
+  // pay for a child they are not the registered guardian of.
+  payerId          String?
+  payer             Guardian?              @relation(fields: [payerId], references: [id])
   failureReason    String?
   webhookPayload   Json?
   paidAt           DateTime?
@@ -51,6 +62,7 @@ model Payment {
   @@index([invoiceId])
   @@index([status])
   @@index([gatewayPaymentId])
+  @@index([payerId])
 }
 
 model Receipt {

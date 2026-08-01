@@ -57,6 +57,10 @@ export class InitiatePaymentDto {
   @ApiProperty() @IsString() @IsNotEmpty() invoiceId!: string;
   @ApiProperty({ enum: PaymentGateway }) @IsEnum(PaymentGateway) gateway!: PaymentGateway;
   @ApiProperty() @IsNumber() @IsPositive() amount!: number;
+  // M12: payer identity -- exactly one of payerId/payerName required,
+  // validated in the service layer (cross-field XOR isn't expressible
+  // cleanly with a single class-validator decorator here).
+  @ApiPropertyOptional() @IsString() @IsOptional() payerId?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() payerName?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() payerEmail?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() payerPhone?: string;
@@ -74,6 +78,12 @@ export class RecordOfflinePaymentDto {
   @ApiProperty() @IsString() @IsNotEmpty() paymentMethod!: string;
   @ApiPropertyOptional() @IsString() @IsOptional() referenceNumber?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() notes?: string;
+  // M12: payer identity -- exactly one of payerId/payerName required,
+  // validated in the service layer. payerName is the required fallback
+  // when there's no Guardian to point at: counter cash is sometimes
+  // tendered by a relative, driver, or employer.
+  @ApiPropertyOptional() @IsString() @IsOptional() payerId?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() payerName?: string;
 }
 
 export enum DiscountCategory {
