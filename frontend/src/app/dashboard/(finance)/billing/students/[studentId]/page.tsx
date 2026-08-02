@@ -10,7 +10,7 @@
 
 import { use, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { StudentSummaryCard } from "@/components/billing/StudentSummaryCard";
@@ -20,13 +20,16 @@ import { feePeriodStatusVariant, feePeriodStatusIcon, feePeriodStatusLabel } fro
 import { buildTimeline, TIMELINE_ICONS, timelineEventDescription } from "@/lib/billing/timeline";
 import { fmt, fmtDateTime } from "@/lib/format";
 import { PAYMENT_METHODS } from "@/lib/billing/payment-method";
+import { DISCOUNT_CATEGORIES, DISCOUNT_TYPES } from "@/lib/billing/discount-options";
+import { apiClient } from "@/lib/api";
+import { useToast } from "@/lib/use-toast";
 
 export default function StudentFinancialProfilePage({ params }: { params: Promise<{ studentId: string }> }) {
   const { studentId } = use(params);
   const router = useRouter();
 
   const { data: student, loading: studentLoading } = useStudent(studentId);
-  const { invoices, discounts, feePlans, loading: billingLoading } = useStudentBilling(studentId);
+  const { invoices, discounts, feePlans, loading: billingLoading, refetch: refetchBilling } = useStudentBilling(studentId);
 
   const grouped = useMemo(() => groupFeePeriods(invoices), [invoices]);
   const lastPayment = useMemo(() => {
@@ -82,12 +85,15 @@ export default function StudentFinancialProfilePage({ params }: { params: Promis
               feePlans={feePlans}
               transportRoute={transportRoute}
             />
-            <button
-              onClick={() => router.push(`/dashboard/billing/collect-fee?studentId=${studentId}`)}
-              className="px-3 py-1.5 rounded-md text-sm bg-blue-600 text-white hover:bg-blue-700"
-            >
-              Collect Fee
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => router.push(`/dashboard/billing/collect-fee?studentId=${studentId}`)}
+                className="px-3 py-1.5 rounded-md text-sm bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Collect Fee
+              </button>
+              <RequestDiscountButton studentId={studentId} onCreated={refetchBilling} />
+            </div>
           </div>
         </TabsContent>
 
@@ -260,5 +266,106 @@ function TimelineTab({ invoices, discounts }: { invoices: any[]; discounts: any[
         );
       })}
     </div>
+  );
+}
+
+/**
+ * FDD FR-DISC-02: discount creation happens on a student's Profile, never
+ * as a form on the Discounts page (which is for review, not origination).
+ * studentId is fixed to this page's student -- no picker needed, unlike
+ * the retired Discounts-page version of this form, which had to select a
+ * student since it wasn't already scoped to one.
+ */
+function RequestDiscountButton({ studentId, onCreated }: { studentId: string; onCreated: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    category: "MERIT", type: "PERCENTAGE", value: "", validFrom: "", validUntil: "", reason: "",
+  });
+  const f = (k: string) => (e: any) => setForm((p) => ({ ...p, [k]: e.target.value }));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await apiClient.post("/billing/discounts", {
+        studentId,
+        category: form.category,
+        type: form.type,
+        value: parseFloat(form.value),
+        validFrom: form.validFrom,
+        validUntil: form.validUntil || undefined,
+        reason: form.reason || undefined,
+      });
+      setOpen(false);
+      setForm({ category: "MERIT", type: "PERCENTAGE", value: "", validFrom: "", validUntil: "", reason: "" });
+      toast.success("Discount request submitted");
+      onCreated();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Failed to submit discount request");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border hover:bg-slate-50"
+        style={{ borderColor: "var(--border-light)" }}
+      >
+        <Plus className="w-3.5 h-3.5" /> Request Discount
+      </button>
+      {open && (
+        <div className="mt-2 rounded-lg border bg-white p-4 space-y-3 w-full" style={{ borderColor: "var(--border-light)" }}>
+          <form onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Category *</label>
+              <select required value={form.category} onChange={f("category")}
+                className="w-full px-3 py-2 text-sm border rounded-lg" style={{ borderColor: "var(--border-light)" }}>
+                {DISCOUNT_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Type *</label>
+              <select required value={form.type} onChange={f("type")}
+                className="w-full px-3 py-2 text-sm border rounded-lg" style={{ borderColor: "var(--border-light)" }}>
+                {DISCOUNT_TYPES.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                Value * {form.type === "PERCENTAGE" ? "(0–100%)" : "(₹)"}
+              </label>
+              <input required type="number" min="0" max={form.type === "PERCENTAGE" ? "100" : undefined}
+                value={form.value} onChange={f("value")}
+                className="w-full px-3 py-2 text-sm border rounded-lg" style={{ borderColor: "var(--border-light)" }} />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Valid From *</label>
+              <input required type="date" value={form.validFrom} onChange={f("validFrom")}
+                className="w-full px-3 py-2 text-sm border rounded-lg" style={{ borderColor: "var(--border-light)" }} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Reason</label>
+              <input type="text" value={form.reason} onChange={f("reason")} placeholder="e.g. Sibling discount"
+                className="w-full px-3 py-2 text-sm border rounded-lg" style={{ borderColor: "var(--border-light)" }} />
+            </div>
+            <div className="md:col-span-2 flex gap-2 items-end">
+              <button type="submit" disabled={saving}
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium disabled:opacity-50">
+                {saving ? "Submitting…" : "Submit Request"}
+              </button>
+              <button type="button" onClick={() => setOpen(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-600 text-sm rounded-lg hover:bg-slate-200">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </>
   );
 }
