@@ -27,7 +27,7 @@ export class StudentsController {
   }
 
   @Get()
-  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER', 'ACCOUNTANT')
   async findAll(
 	  @Query('page') page: string,
           @Query('limit') limit: string,
@@ -72,7 +72,7 @@ export class StudentsController {
   }
 
   @Get(':id')
-  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER', 'PARENT')
+  @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER', 'PARENT', 'ACCOUNTANT')
   async findById(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     if (!user.branchId) throw new Error('Branch context constraint verified missing.');
     return this.service.findById(user.tenantId, user.branchId, id);
