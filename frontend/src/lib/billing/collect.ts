@@ -24,12 +24,19 @@ export interface CollectionInput {
   referenceNumber?: string;
   payerId?: string;
   payerName?: string;
+  /** Display-only -- the resolved name shown on the receipt, whether from
+   *  the guardian link or the free-text field. Distinct from payerId/
+   *  payerName above, which are what's actually sent to the backend. */
+  payerLabel?: string;
 }
 
 export interface CollectionLineResult {
   invoiceId: string;
+  invoiceNumber: string;
   label: string;
   amount: number;
+  method: string;
+  payerLabel?: string;
   status: "success" | "failed";
   payment?: { id: string };
   receipt?: { id: string; receiptNumber: string; amount: number; createdAt: string };
@@ -74,12 +81,14 @@ export async function submitCollection(
         payerName: input.payerName || undefined,
       });
       results.push({
-        invoiceId: line.invoiceId, label: line.label, amount: line.applied,
+        invoiceId: line.invoiceId, invoiceNumber: line.invoiceNumber, label: line.label, amount: line.applied,
+        method: input.method, payerLabel: input.payerLabel,
         status: "success", payment: res.data.payment, receipt: res.data.receipt,
       });
     } catch (err) {
       results.push({
-        invoiceId: line.invoiceId, label: line.label, amount: line.applied,
+        invoiceId: line.invoiceId, invoiceNumber: line.invoiceNumber, label: line.label, amount: line.applied,
+        method: input.method, payerLabel: input.payerLabel,
         status: "failed", errorMessage: extractErrorMessage(err),
       });
     }

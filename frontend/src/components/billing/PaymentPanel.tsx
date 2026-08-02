@@ -72,7 +72,7 @@ export function PaymentPanel({ selectedPeriods, student, submitting, onCollect }
   const handleCollect = () => {
     if (!canCollect) return;
     onCollect(
-      { method, referenceNumber: reference || undefined, payerId, payerName: effectivePayerName },
+      { method, referenceNumber: reference || undefined, payerId, payerName: effectivePayerName, payerLabel },
       allocation.lines,
     );
   };

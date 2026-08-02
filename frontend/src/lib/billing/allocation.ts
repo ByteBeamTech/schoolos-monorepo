@@ -12,6 +12,7 @@ import type { FeePeriod } from "./fee-period";
 
 export interface AllocationLine {
   invoiceId: string;
+  invoiceNumber: string;
   label: string;
   periodRemaining: number;
   applied: number;
@@ -45,14 +46,14 @@ export function computeAllocation(periods: FeePeriod[], amount: number): Allocat
   for (const period of periods) {
     if (remaining <= 0) {
       lines.push({
-        invoiceId: period.invoiceId, label: period.label,
+        invoiceId: period.invoiceId, invoiceNumber: period.invoiceNumber, label: period.label,
         periodRemaining: period.remaining, applied: 0, fullyCovered: false,
       });
       continue;
     }
     const applied = Math.min(remaining, period.remaining);
     lines.push({
-      invoiceId: period.invoiceId, label: period.label,
+      invoiceId: period.invoiceId, invoiceNumber: period.invoiceNumber, label: period.label,
       periodRemaining: period.remaining, applied,
       fullyCovered: applied >= period.remaining,
     });

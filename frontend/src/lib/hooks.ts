@@ -260,7 +260,7 @@ export interface Invoice {
   // M5: server-computed, see invoice/overdue.util.ts (backend). The single
   // source of overdue-ness -- never re-derive this from status + dueDate.
   isOverdue?: boolean;
-  student: { firstName: string; lastName: string; admissionNumber: string };
+  student: { id: string; firstName: string; lastName: string; admissionNumber: string };
   items: Array<{
     name: string; amount: number; netAmount: number;
     // Widened for Collect Fee (Sprint 1): these fields already come back
@@ -277,11 +277,12 @@ export interface Invoice {
   lateFees?: Array<{ id: string; amount: number; amountWaived?: number; status?: string }>;
   payments?: Array<{
     id: string; amount: number; status: string; paidAt?: string; paymentMethod?: string;
+    payerId?: string; payerName?: string;
     // M6: derived field, replaces the removed PaymentStatus.REFUNDED/
     // PARTIALLY_REFUNDED values -- see refund/refund-status.util.ts (backend).
     refundState?: "NONE" | "PARTIAL" | "FULL";
   }>;
-  receipts?: Array<{ id: string; receiptNumber: string; createdAt: string }>;
+  receipts?: Array<{ id: string; receiptNumber: string; amount: number; paymentId: string; createdAt: string }>;
 }
 export interface InvoiceStats {
   totalInvoices: number; totalAmount: number; collectedAmount: number;
@@ -294,6 +295,14 @@ export function useInvoices(filters: { studentId?: string; status?: string; acad
   if (filters.academicYear) params.set("academicYear", filters.academicYear);
   const q = params.toString();
   return useApi<Invoice[]>(`/billing/invoices${q ? `?${q}` : ""}`, [q]);
+}
+// Single-invoice fetch (Receipt Detail Sprint 3, and Invoice Detail later)
+// -- reuses the exact same GET /billing/invoices/:id findById() the
+// backend already exposes, the only route that returns a receipt's data,
+// since no dedicated receipt endpoint exists (see BA-5-adjacent finding:
+// ReceiptService.getReceiptUrl() has no controller).
+export function useInvoice(id?: string) {
+  return useApi<Invoice>(id ? `/billing/invoices/${id}` : "", [id]);
 }
 export function useInvoiceStats(academicYear?: string) {
   return useApi<InvoiceStats>(
@@ -312,8 +321,15 @@ export function useInvoiceStats(academicYear?: string) {
 export interface DiscountSummary {
   id: string; category?: { name?: string }; isActive: boolean; approvalStatus: string; appliedAmount: number;
 }
+// Bug fix: GET /billing/fee-plans/student/:id returns FeeAssignment[], not
+// FeePlan[] directly -- confirmed by reading fee-plans.service.ts's
+// getStudentFeePlans() precisely. The plan's own name/id live nested under
+// .feePlan, not at the top level. The previous version of this type
+// (`{id, name, academicYear}`) never matched what this endpoint actually
+// returns.
 export interface FeePlanSummary {
-  id: string; name: string; academicYear?: string;
+  id: string; assignedAt?: string;
+  feePlan: { id: string; name: string; academicYear?: string };
 }
 
 export function useStudentBilling(studentId?: string) {

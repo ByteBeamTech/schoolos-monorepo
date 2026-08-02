@@ -1,16 +1,9 @@
 "use client";
 // frontend/src/app/dashboard/(finance)/billing/collect-fee/page.tsx
 //
-// FDD Section 12 -- Collect Fee. Sprint 1 scope only: page shell, Search,
-// Student Summary Card, Due/Upcoming/Paid sections, Fee Period Card.
-// Payment Panel, Allocation Preview, and Receipt Detail are explicitly out
-// of scope for this sprint (later sprints, per the phased plan) -- this
-// page renders a selection summary and stops there; it does not attempt a
-// partial Payment Panel.
-//
-// FDD Section 3.1 / FR-NAV-04 (Accountant login bypasses Dashboard,
-// straight to this page) is a routing/auth-flow concern outside this
-// sprint's component scope -- not implemented here.
+// FDD Section 12 (Collect Fee) + Section 13 (Receipt Detail, immediate
+// post-collect entry point). Sprint 3 adds the real outcome experience,
+// replacing Sprint 2's minimal interim display.
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -19,13 +12,12 @@ import { StudentSearch } from "@/components/billing/StudentSearch";
 import { StudentSummaryCard } from "@/components/billing/StudentSummaryCard";
 import { DueUpcomingPaidSections } from "@/components/billing/DueUpcomingPaidSections";
 import { PaymentPanel } from "@/components/billing/PaymentPanel";
+import { ReceiptCard, type ReceiptCardData } from "@/components/billing/ReceiptCard";
 import { useStudentBilling, type Student } from "@/lib/hooks";
 import { groupFeePeriods, computeOutstandingSummary, type FeePeriod } from "@/lib/billing/fee-period";
 import { submitCollection, type CollectionInput, type CollectionResult } from "@/lib/billing/collect";
 import type { AllocationLine } from "@/lib/billing/allocation";
-import { fmt, fmtDateTime } from "@/lib/format";
 import { useToast } from "@/lib/use-toast";
-import { CheckCircle2, XCircle } from "lucide-react";
 
 export default function CollectFeePage() {
   const router = useRouter();
@@ -71,9 +63,7 @@ export default function CollectFeePage() {
   };
 
   const handleViewDetails = (invoiceId: string) => {
-    // FDD Section 19 (Invoice Detail) is a later sprint's page. Logged,
-    // not silently swallowed, so this gap is visible during review.
-    console.warn(`Invoice Detail (Section 19) not yet implemented -- invoiceId=${invoiceId}`);
+    router.push(`/dashboard/billing/invoices/${invoiceId}`);
   };
 
   const handleCollect = async (input: CollectionInput, lines: AllocationLine[]) => {
@@ -82,12 +72,8 @@ export default function CollectFeePage() {
       const result = await submitCollection(lines, input);
       setLastResult(result);
       if (result.allSucceeded) {
-        toast.success(
-          result.results.length === 1
-            ? `Payment collected — Receipt ${result.results[0].receipt?.receiptNumber}`
-            : `Payment collected — ${result.results.length} receipts created`,
-        );
         setSelectedIds(new Set());
+        refetch();
       } else if (result.anySucceeded) {
         // FDD Section 7 ("Safe", "Honest"): a genuine partial-failure case
         // -- some money already moved, some didn't. Never a generic
@@ -98,90 +84,169 @@ export default function CollectFeePage() {
         setSelectedIds(new Set(
           result.results.filter((r) => r.status === "failed").map((r) => r.invoiceId),
         ));
+        refetch();
       } else {
         toast.error("Payment could not be collected. No amount was recorded.");
       }
-      refetch();
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleCollectAnother = () => {
+    setLastResult(null);
+    setStudent(null);
+    setSelectedIds(new Set());
+    // FR-SEARCH-05 / FR-RECEIPT-06: StudentSearch's own autoFocus handles
+    // refocus on remount -- unmounting/remounting via `student=null` above
+    // is what triggers that remount.
   };
 
   return (
     <div className="max-w-3xl mx-auto pb-24">
       <PageHeader title="Collect Fee" showBack={false} />
 
-      <StudentSearch onSelect={handleSelectStudent} />
+      {/* FDD Section 13.3/13.4: the immediate post-collect outcome. Takes
+          over the workspace rather than sitting above it -- the rest of
+          the page (search, summary, sections, panel) is hidden, not just
+          visually de-emphasized, matching Receipt Detail being its own
+          distinct moment per the FDD, not a banner bolted onto Collect Fee. */}
+      {lastResult && lastResult.anySucceeded ? (
+        <CollectionOutcome
+          result={lastResult}
+          onViewInvoice={(id) => router.push(`/dashboard/billing/invoices/${id}`)}
+          onCollectAnother={handleCollectAnother}
+        />
+      ) : (
+        <>
+          <StudentSearch onSelect={handleSelectStudent} />
 
-      {student && (
-        <div className="mt-4 space-y-4">
-          {loading ? (
-            <CollectFeeLoadingSkeleton />
-          ) : (
-            <>
-              {lastResult && <CollectionOutcome result={lastResult} />}
+          {student && (
+            <div className="mt-4 space-y-4">
+              {loading ? (
+                <CollectFeeLoadingSkeleton />
+              ) : (
+                <>
+                  {lastResult && !lastResult.anySucceeded && (
+                    <FailedCollectionNotice result={lastResult} />
+                  )}
 
-              <StudentSummaryCard
-                student={student}
-                outstanding={outstanding}
-                discounts={discounts}
-                feePlans={feePlans}
-                onViewProfile={() => router.push(`/dashboard/billing/students/${student.id}`)}
-              />
+                  <StudentSummaryCard
+                    student={student}
+                    outstanding={outstanding}
+                    discounts={discounts}
+                    feePlans={feePlans}
+                    onViewProfile={() => router.push(`/dashboard/billing/students/${student.id}`)}
+                  />
 
-              <DueUpcomingPaidSections
-                grouped={grouped}
-                selectedIds={selectedIds}
-                onSelectionChange={setSelectedIds}
-                onViewDetails={handleViewDetails}
-                // FDD Section 8.10 / Section 24 item 7: advance-payment
-                // permission's backend mechanism is unverified -- false is
-                // the conservative default until that's confirmed, not a
-                // final product decision made by this sprint.
-                advancePaymentAllowed={false}
-              />
+                  <DueUpcomingPaidSections
+                    grouped={grouped}
+                    selectedIds={selectedIds}
+                    onSelectionChange={setSelectedIds}
+                    onViewDetails={handleViewDetails}
+                    // FDD Section 8.10 / Section 24 item 7: advance-payment
+                    // permission's backend mechanism is unverified -- false
+                    // is the conservative default until that's confirmed,
+                    // not a final product decision made by this sprint.
+                    advancePaymentAllowed={false}
+                  />
 
-              <PaymentPanel
-                selectedPeriods={selectedPeriods}
-                student={student}
-                submitting={submitting}
-                onCollect={handleCollect}
-              />
-            </>
+                  <PaymentPanel
+                    selectedPeriods={selectedPeriods}
+                    student={student}
+                    submitting={submitting}
+                    onCollect={handleCollect}
+                  />
+                </>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
 }
 
 /**
- * Interim outcome display for Sprint 2. FDD Section 13 (Receipt Detail) is
- * explicitly a later sprint's own page -- this is not that page, and does
- * not attempt its print/download/Collect-for-another affordances. It
- * exists because "the Collect action" is not meaningfully complete with
- * zero visible outcome; Sprint 3 replaces this block with the real thing.
+ * FDD Section 13.3/13.4 -- Payment Completed / N Receipt(s) Created.
+ * FR-RECEIPT-04: honest about count, never disguises multiple receipts as
+ * one. FR-RECEIPT-05: Print All prints every receipt card together as one
+ * physical output -- print:hidden below scopes the browser's native print
+ * to just this block, not the rest of the app shell.
  */
-function CollectionOutcome({ result }: { result: CollectionResult }) {
+function CollectionOutcome({
+  result, onViewInvoice, onCollectAnother,
+}: {
+  result: CollectionResult;
+  onViewInvoice: (invoiceId: string) => void;
+  onCollectAnother: () => void;
+}) {
+  const successes = result.results.filter((r) => r.status === "success");
+  const receipts: ReceiptCardData[] = successes.map((r) => ({
+    receiptId: r.receipt!.id,
+    receiptNumber: r.receipt!.receiptNumber,
+    amount: r.receipt!.amount,
+    method: r.method,
+    paidAt: r.receipt!.createdAt,
+    payerLabel: r.payerLabel,
+    periodLabel: r.label,
+    invoiceId: r.invoiceId,
+    invoiceNumber: r.invoiceNumber,
+  }));
+  const failures = result.results.filter((r) => r.status === "failed");
+
   return (
-    <div className="rounded-lg border bg-white px-4 py-3 space-y-2" style={{ borderColor: "var(--border-light)" }}>
-      {result.results.map((r) => (
-        <div key={r.invoiceId} className="flex items-center justify-between text-sm">
-          <span className="flex items-center gap-2">
-            {r.status === "success"
-              ? <CheckCircle2 className="w-4 h-4 text-green-600" />
-              : <XCircle className="w-4 h-4 text-red-600" />}
-            {r.label}
-          </span>
-          {r.status === "success" ? (
-            <span className="text-slate-500">
-              {r.receipt?.receiptNumber} · {fmt(r.amount)} · {fmtDateTime(r.receipt?.createdAt)}
-            </span>
-          ) : (
-            <span className="text-red-600">{r.errorMessage}</span>
-          )}
+    <div className="space-y-4">
+      <div className="print:hidden">
+        <p className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+          Payment Completed
+        </p>
+        <p className="text-sm text-slate-500">
+          {receipts.length === 1 ? "Receipt Created" : `${receipts.length} Receipts Created`}
+        </p>
+      </div>
+
+      <div id="receipt-print-area" className="space-y-3">
+        {receipts.map((r) => (
+          <ReceiptCard key={r.receiptId} receipt={r} onViewInvoice={onViewInvoice} onPrint={() => window.print()} />
+        ))}
+      </div>
+
+      {failures.length > 0 && (
+        <div className="print:hidden rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {failures.length} {failures.length === 1 ? "period" : "periods"} could not be collected — reselect and retry: {failures.map((f) => f.label).join(", ")}
         </div>
-      ))}
+      )}
+
+      <div className="print:hidden flex gap-2">
+        <button
+          onClick={() => window.print()}
+          className="px-3 py-1.5 rounded-md text-sm border hover:bg-slate-50"
+          style={{ borderColor: "var(--border-light)" }}
+        >
+          {receipts.length === 1 ? "Print" : "Print All"}
+        </button>
+        <button
+          onClick={onCollectAnother}
+          className="px-3 py-1.5 rounded-md text-sm bg-blue-600 text-white hover:bg-blue-700"
+        >
+          Collect for another
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A total failure (zero lines succeeded) doesn't take over the workspace
+ * the way a success does -- the selection and student context are still
+ * live and worth keeping, since nothing was collected. Shown inline,
+ * above the still-usable Payment Panel, not as a separate takeover screen.
+ */
+function FailedCollectionNotice({ result }: { result: CollectionResult }) {
+  return (
+    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+      Payment could not be collected: {result.results[0]?.errorMessage ?? "Something went wrong. Please try again."}
     </div>
   );
 }
