@@ -18,16 +18,24 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StudentSearch } from "@/components/billing/StudentSearch";
 import { StudentSummaryCard } from "@/components/billing/StudentSummaryCard";
 import { DueUpcomingPaidSections } from "@/components/billing/DueUpcomingPaidSections";
+import { PaymentPanel } from "@/components/billing/PaymentPanel";
 import { useStudentBilling, type Student } from "@/lib/hooks";
-import { groupFeePeriods, computeOutstandingSummary } from "@/lib/billing/fee-period";
-import { fmt } from "@/lib/format";
+import { groupFeePeriods, computeOutstandingSummary, type FeePeriod } from "@/lib/billing/fee-period";
+import { submitCollection, type CollectionInput, type CollectionResult } from "@/lib/billing/collect";
+import type { AllocationLine } from "@/lib/billing/allocation";
+import { fmt, fmtDateTime } from "@/lib/format";
+import { useToast } from "@/lib/use-toast";
+import { CheckCircle2, XCircle } from "lucide-react";
 
 export default function CollectFeePage() {
   const router = useRouter();
+  const { toast } = useToast();
   const [student, setStudent] = useState<Student | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+  const [lastResult, setLastResult] = useState<CollectionResult | null>(null);
 
-  const { invoices, discounts, feePlans, loading } = useStudentBilling(student?.id);
+  const { invoices, discounts, feePlans, loading, refetch } = useStudentBilling(student?.id);
 
   const grouped = useMemo(() => groupFeePeriods(invoices), [invoices]);
 
@@ -47,22 +55,56 @@ export default function CollectFeePage() {
     [grouped, lastPayment],
   );
 
-  const selectedTotal = useMemo(() => {
+  const selectedPeriods: FeePeriod[] = useMemo(() => {
     const all = [...grouped.due, ...grouped.upcoming];
-    return all.filter((p) => selectedIds.has(p.invoiceId)).reduce((sum, p) => sum + p.remaining, 0);
+    // FDD Section 8.8: oldest-first -- the arrays being concatenated from
+    // are each already sorted that way (fee-period.ts), and Due always
+    // precedes Upcoming in application order (a Due period is, by
+    // definition, older than any Upcoming one).
+    return all.filter((p) => selectedIds.has(p.invoiceId));
   }, [grouped, selectedIds]);
 
   const handleSelectStudent = (s: Student) => {
     setStudent(s);
     setSelectedIds(new Set()); // FR-COLLECT-04: no default selection, ever -- including on a fresh student pick
+    setLastResult(null);
   };
 
   const handleViewDetails = (invoiceId: string) => {
-    // FDD Section 19 (Invoice Detail) is a later sprint's page. Sprint 1
-    // does not yet have a route to send this to -- logged, not silently
-    // swallowed, so this gap is visible during review rather than
-    // discovered later as a dead button.
+    // FDD Section 19 (Invoice Detail) is a later sprint's page. Logged,
+    // not silently swallowed, so this gap is visible during review.
     console.warn(`Invoice Detail (Section 19) not yet implemented -- invoiceId=${invoiceId}`);
+  };
+
+  const handleCollect = async (input: CollectionInput, lines: AllocationLine[]) => {
+    setSubmitting(true);
+    try {
+      const result = await submitCollection(lines, input);
+      setLastResult(result);
+      if (result.allSucceeded) {
+        toast.success(
+          result.results.length === 1
+            ? `Payment collected — Receipt ${result.results[0].receipt?.receiptNumber}`
+            : `Payment collected — ${result.results.length} receipts created`,
+        );
+        setSelectedIds(new Set());
+      } else if (result.anySucceeded) {
+        // FDD Section 7 ("Safe", "Honest"): a genuine partial-failure case
+        // -- some money already moved, some didn't. Never a generic
+        // success or generic failure toast here.
+        toast.error(
+          `${result.results.filter((r) => r.status === "success").length} of ${result.results.length} collected. See details below for what needs retrying.`,
+        );
+        setSelectedIds(new Set(
+          result.results.filter((r) => r.status === "failed").map((r) => r.invoiceId),
+        ));
+      } else {
+        toast.error("Payment could not be collected. No amount was recorded.");
+      }
+      refetch();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -77,6 +119,8 @@ export default function CollectFeePage() {
             <CollectFeeLoadingSkeleton />
           ) : (
             <>
+              {lastResult && <CollectionOutcome result={lastResult} />}
+
               <StudentSummaryCard
                 student={student}
                 outstanding={outstanding}
@@ -97,25 +141,47 @@ export default function CollectFeePage() {
                 advancePaymentAllowed={false}
               />
 
-              {/* Sprint 1 stops here. Payment Panel (FDD Section 12.6),
-                  Allocation Preview (12.5), and Receipt Detail (13) are
-                  later-sprint work -- this is a plain summary, not a
-                  partial implementation of any of those. */}
-              {selectedIds.size > 0 && (
-                <div
-                  className="rounded-lg border bg-slate-50 px-4 py-3 text-sm flex items-center justify-between"
-                  style={{ borderColor: "var(--border-light)" }}
-                >
-                  <span className="text-slate-500">
-                    {selectedIds.size} {selectedIds.size === 1 ? "period" : "periods"} selected — {fmt(selectedTotal)}
-                  </span>
-                  <span className="text-xs text-slate-400">Payment Panel — Sprint 2</span>
-                </div>
-              )}
+              <PaymentPanel
+                selectedPeriods={selectedPeriods}
+                student={student}
+                submitting={submitting}
+                onCollect={handleCollect}
+              />
             </>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Interim outcome display for Sprint 2. FDD Section 13 (Receipt Detail) is
+ * explicitly a later sprint's own page -- this is not that page, and does
+ * not attempt its print/download/Collect-for-another affordances. It
+ * exists because "the Collect action" is not meaningfully complete with
+ * zero visible outcome; Sprint 3 replaces this block with the real thing.
+ */
+function CollectionOutcome({ result }: { result: CollectionResult }) {
+  return (
+    <div className="rounded-lg border bg-white px-4 py-3 space-y-2" style={{ borderColor: "var(--border-light)" }}>
+      {result.results.map((r) => (
+        <div key={r.invoiceId} className="flex items-center justify-between text-sm">
+          <span className="flex items-center gap-2">
+            {r.status === "success"
+              ? <CheckCircle2 className="w-4 h-4 text-green-600" />
+              : <XCircle className="w-4 h-4 text-red-600" />}
+            {r.label}
+          </span>
+          {r.status === "success" ? (
+            <span className="text-slate-500">
+              {r.receipt?.receiptNumber} · {fmt(r.amount)} · {fmtDateTime(r.receipt?.createdAt)}
+            </span>
+          ) : (
+            <span className="text-red-600">{r.errorMessage}</span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
