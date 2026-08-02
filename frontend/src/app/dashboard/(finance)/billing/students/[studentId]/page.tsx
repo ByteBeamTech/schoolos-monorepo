@@ -1,258 +1,264 @@
 "use client";
-// frontend/src/app/dashboard/(finance)/billing/students/[studentId]/ledger/page.tsx
-// Single financial truth for one student — invoices, payments, discounts, refunds
+// frontend/src/app/dashboard/(finance)/billing/students/[studentId]/page.tsx
+//
+// FDD Section 14 -- Student Financial Profile. Replaces the legacy
+// StudentLedgerPage (pre-FDD, its own copies of fmt/fmtDate/status-variant
+// logic, a broken inline "Record Payment" form offering payment methods
+// the backend no longer accepts) -- retirement of that legacy form was
+// flagged during the Sprint 1 reuse audit as something to do once this
+// page existed; this commit is that replacement.
 
-import { use }           from "react";
-import { useRouter }     from "next/navigation";
-import {
-  ArrowLeft, CreditCard, FileText, Tag,
-  RefreshCw, TrendingDown, CheckCircle2, Clock,
-} from "lucide-react";
-import { Badge }         from "@/components/ui/badge";
-import { StatCard }      from "@/components/ui/stat-card";
-import { useApi }        from "@/lib/hooks";
-import Link              from "next/link";
+import { use, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { StudentSummaryCard } from "@/components/billing/StudentSummaryCard";
+import { useStudent, useStudentBilling } from "@/lib/hooks";
+import { groupFeePeriods, computeOutstandingSummary, deriveLabel } from "@/lib/billing/fee-period";
+import { feePeriodStatusVariant, feePeriodStatusIcon, feePeriodStatusLabel } from "@/lib/billing/status-badge";
+import { buildTimeline, TIMELINE_ICONS, timelineEventDescription } from "@/lib/billing/timeline";
+import { fmt, fmtDateTime } from "@/lib/format";
+import { PAYMENT_METHODS } from "@/lib/billing/payment-method";
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-function fmt(n: number | string, cur = "INR") {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency", currency: cur, maximumFractionDigits: 2,
-  }).format(Number(n ?? 0));
-}
-function fmtDate(d?: string | null) {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
-function invVariant(s: string, isOverdue: boolean) {
-  if (s === "PAID") return "success";
-  if (isOverdue)    return "error";
-  const m: Record<string, any> = {
-    SENT: "info", PARTIALLY_PAID: "warning", DRAFT: "neutral", CANCELLED: "neutral",
-  };
-  return m[s] ?? "neutral";
-}
-function payVariant(s: string) {
-  return s === "SUCCESS" ? "success" : s === "FAILED" ? "error" : "warning";
-}
-function discountVariant(s: string) {
-  return s === "APPROVED" ? "success" : s === "REJECTED" ? "error" : "warning";
-}
-
-export default function StudentLedgerPage({ params }: { params: Promise<{ studentId: string }> }) {
+export default function StudentFinancialProfilePage({ params }: { params: Promise<{ studentId: string }> }) {
   const { studentId } = use(params);
-  const router        = useRouter();
+  const router = useRouter();
 
-  // All data fetched in parallel
-  const { data: student }   = useApi<any>(`/students/${studentId}`, [studentId]);
-  const { data: invData }   = useApi<any>(`/billing/invoices?studentId=${studentId}&limit=100`, [studentId]);
-  const { data: discounts } = useApi<any[]>(`/billing/discounts?studentId=${studentId}`, [studentId]);
-  const { data: feePlans }  = useApi<any[]>(`/billing/fee-plans/student/${studentId}`, [studentId]);
+  const { data: student, loading: studentLoading } = useStudent(studentId);
+  const { invoices, discounts, feePlans, loading: billingLoading } = useStudentBilling(studentId);
 
-  const invoices: any[]  = (invData as any)?.data ?? [];
-  const discountList     = Array.isArray(discounts) ? discounts : [];
-  const feePlanList      = Array.isArray(feePlans)  ? feePlans  : [];
+  const grouped = useMemo(() => groupFeePeriods(invoices), [invoices]);
+  const lastPayment = useMemo(() => {
+    const all = invoices
+      .flatMap((inv) => inv.payments ?? [])
+      .filter((p) => p.status === "SUCCESS" && p.paidAt)
+      .sort((a, b) => new Date(b.paidAt!).getTime() - new Date(a.paidAt!).getTime());
+    return all[0] ? { amount: all[0].amount, date: all[0].paidAt! } : undefined;
+  }, [invoices]);
+  const outstanding = useMemo(() => computeOutstandingSummary(grouped, lastPayment), [grouped, lastPayment]);
 
-  // Aggregate totals from invoices
-  const totalInvoiced    = invoices.reduce((s, i) => s + Number(i.totalAmount), 0);
-  const totalPaid        = invoices.reduce((s, i) => s + Number(i.paidAmount), 0);
-  const outstanding      = invoices.reduce((s, i) => s + Number(i.dueAmount), 0);
-  const totalDiscounted  = invoices.reduce((s, i) => s + Number(i.discountAmount ?? 0), 0);
-  const overdueCount     = invoices.filter(i => i.isOverdue).length;
+  const loading = studentLoading || billingLoading;
 
-  const cur = invoices[0]?.currency ?? "INR";
+  if (loading || !student) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-4">
+        <div className="h-8 w-32 rounded bg-slate-100 animate-pulse" />
+        <div className="h-24 rounded-lg bg-slate-100 animate-pulse" />
+        <div className="h-64 rounded-lg bg-slate-100 animate-pulse" />
+      </div>
+    );
+  }
+
+  const transportRoute = student.transportAssignment?.route?.name;
 
   return (
-    <div className="max-w-5xl">
-      {/* Back */}
-      <button onClick={() => router.back()}
-        className="flex items-center gap-1.5 text-slate-400 hover:text-slate-700 text-sm mb-5 transition-colors">
+    <div className="max-w-4xl mx-auto">
+      <button
+        onClick={() => router.back()}
+        className="flex items-center gap-1.5 text-slate-400 hover:text-slate-700 text-sm mb-4 transition-colors"
+      >
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
 
-      {/* Student header */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 text-xl font-bold flex-shrink-0">
-              {student?.firstName?.[0] ?? "?"}
-            </div>
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="invoices">Invoices</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger value="receipts">Receipts</TabsTrigger>
+          <TabsTrigger value="refunds">Refunds</TabsTrigger>
+          <TabsTrigger value="timeline">Timeline</TabsTrigger>
+        </TabsList>
+
+        {/* FR-PROFILE-04: same fields Section 11.2/12.3.1 already define,
+            shown identically here -- no new figures introduced. */}
+        <TabsContent value="overview">
+          <div className="space-y-3">
+            <StudentSummaryCard
+              student={student}
+              outstanding={outstanding}
+              discounts={discounts}
+              feePlans={feePlans}
+              transportRoute={transportRoute}
+            />
+            <button
+              onClick={() => router.push(`/dashboard/billing/collect-fee?studentId=${studentId}`)}
+              className="px-3 py-1.5 rounded-md text-sm bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Collect Fee
+            </button>
+          </div>
+        </TabsContent>
+
+        {/* FDD Section 14.4: full list, ALL statuses -- deliberately
+            broader than Collect Fee's Due/Upcoming/Paid, which excludes
+            Draft/Cancelled by design (FDD Section 12.4). */}
+        <TabsContent value="invoices">
+          <InvoicesTab invoices={invoices} onViewDetails={(id) => router.push(`/dashboard/billing/invoices/${id}`)} />
+        </TabsContent>
+
+        <TabsContent value="payments">
+          <PaymentsTab invoices={invoices} />
+        </TabsContent>
+
+        <TabsContent value="receipts">
+          <ReceiptsTab invoices={invoices} onView={(invoiceId, receiptId) =>
+            router.push(`/dashboard/billing/receipts/${invoiceId}?receipt=${receiptId}`)
+          } />
+        </TabsContent>
+
+        {/* FR-PROFILE-02: labeled as incomplete, not presented as a
+            complete independent record -- no refund read endpoint exists
+            on the backend at all (Section 24 item 2). */}
+        <TabsContent value="refunds">
+          <RefundsTab invoices={invoices} />
+        </TabsContent>
+
+        <TabsContent value="timeline">
+          <TimelineTab invoices={invoices} discounts={discounts} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function InvoicesTab({ invoices, onViewDetails }: { invoices: any[]; onViewDetails: (id: string) => void }) {
+  if (invoices.length === 0) {
+    return <p className="text-sm text-slate-400 text-center py-12">No invoices for this student yet.</p>;
+  }
+  return (
+    <div className="rounded-lg border bg-white divide-y" style={{ borderColor: "var(--border-light)" }}>
+      {invoices.map((inv) => {
+        const isFeePeriodRelevant = inv.status !== "DRAFT" && inv.status !== "CANCELLED";
+        const label = isFeePeriodRelevant ? deriveLabel(inv) : inv.invoiceNumber;
+        return (
+          <div key={inv.id} className="flex items-center justify-between px-4 py-3">
             <div>
-              <h1 className="text-xl font-bold text-slate-900">
-                {student?.firstName} {student?.lastName}
-              </h1>
-              <p className="text-sm text-slate-500 mt-0.5">
-                {student?.admissionNumber ?? "—"} · {student?.className ?? student?.classId ?? ""}
-                {student?.sectionName ? ` · ${student.sectionName}` : ""}
-              </p>
-              <p className="text-xs text-slate-400 mt-0.5">{student?.email ?? student?.parentEmail ?? ""}</p>
+              <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{label}</p>
+              <p className="text-xs text-slate-400">{inv.invoiceNumber} · Due {fmtDateTime(inv.dueDate)}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge label={inv.status} variant={inv.status === "PAID" ? "success" : inv.status === "CANCELLED" ? "neutral" : "info"} />
+              <span className="text-sm font-medium">{fmt(inv.dueAmount)} due</span>
+              <button onClick={() => onViewDetails(inv.id)} className="text-xs text-blue-600 hover:underline">
+                View Details
+              </button>
             </div>
           </div>
-          {outstanding > 0 && (
-            <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-center">
-              <p className="text-xs font-semibold text-red-500 uppercase tracking-wide">Outstanding</p>
-              <p className="text-2xl font-bold text-red-600 mt-0.5">{fmt(outstanding, cur)}</p>
-              {overdueCount > 0 && (
-                <p className="text-xs text-red-400 mt-0.5">{overdueCount} overdue</p>
-              )}
+        );
+      })}
+    </div>
+  );
+}
+
+function PaymentsTab({ invoices }: { invoices: any[] }) {
+  const payments = invoices
+    .flatMap((inv) => (inv.payments ?? []).map((p: any) => ({ ...p, invoiceNumber: inv.invoiceNumber })))
+    .sort((a, b) => new Date(b.paidAt ?? 0).getTime() - new Date(a.paidAt ?? 0).getTime());
+
+  if (payments.length === 0) {
+    return <p className="text-sm text-slate-400 text-center py-12">No payments recorded for this student yet.</p>;
+  }
+  return (
+    <div className="rounded-lg border bg-white divide-y" style={{ borderColor: "var(--border-light)" }}>
+      {payments.map((p) => (
+        <div key={p.id} className="flex items-center justify-between px-4 py-3 text-sm">
+          <div>
+            <span style={{ color: "var(--text-primary)" }}>{fmt(p.amount)}</span>
+            <span className="text-slate-400 ml-2">
+              {PAYMENT_METHODS.find((m) => m.value === p.paymentMethod)?.label ?? p.paymentMethod} · {p.invoiceNumber}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {p.refundState && p.refundState !== "NONE" && (
+              <Badge label={p.refundState === "FULL" ? "Refunded" : "Partially Refunded"} variant="warning" />
+            )}
+            <span className="text-xs text-slate-400">{fmtDateTime(p.paidAt)}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReceiptsTab({ invoices, onView }: { invoices: any[]; onView: (invoiceId: string, receiptId: string) => void }) {
+  const receipts = invoices
+    .flatMap((inv) => (inv.receipts ?? []).map((r: any) => ({ ...r, invoiceId: inv.id, invoiceNumber: inv.invoiceNumber })))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  if (receipts.length === 0) {
+    return <p className="text-sm text-slate-400 text-center py-12">No receipts for this student yet.</p>;
+  }
+  return (
+    <div className="rounded-lg border bg-white divide-y" style={{ borderColor: "var(--border-light)" }}>
+      {receipts.map((r) => (
+        <div key={r.id} className="flex items-center justify-between px-4 py-3 text-sm">
+          <div>
+            <span style={{ color: "var(--text-primary)" }}>{r.receiptNumber}</span>
+            <span className="text-slate-400 ml-2">{fmt(r.amount)} · {r.invoiceNumber}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-400">{fmtDateTime(r.createdAt)}</span>
+            <button onClick={() => onView(r.invoiceId, r.id)} className="text-xs text-blue-600 hover:underline">
+              View / Print
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * FR-PROFILE-02 / FDD Section 24 item 2: no refund read endpoint exists on
+ * the backend at all. This tab shows only what's incidentally derivable
+ * from payment.refundState -- never claims to be a complete refund
+ * record, and says so plainly rather than implying more than it can back up.
+ */
+function RefundsTab({ invoices }: { invoices: any[] }) {
+  const refundedPayments = invoices
+    .flatMap((inv) => (inv.payments ?? []).map((p: any) => ({ ...p, invoiceNumber: inv.invoiceNumber })))
+    .filter((p) => p.refundState && p.refundState !== "NONE");
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+        This view is derived from payment records only — the backend has no dedicated refund record or refund history endpoint. It may not reflect every refund for this student.
+      </div>
+      {refundedPayments.length === 0 ? (
+        <p className="text-sm text-slate-400 text-center py-8">No refund activity found in this student's payment history.</p>
+      ) : (
+        <div className="rounded-lg border bg-white divide-y" style={{ borderColor: "var(--border-light)" }}>
+          {refundedPayments.map((p) => (
+            <div key={p.id} className="flex items-center justify-between px-4 py-3 text-sm">
+              <span>{fmt(p.amount)} · {p.invoiceNumber}</span>
+              <Badge label={p.refundState === "FULL" ? "Fully Refunded" : "Partially Refunded"} variant="warning" />
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Invoiced"  value={fmt(totalInvoiced, cur)}   color="blue"  icon={<FileText  className="w-5 h-5" />} />
-        <StatCard label="Total Paid"      value={fmt(totalPaid, cur)}        color="green" icon={<CheckCircle2 className="w-5 h-5" />} />
-        <StatCard label="Outstanding"     value={fmt(outstanding, cur)}      color={outstanding > 0 ? "red" : "green"} icon={<CreditCard className="w-5 h-5" />} />
-        <StatCard label="Total Discounts" value={fmt(totalDiscounted, cur)}  color="purple" icon={<Tag      className="w-5 h-5" />} />
-      </div>
-
-      {/* Fee plans assigned */}
-      {feePlanList.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-4">Assigned Fee Plans</h2>
-          <div className="flex flex-wrap gap-3">
-            {feePlanList.map((fp: any) => (
-              <div key={fp.id} className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
-                <FileText className="w-3.5 h-3.5 text-blue-500" />
-                <div>
-                  <p className="text-xs font-semibold text-blue-800">{fp.feePlan?.name ?? fp.name ?? fp.id}</p>
-                  <p className="text-xs text-blue-400">{fp.academicYear}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Invoices */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-5">
-        <h2 className="text-sm font-semibold text-slate-700 mb-4">
-          Invoices <span className="text-slate-400 font-normal">({invoices.length})</span>
-        </h2>
-        {invoices.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-8">No invoices yet</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  {["Invoice","Due Date","Total","Paid","Due","Status",""].map(h => (
-                    <th key={h} className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide pb-2 pr-4">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {invoices.map((inv: any) => (
-                  <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3 pr-4 font-mono text-xs text-slate-700">{inv.invoiceNumber}</td>
-                    <td className="py-3 pr-4 text-slate-600">
-                      <span className={new Date(inv.dueDate) < new Date() && inv.status !== "PAID" ? "text-red-500 font-medium" : ""}>
-                        {fmtDate(inv.dueDate)}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4 font-medium text-slate-800">{fmt(inv.totalAmount, cur)}</td>
-                    <td className="py-3 pr-4 text-emerald-600">{fmt(inv.paidAmount, cur)}</td>
-                    <td className="py-3 pr-4">
-                      <span className={Number(inv.dueAmount) > 0 ? "text-red-600 font-semibold" : "text-slate-400"}>
-                        {fmt(inv.dueAmount, cur)}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <Badge label={inv.status.replace("_"," ")} variant={invVariant(inv.status, inv.isOverdue)} />
-                    </td>
-                    <td className="py-3">
-                      <Link href={`/dashboard/billing/invoices/${inv.id}`}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors">
-                        View
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t-2 border-slate-200">
-                <tr>
-                  <td colSpan={2} className="pt-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total</td>
-                  <td className="pt-3 font-bold text-slate-900">{fmt(totalInvoiced, cur)}</td>
-                  <td className="pt-3 font-bold text-emerald-700">{fmt(totalPaid, cur)}</td>
-                  <td className="pt-3 font-bold text-red-600">{fmt(outstanding, cur)}</td>
-                  <td colSpan={2} />
-                </tr>
-              </tfoot>
-            </table>
+function TimelineTab({ invoices, discounts }: { invoices: any[]; discounts: any[] }) {
+  const events = buildTimeline(invoices, discounts);
+  if (events.length === 0) {
+    return <p className="text-sm text-slate-400 text-center py-12">No activity recorded for this student yet.</p>;
+  }
+  return (
+    <div className="rounded-lg border bg-white divide-y" style={{ borderColor: "var(--border-light)" }}>
+      {events.map((e, i) => {
+        const Icon = TIMELINE_ICONS[e.type];
+        return (
+          <div key={i} className="flex items-center gap-3 px-4 py-3 text-sm">
+            <Icon className="w-4 h-4 text-slate-400 flex-shrink-0" />
+            <span className="flex-1" style={{ color: "var(--text-primary)" }}>{timelineEventDescription(e)}</span>
+            <span className="text-xs text-slate-400">{fmtDateTime(e.date)}</span>
           </div>
-        )}
-      </div>
-
-      {/* Discounts */}
-      {discountList.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 mb-5">
-          <h2 className="text-sm font-semibold text-slate-700 mb-4">
-            Discounts <span className="text-slate-400 font-normal">({discountList.length})</span>
-          </h2>
-          <div className="space-y-2">
-            {discountList.map((d: any) => (
-              <div key={d.id} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
-                <div>
-                  <p className="text-sm font-medium text-slate-800">
-                    {d.category?.replace("_"," ")} — {d.type === "PERCENTAGE" ? `${d.value}%` : fmt(d.value, cur)}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {fmtDate(d.validFrom)} {d.validUntil ? `→ ${fmtDate(d.validUntil)}` : "· ongoing"}
-                    {d.reason ? ` · ${d.reason}` : ""}
-                  </p>
-                </div>
-                <Badge label={d.approvalStatus} variant={discountVariant(d.approvalStatus)} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* All payments across all invoices */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-        <h2 className="text-sm font-semibold text-slate-700 mb-4">Payment History</h2>
-        {invoices.every((i: any) => !i.payments?.length) ? (
-          <p className="text-sm text-slate-400 text-center py-8">No payments recorded</p>
-        ) : (
-          <div className="space-y-2">
-            {invoices
-              .flatMap((i: any) => (i.payments ?? []).map((p: any) => ({ ...p, invoiceNumber: i.invoiceNumber, invoiceId: i.id })))
-              .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-              .map((p: any) => (
-                <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      p.status === "SUCCESS" ? "bg-emerald-100" : p.status === "FAILED" ? "bg-red-100" : "bg-amber-100"
-                    }`}>
-                      {p.status === "SUCCESS" ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        : p.status === "FAILED" ? <TrendingDown className="w-3.5 h-3.5 text-red-500" />
-                        : <Clock className="w-3.5 h-3.5 text-amber-500" />}
-                    </div>
-                    <div>
-                      <p className="text-sm text-slate-800">
-                        {p.paymentMethod ?? p.gateway}
-                        {p.gatewayPaymentId && p.gateway === "OFFLINE"
-                          ? <span className="text-xs text-slate-400 ml-1">· {p.gatewayPaymentId}</span>
-                          : null}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        <Link href={`/dashboard/billing/invoices/${p.invoiceId}`}
-                          className="hover:text-blue-600 transition-colors">{p.invoiceNumber}</Link>
-                        {" · "}{fmtDate(p.paidAt ?? p.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-slate-900">{fmt(p.amount, cur)}</p>
-                    <Badge label={p.status} variant={payVariant(p.status)} />
-                  </div>
-                </div>
-              ))
-            }
-          </div>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 }

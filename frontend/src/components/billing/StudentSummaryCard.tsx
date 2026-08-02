@@ -23,7 +23,7 @@ interface StudentSummaryCardProps {
    *  is not part of this sprint's data-fetch scope (see collect-fee page). */
   siblings?: Sibling[];
   onSelectSibling?: (studentId: string) => void;
-  onViewProfile: () => void;
+  onViewProfile?: () => void;
   /** FR-SUMMARY-07: Transport is a stated requirement whose backend
    *  feasibility is unverified (FDD Section 24, item 12). Passed as an
    *  optional prop so this component never assumes the data exists --
@@ -82,12 +82,14 @@ export function StudentSummaryCard({
               ))}
             </div>
           )}
-          <button
-            onClick={onViewProfile}
-            className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-0.5 whitespace-nowrap"
-          >
-            View full profile <ChevronRight className="w-3 h-3" />
-          </button>
+          {onViewProfile && (
+            <button
+              onClick={onViewProfile}
+              className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-0.5 whitespace-nowrap"
+            >
+              View full profile <ChevronRight className="w-3 h-3" />
+            </button>
+          )}
         </div>
       </div>
 

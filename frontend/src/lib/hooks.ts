@@ -256,7 +256,7 @@ export interface Invoice {
   id: string; invoiceNumber: string; status: string;
   academicYear: string; currency: string;
   subtotal: number; totalAmount: number; paidAmount: number; dueAmount: number;
-  dueDate: string; paidAt?: string;
+  dueDate: string; paidAt?: string; issuedAt?: string;
   // M5: server-computed, see invoice/overdue.util.ts (backend). The single
   // source of overdue-ness -- never re-derive this from status + dueDate.
   isOverdue?: boolean;
@@ -274,7 +274,7 @@ export interface Invoice {
   // need these and the endpoint's exact include shape can vary by route;
   // Collect Fee's own data fetch (useStudentBilling below) is written
   // defensively against any of these being absent.
-  lateFees?: Array<{ id: string; amount: number; amountWaived?: number; status?: string }>;
+  lateFees?: Array<{ id: string; amount: number; amountWaived?: number; status?: string; appliedAt?: string; waivedAt?: string }>;
   payments?: Array<{
     id: string; amount: number; status: string; paidAt?: string; paymentMethod?: string;
     payerId?: string; payerName?: string;
@@ -288,6 +288,18 @@ export interface InvoiceStats {
   totalInvoices: number; totalAmount: number; collectedAmount: number;
   overdueCount: number; draftCount: number; paidCount: number;
 }
+// Single-student fetch (Sprint 4: Student Financial Profile). Confirmed
+// directly against students.service.ts's findById(): includes section,
+// guardianLinks (with the full Guardian row), and transportAssignment.route
+// -- the last of these resolves the previously-unverified "is Transport
+// route data reachable" question (FDD Section 24, item 12) for real.
+export interface StudentDetail extends Student {
+  transportAssignment?: { route?: { id: string; name: string } } | null;
+}
+export function useStudent(id?: string) {
+  return useApi<StudentDetail>(id ? `/students/${id}` : "", [id]);
+}
+
 export function useInvoices(filters: { studentId?: string; status?: string; academicYear?: string } = {}) {
   const params = new URLSearchParams();
   if (filters.studentId)   params.set("studentId",   filters.studentId);
@@ -319,7 +331,7 @@ export function useInvoiceStats(academicYear?: string) {
 // Fee Plan (FR-SUMMARY-11). Each already exists and is reused as-is per the
 // Student Billing reuse audit.
 export interface DiscountSummary {
-  id: string; category?: { name?: string }; isActive: boolean; approvalStatus: string; appliedAmount: number;
+  id: string; category?: { name?: string }; isActive: boolean; approvalStatus: string; appliedAmount: number; createdAt?: string;
 }
 // Bug fix: GET /billing/fee-plans/student/:id returns FeeAssignment[], not
 // FeePlan[] directly -- confirmed by reading fee-plans.service.ts's

@@ -5,15 +5,15 @@
 // post-collect entry point). Sprint 3 adds the real outcome experience,
 // replacing Sprint 2's minimal interim display.
 
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StudentSearch } from "@/components/billing/StudentSearch";
 import { StudentSummaryCard } from "@/components/billing/StudentSummaryCard";
 import { DueUpcomingPaidSections } from "@/components/billing/DueUpcomingPaidSections";
 import { PaymentPanel } from "@/components/billing/PaymentPanel";
 import { ReceiptCard, type ReceiptCardData } from "@/components/billing/ReceiptCard";
-import { useStudentBilling, type Student } from "@/lib/hooks";
+import { useStudentBilling, useStudent, type Student } from "@/lib/hooks";
 import { groupFeePeriods, computeOutstandingSummary, type FeePeriod } from "@/lib/billing/fee-period";
 import { submitCollection, type CollectionInput, type CollectionResult } from "@/lib/billing/collect";
 import type { AllocationLine } from "@/lib/billing/allocation";
@@ -21,11 +21,26 @@ import { useToast } from "@/lib/use-toast";
 
 export default function CollectFeePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [student, setStudent] = useState<Student | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [lastResult, setLastResult] = useState<CollectionResult | null>(null);
+
+  // FDD Section 14.4: the Profile page's "Collect Fee" action jumps here
+  // pre-loaded with a specific student, via ?studentId=. Fetched through
+  // useStudent (GET /students/:id, now correctly ACCOUNTANT-accessible)
+  // rather than re-running a search -- the student is already known.
+  const preloadStudentId = searchParams.get("studentId") ?? undefined;
+  const { data: preloadedStudent } = useStudent(student ? undefined : preloadStudentId);
+  useEffect(() => {
+    if (preloadedStudent && !student) {
+      setStudent(preloadedStudent);
+      setSelectedIds(new Set());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preloadedStudent]);
 
   const { invoices, discounts, feePlans, loading, refetch } = useStudentBilling(student?.id);
 
