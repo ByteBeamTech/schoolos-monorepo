@@ -130,6 +130,7 @@ export default function CollectFeePage() {
         <CollectionOutcome
           result={lastResult}
           onViewInvoice={(id) => router.push(`/dashboard/billing/invoices/${id}`)}
+          onViewProfile={() => student && router.push(`/dashboard/billing/students/${student.id}`)}
           onCollectAnother={handleCollectAnother}
         />
       ) : (
@@ -190,10 +191,11 @@ export default function CollectFeePage() {
  * to just this block, not the rest of the app shell.
  */
 function CollectionOutcome({
-  result, onViewInvoice, onCollectAnother,
+  result, onViewInvoice, onViewProfile, onCollectAnother,
 }: {
   result: CollectionResult;
   onViewInvoice: (invoiceId: string) => void;
+  onViewProfile: () => void;
   onCollectAnother: () => void;
 }) {
   const successes = result.results.filter((r) => r.status === "success");
@@ -223,7 +225,7 @@ function CollectionOutcome({
 
       <div id="receipt-print-area" className="space-y-3">
         {receipts.map((r) => (
-          <ReceiptCard key={r.receiptId} receipt={r} onViewInvoice={onViewInvoice} onPrint={() => window.print()} />
+          <ReceiptCard key={r.receiptId} receipt={r} onViewInvoice={onViewInvoice} onViewProfile={onViewProfile} onPrint={() => window.print()} />
         ))}
       </div>
 

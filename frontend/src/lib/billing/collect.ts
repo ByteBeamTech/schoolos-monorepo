@@ -51,6 +51,14 @@ export interface CollectionResult {
 
 function extractErrorMessage(err: unknown): string {
   const e = err as any;
+  // Smoke test finding (Scenario 10): the backend's real 403 message is
+  // internal-sounding ("Access denied. Required: X or Y. Your role: Z") --
+  // functional, but not the human-readable translation FR-ERR-01 calls
+  // for. Detected by status code, not by matching the message text, so
+  // this doesn't silently break if the backend's wording changes.
+  if (e?.response?.status === 403) {
+    return "You don't have permission to collect this fee. Contact your administrator if you believe this is a mistake.";
+  }
   return e?.response?.data?.message ?? e?.message ?? "Something went wrong. Please try again.";
 }
 

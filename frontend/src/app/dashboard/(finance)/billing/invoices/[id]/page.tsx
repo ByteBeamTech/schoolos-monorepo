@@ -56,34 +56,16 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
   const { data: inv, loading, refetch } = useApi<any>(`/billing/invoices/${id}`, [id]);
 
-  // Record payment state
-  const [showPayForm, setShowPayForm] = useState(false);
-  const [payForm, setPayForm]         = useState({ amount: "", paymentMethod: "CASH", referenceNumber: "" });
-  const [savingPay, setSavingPay]     = useState(false);
+  // Record Payment (inline form) retired here -- same finding as
+  // billing/page.tsx: offered CHEQUE/NEFT (rejected by the backend's MVP
+  // payment-method allowlist) and never sent payerId/payerName (rejected
+  // by the M12 payer-identity rule). The "Record Payment" action below now
+  // navigates to Collect Fee, pre-loaded with this invoice's student.
 
   // Cancel state
   const [showCancel, setShowCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling]     = useState(false);
-
-  const recordPayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingPay(true);
-    try {
-      await apiClient.post("/billing/payments/record-offline", {
-        invoiceId:       id,
-        amount:          parseFloat(payForm.amount),
-        paymentMethod:   payForm.paymentMethod,
-        referenceNumber: payForm.referenceNumber || undefined,
-      });
-      setShowPayForm(false);
-      setPayForm({ amount: "", paymentMethod: "CASH", referenceNumber: "" });
-      refetch();
-      toast.success("Payment recorded");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? "Failed to record payment");
-    } finally { setSavingPay(false); }
-  };
 
   const cancelInvoice = async () => {
     if (!cancelReason.trim()) { toast.error("Reason is required"); return; }
@@ -169,9 +151,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
         {/* Actions */}
         <div className="flex flex-wrap gap-2 mt-5 pt-4 border-t border-slate-100">
           {canPay && (
-            <button onClick={() => { setShowPayForm(p => !p); setPayForm(p => ({ ...p, amount: String(dueAmt) })); }}
+            <button onClick={() => router.push(`/dashboard/billing/collect-fee?studentId=${inv.student?.id}`)}
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg font-medium transition-colors">
-              <CreditCard className="w-4 h-4" /> Record Payment
+              <CreditCard className="w-4 h-4" /> Collect Fee
             </button>
           )}
           {canSend && (
@@ -202,42 +184,6 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             </button>
           )}
         </div>
-
-        {/* Record payment form */}
-        {showPayForm && (
-          <form onSubmit={recordPayment} className="mt-4 pt-4 border-t border-slate-100">
-            <p className="text-sm font-semibold text-slate-700 mb-3">Record Payment</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Amount *</label>
-                <input required type="number" min="1" step="0.01" value={payForm.amount}
-                  onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Method *</label>
-                <select value={payForm.paymentMethod} onChange={e => setPayForm(p => ({ ...p, paymentMethod: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                  {["CASH","CHEQUE","NEFT","UPI","CARD"].map(m => <option key={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Reference No.</label>
-                <input type="text" placeholder="UTR / Cheque / Txn"
-                  value={payForm.referenceNumber} onChange={e => setPayForm(p => ({ ...p, referenceNumber: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-              </div>
-            </div>
-            <div className="flex gap-2 mt-3">
-              <button type="submit" disabled={savingPay}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors">
-                {savingPay ? "Recording..." : "Record"}
-              </button>
-              <button type="button" onClick={() => setShowPayForm(false)}
-                className="px-4 py-2 bg-slate-100 text-slate-600 text-sm rounded-lg hover:bg-slate-200 transition-colors">Cancel</button>
-            </div>
-          </form>
-        )}
 
         {/* Cancel form */}
         {showCancel && (

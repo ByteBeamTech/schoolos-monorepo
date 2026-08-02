@@ -26,6 +26,11 @@ interface ReceiptCardProps {
   receipt: ReceiptCardData;
   onViewInvoice: (invoiceId: string) => void;
   onPrint: (receiptId: string) => void;
+  /** Smoke test finding (Scenario 9): no path existed from Receipt Detail
+   *  back to the Student Financial Profile. Optional so a caller without a
+   *  resolvable student id (none currently) can omit it cleanly rather
+   *  than render a dead link. */
+  onViewProfile?: () => void;
   /** FR-RECEIPT-07: only rendered when the caller has adjacent receipts to
    *  navigate to -- this component never assumes a sequence exists. */
   onPrevious?: () => void;
@@ -35,7 +40,7 @@ interface ReceiptCardProps {
 }
 
 export function ReceiptCard({
-  receipt, onViewInvoice, onPrint, onPrevious, onNext, hasPrevious, hasNext,
+  receipt, onViewInvoice, onPrint, onViewProfile, onPrevious, onNext, hasPrevious, hasNext,
 }: ReceiptCardProps) {
   const methodLabel = PAYMENT_METHODS.find((m) => m.value === receipt.method)?.label ?? receipt.method;
 
@@ -78,6 +83,14 @@ export function ReceiptCard({
           >
             › View Invoice ({receipt.invoiceNumber})
           </button>
+          {onViewProfile && (
+            <button
+              onClick={onViewProfile}
+              className="ml-2 text-blue-600 hover:underline text-xs"
+            >
+              › Student Profile
+            </button>
+          )}
         </div>
 
         {/* FR-RECEIPT-08: creation only -- print/reprint events are not

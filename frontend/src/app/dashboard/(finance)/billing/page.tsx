@@ -2,7 +2,7 @@
 import { HelpTip } from "@/components/ui/help-tip";
 import { HELP }    from "@/lib/help-content";
 import { useState, useEffect }  from "react";
-import { useSearchParams }  from "next/navigation";
+import { useSearchParams, useRouter }  from "next/navigation";
 import { CreditCard, Plus, Send, FileText, DollarSign } from "lucide-react";
 import { PageHeader }        from "@/components/ui/page-header";
 import { StatCard }          from "@/components/ui/stat-card";
@@ -32,6 +32,7 @@ function fmt(n: number) {
 
 export default function BillingPage() {
   const { toast } = useToast();
+  const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("invoices");
 
@@ -248,29 +249,41 @@ export default function BillingPage() {
     } finally { setSavingInvoice(false); }
   };
 
-  // ── Record payment ───────────────────────────────────────────────────────
-  const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
-  const [payForm,  setPayForm]  = useState({ amount: "", paymentMethod: "CASH", referenceNumber: "" });
-  const [savingPayment, setSavingPayment] = useState(false);
+  // ── Bulk generate invoices (FR-INV-02) ───────────────────────────────────
+  // FR-INV-03: verified directly against invoice.service.ts's bulkGenerate()
+  // -- it runs synchronously, per-student try/catch, and returns
+  // {generated, skipped, errors[]} rather than throwing on a partial
+  // failure. The existing duplicate-invoice guard inside generate() makes
+  // retrying this call after a timeout safe, not corrupting -- shown here
+  // as an explicit "this may take a moment" note, not implied instant.
+  const [showBulkForm, setShowBulkForm] = useState(false);
+  const [savingBulk, setSavingBulk] = useState(false);
+  const [bulkForm, setBulkForm] = useState({ feePlanId: "", dueDate: "" });
+  const [bulkResult, setBulkResult] = useState<{ generated: number; skipped: number; errors: string[] } | null>(null);
 
-  const recordPayment = async (e: React.FormEvent) => {
+  const bulkGenerateInvoices = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payingInvoiceId) return;
-    setSavingPayment(true);
+    setSavingBulk(true);
+    setBulkResult(null);
     try {
-      await apiClient.post("/billing/payments/record-offline", {
-        invoiceId:       payingInvoiceId,
-        amount:          parseFloat(payForm.amount),
-        paymentMethod:   payForm.paymentMethod,
-        referenceNumber: payForm.referenceNumber || undefined,
-      });
-      setPayingInvoiceId(null);
-      setPayForm({ amount: "", paymentMethod: "CASH", referenceNumber: "" });
+      const res = await apiClient.post("/billing/invoices/bulk-generate", bulkForm);
+      setBulkResult(res.data);
+      setShowBulkForm(false);
+      setBulkForm({ feePlanId: "", dueDate: "" });
       refetchInvoices();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? "Failed to record payment");
-    } finally { setSavingPayment(false); }
+      toast.error(err?.response?.data?.message ?? "Failed to bulk generate invoices");
+    } finally { setSavingBulk(false); }
   };
+
+  // Record Payment (inline modal) retired here -- offered CHEQUE/NEFT
+  // (rejected by the backend's MVP payment-method allowlist) and never
+  // sent payerId/payerName (rejected by the M12 payer-identity rule).
+  // Confirmed broken during the Sprint 1 reuse audit, flagged for
+  // retirement once Collect Fee existed as the proper replacement --
+  // this is that retirement. The "Pay" action below now navigates to
+  // Collect Fee, pre-loaded with the invoice's student via ?studentId=
+  // (the same mechanism Student Profile's "Collect Fee" button uses).
 
   const sendInvoice = async (id: string) => {
     try {
@@ -307,10 +320,16 @@ export default function BillingPage() {
         </div>
         <div className="pb-1">
           {tab === "invoices" && (
-            <button onClick={() => setShowInvoiceForm(p => !p)}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-              <Plus className="w-4 h-4" /> Generate Invoice
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => setShowInvoiceForm(p => !p)}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                <Plus className="w-4 h-4" /> Generate Invoice
+              </button>
+              <button onClick={() => setShowBulkForm(p => !p)}
+                className="flex items-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                <Plus className="w-4 h-4" /> Bulk Generate
+              </button>
+            </div>
           )}
           {tab === "fee-plans" && (
             <button onClick={() => setShowPlanForm(p => !p)}
@@ -369,41 +388,60 @@ export default function BillingPage() {
             </div>
           )}
 
-          {/* Record payment modal */}
-          {payingInvoiceId && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
-                <h2 className="text-lg font-semibold text-slate-900 mb-4">Record Payment</h2>
-                <form onSubmit={recordPayment} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Amount (₹) *</label>
-                    <input required type="number" min="1" step="0.01"
-                      value={payForm.amount} onChange={e => setPayForm(p => ({ ...p, amount: e.target.value }))}
-                      className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Payment Method *</label>
-                    <select value={payForm.paymentMethod} onChange={e => setPayForm(p => ({ ...p, paymentMethod: e.target.value }))}
-                      className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      {["CASH","CHEQUE","NEFT","UPI","CARD"].map(m => <option key={m}>{m}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Reference Number</label>
-                    <input type="text" placeholder="Cheque/UTR/Txn no."
-                      value={payForm.referenceNumber} onChange={e => setPayForm(p => ({ ...p, referenceNumber: e.target.value }))}
-                      className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <button type="button" onClick={() => setPayingInvoiceId(null)}
-                      className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm rounded-lg transition-colors">Cancel</button>
-                    <button type="submit" disabled={savingPayment}
-                      className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors">
-                      {savingPayment ? "Recording..." : "Record Payment"}
-                    </button>
-                  </div>
-                </form>
-              </div>
+          {/* Bulk generate form -- FR-INV-02/03 */}
+          {showBulkForm && (
+            <div className="bg-white border border-blue-100 rounded-xl p-5 mb-5 shadow-sm">
+              <h3 className="font-semibold text-slate-900 mb-1 text-sm">Bulk Generate Invoices</h3>
+              <p className="text-xs text-slate-500 mb-4">
+                Generates one invoice per student assigned to the selected fee plan. This may take a moment for large classes.
+              </p>
+              <form onSubmit={bulkGenerateInvoices} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Fee Plan *</label>
+                  <select required value={bulkForm.feePlanId}
+                    onChange={e => setBulkForm(p => ({ ...p, feePlanId: e.target.value }))}
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Select plan</option>
+                    {feePlans?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Due Date *</label>
+                  <input required type="date" value={bulkForm.dueDate}
+                    onChange={e => setBulkForm(p => ({ ...p, dueDate: e.target.value }))}
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div className="flex gap-2 items-end">
+                  <button type="submit" disabled={savingBulk}
+                    className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors">
+                    {savingBulk ? "Generating…" : "Generate for All Assigned"}
+                  </button>
+                  <button type="button" onClick={() => setShowBulkForm(false)}
+                    className="px-4 py-2.5 bg-slate-100 text-slate-600 text-sm rounded-lg hover:bg-slate-200 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Bulk generate result -- FR-INV-03: shown honestly, never a
+              silent "done" with no indication of what actually happened. */}
+          {bulkResult && (
+            <div className="mb-5 px-4 py-3 rounded-lg bg-slate-50 border border-slate-200 text-sm">
+              <p className="font-medium text-slate-900">
+                {bulkResult.generated} invoice{bulkResult.generated === 1 ? "" : "s"} generated
+                {bulkResult.skipped > 0 && `, ${bulkResult.skipped} skipped`}.
+              </p>
+              {bulkResult.errors.length > 0 && (
+                <ul className="mt-1.5 text-xs text-amber-700 list-disc list-inside space-y-0.5">
+                  {bulkResult.errors.slice(0, 5).map((e, i) => <li key={i}>{e}</li>)}
+                  {bulkResult.errors.length > 5 && <li>…and {bulkResult.errors.length - 5} more</li>}
+                </ul>
+              )}
+              <button onClick={() => setBulkResult(null)} className="text-xs text-slate-400 hover:text-slate-600 mt-1.5">
+                Dismiss
+              </button>
             </div>
           )}
 
@@ -461,8 +499,8 @@ export default function BillingPage() {
                           </button>
                         )}
                         {["SENT","PARTIALLY_PAID"].includes(inv.status) && (
-                          <button onClick={() => { setPayingInvoiceId(inv.id); setPayForm(p => ({ ...p, amount: String(inv.dueAmount) })); }}
-                            className="text-xs text-emerald-600 hover:text-emerald-800 font-medium">Pay</button>
+                          <button onClick={() => router.push(`/dashboard/billing/collect-fee?studentId=${inv.student.id}`)}
+                            className="text-xs text-emerald-600 hover:text-emerald-800 font-medium">Collect Fee</button>
                         )}
                       </div>
                     </td>
