@@ -447,6 +447,12 @@ describe('LateFeeService.waiveLateFee', () => {
           return Promise.resolve({ ...invoice });
         }),
       },
+      // Late Fee FDD v2 Sprint 1: waiveLateFee() now also writes a
+      // LateFeeWaiver row per call (additive to the existing lateFee/
+      // invoice mocks above, not a replacement for them).
+      lateFeeWaiver: {
+        create: jest.fn().mockResolvedValue({ id: 'lfw-1' }),
+      },
       $transaction: jest.fn((cb: any) => cb(prisma)),
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
     };
@@ -566,5 +572,79 @@ describe('LateFeeService.waiveLateFee', () => {
     // The whole mock transaction ran inline (cb(prisma)), so a rejected
     // invoice.update propagates and the caller must treat it as a full
     // rollback -- nothing here silently swallows it.
+  });
+
+  // Late Fee FDD v2 Section 1.4 / Implementation Roadmap Sprint 1: the
+  // precise scenario the FDD names as currently broken -- each waiver
+  // call previously overwrote LateFee.waivedAt/waivedById/reason,
+  // silently erasing the previous waiver's audit trail. These two tests
+  // are the proof this sprint actually closes that gap, not just a
+  // restatement of the intention.
+  it('a second partial waiver creates a SECOND LateFeeWaiver row, not an overwrite of the first', async () => {
+    await service.waiveLateFee('t-1', 'lf-1', 30, 'actor-1', 'first goodwill gesture');
+    await service.waiveLateFee('t-1', 'lf-1', 20, 'actor-2', 'second goodwill gesture');
+
+    expect(prisma.lateFeeWaiver.create).toHaveBeenCalledTimes(2);
+    expect(prisma.lateFeeWaiver.create).toHaveBeenNthCalledWith(1, {
+      data: { lateFeeId: 'lf-1', amount: expect.anything(), waivedById: 'actor-1', reason: 'first goodwill gesture' },
+    });
+    expect(prisma.lateFeeWaiver.create).toHaveBeenNthCalledWith(2, {
+      data: { lateFeeId: 'lf-1', amount: expect.anything(), waivedById: 'actor-2', reason: 'second goodwill gesture' },
+    });
+  });
+
+  it('LateFee.amountWaived after two partial waivers equals the sum of both waiver amounts', async () => {
+    await service.waiveLateFee('t-1', 'lf-1', 30, 'actor-1', 'first');
+    await service.waiveLateFee('t-1', 'lf-1', 20, 'actor-2', 'second');
+
+    const calls = prisma.lateFeeWaiver.create.mock.calls;
+    const waiverTotal = calls.reduce(
+      (sum: number, [{ data }]: any) => sum + Number(data.amount),
+      0,
+    );
+    expect(waiverTotal).toBe(50);
+    expect(Number(fee.amountWaived)).toBe(50);
+  });
+});
+
+describe('LateFeeService.getWaivers', () => {
+  const { NotFoundException } = require('@nestjs/common');
+  let service: LateFeeService;
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      lateFee: { findFirst: jest.fn() },
+      lateFeeWaiver: { findMany: jest.fn() },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LateFeeService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { logUpdate: jest.fn() } },
+        { provide: LedgerService, useValue: {} },
+        { provide: PaymentAllocationService, useValue: {} },
+      ],
+    }).compile();
+    service = module.get(LateFeeService);
+  });
+
+  it('404s when the fee does not exist in this tenant, without querying waivers at all', async () => {
+    prisma.lateFee.findFirst.mockResolvedValue(null);
+    await expect(service.getWaivers('t-1', 'missing')).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.lateFeeWaiver.findMany).not.toHaveBeenCalled();
+  });
+
+  it('lists waivers newest first, scoped to the given fee', async () => {
+    prisma.lateFee.findFirst.mockResolvedValue({ id: 'lf-1', tenantId: 't-1' });
+    prisma.lateFeeWaiver.findMany.mockResolvedValue([{ id: 'w-2' }, { id: 'w-1' }]);
+
+    const result = await service.getWaivers('t-1', 'lf-1');
+
+    expect(prisma.lateFeeWaiver.findMany).toHaveBeenCalledWith({
+      where: { lateFeeId: 'lf-1' },
+      orderBy: { waivedAt: 'desc' },
+    });
+    expect(result).toEqual([{ id: 'w-2' }, { id: 'w-1' }]);
   });
 });

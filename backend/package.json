@@ -21,7 +21,8 @@
     "db:reset": "prisma migrate reset",
     "commercial:backfill-licenses": "ts-node -r tsconfig-paths/register src/scripts/backfill-licenses.ts",
     "commercial:sync-feature-flags": "ts-node -r tsconfig-paths/register src/scripts/sync-feature-flag-catalog.ts",
-    "finance:backfill-discount-categories": "ts-node -r tsconfig-paths/register src/scripts/backfill-discount-categories.ts"
+    "finance:backfill-discount-categories": "ts-node -r tsconfig-paths/register src/scripts/backfill-discount-categories.ts",
+    "finance:seed-late-fee-rules": "ts-node -r tsconfig-paths/register src/scripts/seed-late-fee-rules.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",

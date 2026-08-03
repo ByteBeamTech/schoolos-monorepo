@@ -127,11 +127,25 @@ model LateFee {
   reason String?
   meta   Json?
 
+  // Late Fee FDD v2 / Implementation Roadmap Sprint 1. ruleId is nullable
+  // for two distinct reasons, deliberately kept distinguishable (roadmap
+  // Section 3): a pre-migration row has ruleId=NULL, usedFallbackConfig=
+  // false (resolution was never attempted); a row assessed after Sprint 2
+  // ships with no applicable rule has ruleId=NULL, usedFallbackConfig=true
+  // (resolution ran, found nothing, fell back to DEFAULT_CONFIG per FDD
+  // Section 2.3). Both fields are written only starting in Sprint 2 --
+  // this sprint adds the columns, nothing yet sets them to a non-default
+  // value.
+  ruleId             String?
+  usedFallbackConfig Boolean @default(false)
+
   appliedAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   branch    Branch   @relation(fields: [branchId], references: [id])
   invoice   Invoice  @relation(fields: [invoiceId], references: [id])
   student   Student  @relation(fields: [studentId], references: [id])
+  rule      LateFeeRule?    @relation(fields: [ruleId], references: [id])
+  waivers   LateFeeWaiver[]
 
   @@index([tenantId, branchId])
   @@index([tenantId, studentId])

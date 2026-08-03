@@ -843,6 +843,21 @@ enum LateFeeStatus {
   REVERSED
 }
 
+// Late Fee FDD v2 / Implementation Roadmap Sprint 1. Distinct from the
+// existing LateFee.calculationType String field (default "FIXED") --
+// that field is untouched (no unrelated refactoring), this is the new,
+// properly-typed enum for LateFeeRule's own calculation method.
+enum LateFeeCalculationMethod {
+  FLAT
+  PERCENTAGE
+  SLAB
+}
+
+enum LateFeePenaltyType {
+  FLAT
+  PERCENTAGE
+}
+
 enum CronStatus {
   SUCCESS
   FAILED

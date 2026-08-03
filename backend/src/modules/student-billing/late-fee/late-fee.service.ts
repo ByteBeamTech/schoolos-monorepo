@@ -16,7 +16,11 @@ export interface LateFeeConfig {
   compoundDaily:   boolean;
 }
 
-const DEFAULT_CONFIG: LateFeeConfig = {
+// Exported for src/scripts/seed-late-fee-rules.ts (Late Fee FDD v2 Sprint
+// 1): the seed imports this directly rather than retyping its values by
+// hand, so a future change to this constant can't silently drift from
+// what the seed produces without also being a visible import-path change.
+export const DEFAULT_CONFIG: LateFeeConfig = {
   gracePeriodDays: 7,
   penaltyType:     'PERCENTAGE',
   penaltyValue:    2,
@@ -419,6 +423,26 @@ export class LateFeeService {
         },
       });
 
+      // Late Fee FDD v2 Section 1.4 / Implementation Roadmap Sprint 1:
+      // one LateFeeWaiver row per waiver event, additive to the scalar
+      // fields on LateFee above (which stay as a fast-read summary of the
+      // MOST RECENT waiver only -- this is the append-only history
+      // underneath them). Closes the gap where a second partial waiver on
+      // the same fee previously overwrote the first waiver's audit trail
+      // entirely: waivedAt/waivedById/reason on LateFee were single
+      // scalar fields, so the earlier waiver's actor and timestamp were
+      // silently lost. Same transaction, same advisory lock already held
+      // above -- this insert either commits with the LateFee update, or
+      // neither happens.
+      await (tx.lateFeeWaiver as any).create({
+        data: {
+          lateFeeId:  fee.id,
+          amount:     amt,
+          waivedById: actorId,
+          reason:     reason ?? fee.reason,
+        },
+      });
+
       // Recompute the invoice's totals the same way updateInvoice() does for
       // a payment -- reduce dueAmount/totalAmount, flip to PAID if that
       // clears it, never let dueAmount go negative.
@@ -457,5 +481,21 @@ export class LateFeeService {
 
     this.logger.log(`Late fee ${lateFeeId} waived ${amount} by ${actorId}`);
     return { lateFee: result };
+  }
+
+  /**
+   * FDD Section 1.4 / Implementation Roadmap Sprint 1: the append-only
+   * waiver history for one late fee, newest first. Scoped by tenantId
+   * through the LateFee it belongs to, not a bare lateFeeId lookup --
+   * this must not leak another tenant's waiver history for a guessed id.
+   */
+  async getWaivers(tenantId: string, lateFeeId: string) {
+    const fee = await this.prisma.lateFee.findFirst({ where: { id: lateFeeId, tenantId } });
+    if (!fee) throw new NotFoundException(`Late fee not found: ${lateFeeId}`);
+
+    return (this.prisma.lateFeeWaiver as any).findMany({
+      where: { lateFeeId },
+      orderBy: { waivedAt: 'desc' },
+    });
   }
 }

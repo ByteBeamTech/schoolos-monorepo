@@ -1,0 +1,86 @@
+// Late Fee Module FDD v2 (docs/product/LATE_FEE_FDD.md) / Implementation
+// Roadmap v2 (docs/product/LATE_FEE_IMPLEMENTATION_ROADMAP.md), Sprint 1.
+
+// LateFeeRule: the configurable version of what LateFeeConfig (the current
+// in-memory interface) already expresses: grace period, penalty type,
+// penalty value, max cap, compounding. Section 2.2's resolution chain
+// (Tenant -> Branch -> Fee Plan, narrowest wins) is expressed here as two
+// nullable scope columns: a fully-NULL row is Tenant-scoped, a non-NULL
+// branchId with NULL feePlanId is Branch-scoped, both non-NULL is
+// Fee-Plan-scoped. FDD Section 6.2: create-new-not-edit --
+// effectiveFrom/effectiveUntil supersede a prior rule rather than mutating
+// it, mirroring how FeePlan is already immutable once created.
+//
+// createdById is nullable -- matching the existing LateFee.appliedById
+// precedent (nullable because the daily cron applies late fees with no
+// human actor). Sprint 1's seed script is the same kind of automated,
+// actor-less action: the tenant's first rule is created by a migration
+// step, not a person clicking a button.
+model LateFeeRule {
+  id       String @id
+  tenantId String
+  branchId String?
+  feePlanId String?
+
+  calculationMethod LateFeeCalculationMethod
+  penaltyType       LateFeePenaltyType
+  penaltyValue      Decimal @db.Decimal(10, 4)
+  gracePeriodDays   Int
+  maxPenalty        Decimal? @db.Decimal(12, 2)
+  compoundDaily     Boolean  @default(false)
+  // FDD Section 3: only populated when calculationMethod = SLAB. An
+  // ordered array of {minDaysOverdue, amount} steps -- a structured
+  // config value, not a join table, matching how FeeItem/DiscountCategory
+  // already keep small structured config as JSON elsewhere in this schema.
+  slabSteps Json?
+
+  effectiveFrom  DateTime
+  effectiveUntil DateTime?
+  isActive       Boolean  @default(true)
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+  feePlan   FeePlan? @relation(fields: [feePlanId], references: [id])
+  createdBy User?    @relation(fields: [createdById], references: [id])
+  lateFees  LateFee[]
+
+  // Sprint 1 risk mitigation (roadmap Section 10): a double-run of the
+  // seed script fails loudly against this constraint rather than silently
+  // creating an ambiguous duplicate default at the same scope.
+  // Uniqueness on (tenantId, branchId, feePlanId, effectiveFrom) is
+  // enforced at the SQL level in this table's migration, not expressed
+  // here as @@unique. Verified directly against real Postgres before
+  // writing it this way: a standard @@unique on nullable columns does
+  // NOT catch a duplicate Tenant-scope rule (branchId/feePlanId both
+  // NULL) or Branch-scope rule (feePlanId NULL), because Postgres
+  // treats NULL as never equal to NULL for uniqueness purposes -- the
+  // exact case Sprint 1's seed script creates (one Tenant-scope rule per
+  // tenant) would have been completely unprotected by a naive @@unique
+  // here. The migration instead builds a COALESCE-based unique index,
+  // which Prisma's schema language has no direct syntax for.
+  @@index([tenantId, branchId, feePlanId, effectiveFrom])
+  @@index([tenantId, branchId, feePlanId, isActive])
+}
+
+// FDD Section 1.4: closes the one real gap in the existing waiver model.
+// LateFee.waivedAt/waivedById/reason are single scalar fields that get
+// overwritten on each partial waiver, silently erasing the previous
+// waiver's audit trail. This table is the append-only history underneath
+// them -- LateFee's own scalar fields are unchanged, staying a fast-read
+// summary of the *most recent* waiver only.
+model LateFeeWaiver {
+  id         String   @id
+  lateFeeId  String
+  amount     Decimal  @db.Decimal(12, 2)
+  waivedById String
+  waivedAt   DateTime @default(now())
+  reason     String
+
+  lateFee  LateFee @relation(fields: [lateFeeId], references: [id])
+  waivedBy User    @relation(fields: [waivedById], references: [id])
+
+  @@index([lateFeeId])
+}
