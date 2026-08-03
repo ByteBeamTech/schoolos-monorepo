@@ -7,6 +7,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { overdueWhere } from '../invoice/overdue.util';
 import { LedgerService } from '../ledger/services/ledger.service';
 import { PaymentAllocationService } from '../allocation/services/payment-allocation.service';
+import { resolveLateFeeConfig } from './late-fee-rule-resolver';
 
 export interface LateFeeConfig {
   gracePeriodDays: number;
@@ -107,6 +108,18 @@ export class LateFeeService {
       branchId: true,
     },
   },
+  // Late Fee FDD v2 Section 2.2 / Roadmap Sprint 2: Fee-Plan-scoped
+  // resolution needs this invoice's fee plan, and Invoice has no
+  // direct feePlanId column (verified against the real schema before
+  // writing this) -- the only path is items[].feeItemId -> FeeItem.
+  // feePlanId. Batch-fetched here, once per invoice, alongside
+  // everything else this scan already needs -- not a per-invoice
+  // query inside the loop below.
+  items: {
+    select: {
+      feeItem: { select: { feePlanId: true } },
+    },
+  },
 },
       take: 1000,
     });
@@ -116,7 +129,19 @@ export class LateFeeService {
     for (const invoice of overdueInvoices) {
       try {
         const dueDate = new Date(invoice.dueDate);
-        const config  = await this.getTenantConfig(invoice.tenantId);
+        // FDD Section 2.2: the first item carrying a resolvable feePlanId
+        // decides Fee-Plan-scope for this invoice. In practice every item
+        // on one invoice traces to the same plan (invoices are generated
+        // from a single feePlanId at creation time) -- this does not
+        // reconcile a hypothetical mismatch across items, it takes the
+        // first real one found, which is the only case that occurs today.
+        const feePlanId =
+          (invoice as any).items?.find((i: any) => i.feeItem?.feePlanId)?.feeItem?.feePlanId ?? null;
+        const { config, ruleId, usedFallbackConfig } = await this.getTenantConfig(
+          invoice.tenantId,
+          invoice.student.branchId,
+          feePlanId,
+        );
 	const currentSession =
   await this.prisma.academicSession.findFirst({
     where: {
@@ -180,6 +205,13 @@ export class LateFeeService {
               graceDays: config.gracePeriodDays,
               amount: lateFee,
               daysOverdue,
+              // FDD Section 2.3 / Roadmap Sprint 2: which rule produced
+              // this fee (null when the fallback fired), and whether the
+              // fallback fired at all -- the two are deliberately
+              // distinguishable from a pre-Sprint-2 row (ruleId=NULL,
+              // usedFallbackConfig=false, resolution never attempted).
+              ruleId,
+              usedFallbackConfig,
             },
           });
 
@@ -222,8 +254,21 @@ export class LateFeeService {
     this.logger.log(`Late fees applied to ${applied}/${overdueInvoices.length} invoices`);
   }
 
-  private async getTenantConfig(_tenantId: string): Promise<LateFeeConfig> {
-    return DEFAULT_CONFIG;
+  /**
+   * Late Fee FDD v2 Section 2.2 (resolution chain) / Section 2.3
+   * (resolution-failure fallback). Was a stub returning DEFAULT_CONFIG
+   * unconditionally regardless of its own tenantId argument -- now a real
+   * resolution, delegating to late-fee-rule-resolver.ts so the chain
+   * logic itself stays independently unit-testable. calculateLateFee()
+   * itself is unchanged by this -- only what supplies its config
+   * argument changed, per the FDD's explicit instruction.
+   */
+  private async getTenantConfig(
+    tenantId: string,
+    branchId: string,
+    feePlanId: string | null,
+  ): Promise<{ config: LateFeeConfig; ruleId: string | null; usedFallbackConfig: boolean }> {
+    return resolveLateFeeConfig(this.prisma, tenantId, branchId, feePlanId, DEFAULT_CONFIG);
   }
 
   /**

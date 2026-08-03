@@ -96,6 +96,13 @@ describe('LateFeeService.applyLateFees — invoice lock (M4)', () => {
         create:   jest.fn(), // must NOT be called directly -- only via tx
         findMany: jest.fn().mockResolvedValue([]),
       },
+      // Late Fee FDD v2 Sprint 2: getTenantConfig() now resolves a real
+      // LateFeeRule. Empty here means every one of these existing tests
+      // exercises Section 2.3's fallback path -- which lands on
+      // DEFAULT_CONFIG, exactly the config these tests were already
+      // written assuming (the old stub's only possible return value).
+      // Their calculation assertions are therefore unchanged by this.
+      lateFeeRule: { findMany: jest.fn().mockResolvedValue([]) },
       academicSession: { findFirst: jest.fn().mockResolvedValue({ id: 'sess-1' }) },
       $transaction: jest.fn((cb: any) => cb(tx)),
     };
@@ -230,6 +237,34 @@ describe('LateFeeService.applyLateFees — invoice lock (M4)', () => {
     await expect(service.applyLateFees()).resolves.not.toThrow();
     // Second invoice still processed despite the first one's transaction failing.
     expect(tx.lateFee.create).toHaveBeenCalledTimes(1);
+  });
+
+  // Late Fee FDD v2 / Implementation Roadmap Sprint 2 -- the regression
+  // test that matters most (roadmap Section 9, Sprint 2's own test list):
+  // a tenant seeded in Sprint 1 (one Tenant-scope LateFeeRule, values
+  // copied verbatim from DEFAULT_CONFIG) must produce an IDENTICAL
+  // LateFee.amount through the new resolver as the old hardcoded-stub
+  // path would have produced. This is the actual proof the migration is
+  // behavior-preserving, not just an assertion of it.
+  it('a Sprint-1-seeded tenant (rule matching DEFAULT_CONFIG exactly) produces the identical amount the old hardcoded stub would have', async () => {
+    const seededRule = {
+      id: 'seed-rule-t1', branchId: null, feePlanId: null,
+      calculationMethod: 'PERCENTAGE', penaltyType: 'PERCENTAGE',
+      penaltyValue: 2, gracePeriodDays: 7, maxPenalty: 500, compoundDaily: false,
+    };
+    prisma.lateFeeRule.findMany.mockResolvedValue([seededRule]);
+    // 30 days overdue, 1000 due -- matching the OLD stub's DEFAULT_CONFIG
+    // exactly (7-day grace, 2% monthly, ceil((30-7)/30)=1 month -> 2%).
+    prisma.invoice.findMany.mockResolvedValue([
+      scannedInvoice({ dueDate: new Date(Date.now() - 30 * 86400000) }),
+    ]);
+
+    await service.applyLateFees();
+
+    const feeData = tx.lateFee.create.mock.calls[0][0].data;
+    expect(feeData.amount).toBe(20); // 1000 * 2% -- same figure the old stub-only path always produced
+    expect(feeData.ruleId).toBe('seed-rule-t1');
+    expect(feeData.usedFallbackConfig).toBe(false);
   });
 });
 
