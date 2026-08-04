@@ -25,7 +25,7 @@ describe('LateFeeController — explicit @Roles on every route (AUTH-041)', () =
   const handlers = routeHandlerNames(LateFeeController);
 
   it('discovers the expected route handlers (update deliberately when routes change)', () => {
-    expect(handlers.sort()).toEqual(['getWaivers', 'waive'].sort());
+    expect(handlers.sort()).toEqual(['findAll', 'getWaivers', 'preview', 'waive'].sort());
   });
 
   it.each(handlers.map((h) => [h]))('%s has non-empty @Roles metadata', (name) => {

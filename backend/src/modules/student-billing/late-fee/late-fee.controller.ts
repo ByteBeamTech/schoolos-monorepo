@@ -15,16 +15,23 @@
 // list endpoint, or anything for LateFeeRule -- all Sprint 2/3 per the
 // Implementation Roadmap, out of scope for this sprint.
 
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsNumber, IsPositive, IsString, IsNotEmpty } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { LateFeeService } from './late-fee.service';
+import { PreviewLateFeeDto } from '../dto/billing.dto';
 import { JwtGuard } from '../../../core/auth/guards/jwt.guard';
 import { RolesGuard } from '../../../core/roles/roles.guard';
 import { Roles } from '../../../core/roles/roles.decorator';
 import { CurrentUser } from '../../../core/auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../../core/auth/guards/jwt.strategy';
+
+// Late Fee FDD v2 / Implementation Roadmap Sprint 3 adds two more: the
+// assessed-late-fees list (GET, closing the original controller
+// comment's own named gap), and the rules preview (POST rules/preview --
+// kept here, not on RulesController, since it never touches a persisted
+// LateFeeRule; it's a stateless calculation, not a rules-resource action).
 
 class WaiveLateFeeDto {
   @ApiProperty() @IsNumber() @IsPositive() amount!: number;
@@ -37,6 +44,28 @@ class WaiveLateFeeDto {
 @Controller('billing/late-fees')
 export class LateFeeController {
   constructor(private readonly service: LateFeeService) {}
+
+  @Get()
+  @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'List assessed late fees, filterable' })
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('usedFallbackConfig') usedFallbackConfig?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.service.findAllLateFees(
+      user.tenantId,
+      usedFallbackConfig !== undefined ? usedFallbackConfig === 'true' : undefined,
+      status,
+    );
+  }
+
+  @Post('rules/preview')
+  @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Preview what a hypothetical rule would charge -- no persistence, calls the real calculation engine directly' })
+  preview(@Body() dto: PreviewLateFeeDto) {
+    return this.service.preview(dto);
+  }
 
   @Patch(':id/waive')
   @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')

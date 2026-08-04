@@ -5,7 +5,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AccountingNature } from '@prisma/client';
+import { AccountingNature, LateFeeCalculationMethod, LateFeePenaltyType } from '@prisma/client';
 
 export class CreateFeeItemDto {
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
@@ -168,4 +168,49 @@ export class UpdateFeeHeadDto {
   @ApiPropertyOptional({ enum: AccountingNature }) @IsEnum(AccountingNature) @IsOptional() accountingNature?: AccountingNature;
   @ApiPropertyOptional() @IsBoolean() @IsOptional() isActive?: boolean;
   @ApiPropertyOptional() @IsNumber() @IsOptional() displayOrder?: number;
+}
+
+// Late Fee Module FDD v2 (docs/product/LATE_FEE_FDD.md) Section 6.2 /
+// Implementation Roadmap v2 Sprint 3.
+//
+// FR-DISC-style create-new-not-edit (mirroring FDD Section 8.6's Fee Plan
+// precedent, applied here for the same historical-integrity reason): a
+// rule change creates a new row with a new effectiveFrom, it never
+// mutates an existing rule's calculation fields. This DTO reflects that --
+// there is deliberately no UpdateLateFeeRuleDto with calculation fields;
+// DeactivateLateFeeRuleDto below is the only mutation this module allows.
+export class CreateLateFeeRuleDto {
+  @ApiPropertyOptional() @IsString() @IsOptional() branchId?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() feePlanId?: string;
+  @ApiProperty({ enum: LateFeeCalculationMethod }) @IsEnum(LateFeeCalculationMethod) calculationMethod!: LateFeeCalculationMethod;
+  @ApiProperty({ enum: LateFeePenaltyType }) @IsEnum(LateFeePenaltyType) penaltyType!: LateFeePenaltyType;
+  @ApiProperty() @IsNumber() @IsPositive() penaltyValue!: number;
+  @ApiProperty() @IsNumber() @Min(0) gracePeriodDays!: number;
+  @ApiPropertyOptional() @IsNumber() @IsPositive() @IsOptional() maxPenalty?: number;
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() compoundDaily?: boolean;
+  @ApiPropertyOptional() @IsDateString() @IsOptional() effectiveFrom?: string;
+}
+
+// Deactivate/supersede only -- effectiveUntil and isActive. Deliberately
+// has no calculation fields at all, not merely "optional and ignored":
+// this shape itself is what makes it impossible for this endpoint to
+// become a backdoor edit path (FDD Section 6.2's "never a true update").
+export class DeactivateLateFeeRuleDto {
+  @ApiPropertyOptional() @IsDateString() @IsOptional() effectiveUntil?: string;
+}
+
+// FDD Section 6.2: the live "what would this charge" preview, backed by
+// the real calculateLateFee() function -- not a client-side
+// reimplementation (Implementation Roadmap v2's explicit redesign,
+// closing the drift-risk finding from the roadmap's own review). Accepts
+// enough to preview a rule that doesn't exist yet, i.e. before it's ever
+// saved -- the actual moment the FDD's preview requirement describes.
+export class PreviewLateFeeDto {
+  @ApiProperty({ enum: LateFeePenaltyType }) @IsEnum(LateFeePenaltyType) penaltyType!: LateFeePenaltyType;
+  @ApiProperty() @IsNumber() @IsPositive() penaltyValue!: number;
+  @ApiProperty() @IsNumber() @Min(0) gracePeriodDays!: number;
+  @ApiPropertyOptional() @IsNumber() @IsPositive() @IsOptional() maxPenalty?: number;
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() compoundDaily?: boolean;
+  @ApiProperty() @IsNumber() @IsPositive() dueAmount!: number;
+  @ApiProperty() @IsNumber() @Min(0) daysOverdue!: number;
 }

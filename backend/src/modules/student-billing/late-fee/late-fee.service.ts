@@ -529,6 +529,52 @@ export class LateFeeService {
   }
 
   /**
+   * Roadmap Sprint 3: the assessed-late-fees list endpoint the original
+   * controller's own header comment named as deliberately out of scope
+   * for its P0 waiver fix. Filterable by usedFallbackConfig, specifically
+   * so the Rule Management admin banner (FDD Section 2.3, built in the
+   * frontend sprint) has a real endpoint to query.
+   */
+  async findAllLateFees(tenantId: string, usedFallbackConfig?: boolean, status?: string) {
+    return this.prisma.lateFee.findMany({
+      where: {
+        tenantId,
+        ...(usedFallbackConfig !== undefined && { usedFallbackConfig }),
+        ...(status !== undefined && { status: status as any }),
+      },
+      orderBy: { appliedAt: 'desc' },
+    });
+  }
+
+  /**
+   * FDD Section 6.2 / Roadmap Sprint 3: the live "what would this charge"
+   * preview, calling the real calculateLateFee() directly -- not a
+   * reimplementation. calculateLateFee() takes a dueDate/asOfDate pair,
+   * not daysOverdue directly, and its signature is deliberately unchanged
+   * by this sprint (FDD's explicit instruction) -- so this constructs a
+   * synthetic dueDate that produces EXACTLY the requested daysOverdue for
+   * the given gracePeriodDays, rather than touching that function at all.
+   * asOfDate = now, dueDate = now - (daysOverdue + gracePeriodDays) days,
+   * so calculateLateFee's own daysLate - gracePeriodDays arithmetic lands
+   * on exactly daysOverdue again.
+   */
+  preview(dto: {
+    penaltyType: 'FLAT' | 'PERCENTAGE'; penaltyValue: number; gracePeriodDays: number;
+    maxPenalty?: number; compoundDaily?: boolean; dueAmount: number; daysOverdue: number;
+  }) {
+    const now = new Date();
+    const dueDate = new Date(now.getTime() - (dto.daysOverdue + dto.gracePeriodDays) * 86400000);
+    const config: LateFeeConfig = {
+      gracePeriodDays: dto.gracePeriodDays,
+      penaltyType: dto.penaltyType,
+      penaltyValue: dto.penaltyValue,
+      maxPenalty: dto.maxPenalty,
+      compoundDaily: dto.compoundDaily ?? false,
+    };
+    return this.calculateLateFee(dto.dueAmount, dueDate, now, config);
+  }
+
+  /**
    * FDD Section 1.4 / Implementation Roadmap Sprint 1: the append-only
    * waiver history for one late fee, newest first. Scoped by tenantId
    * through the LateFee it belongs to, not a bare lateFeeId lookup --

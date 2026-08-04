@@ -100,6 +100,15 @@ export async function resolveLateFeeConfig(
         ...(feePlanId ? [{ branchId, feePlanId }] : []),
       ],
     },
+    // Sprint 3 note: Sprint 1's seed only ever creates one rule per
+    // scope, so this ordering was unreachable code until Sprint 3's
+    // create() endpoint made it possible for two active rules to exist
+    // at the identical scope (create-new-not-edit, FDD 6.2, means a
+    // caller can create a replacement without having deactivated the
+    // old one first). Newest-effectiveFrom-wins is the deterministic,
+    // minimal tie-breaker -- not a new business rule, just a defined
+    // answer to "which one" instead of depending on undefined query order.
+    orderBy: { effectiveFrom: 'desc' },
   });
 
   const resolved = selectMostSpecific(candidates, branchId, feePlanId);

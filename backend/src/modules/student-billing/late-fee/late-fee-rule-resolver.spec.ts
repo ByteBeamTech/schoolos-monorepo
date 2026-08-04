@@ -92,6 +92,17 @@ describe('resolveLateFeeConfig — resolution chain (FDD Section 2.2)', () => {
 
     expect(result.usedFallbackConfig).toBe(true);
   });
+
+  it('queries with newest-effectiveFrom-first ordering, so two active rules at the identical scope resolve deterministically -- Sprint 3 makes this possible via create-new-not-edit', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const prisma = { lateFeeRule: { findMany } };
+
+    await resolveLateFeeConfig(prisma, 't-1', 'b-1', null, DEFAULT_CONFIG);
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { effectiveFrom: 'desc' } }),
+    );
+  });
 });
 
 describe('resolveLateFeeConfig — resolution failure fallback (FDD Section 2.3, directed revision)', () => {
