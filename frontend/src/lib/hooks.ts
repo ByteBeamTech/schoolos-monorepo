@@ -251,6 +251,14 @@ export function useFeePlans(academicYear?: string) {
   );
 }
 
+// Late Fee FDD v2 Sprint 4: needed for the Rule creation form's scope
+// picker. Confirmed against the real controller before adding --
+// GET /school-management/branches, not a guessed path.
+export interface BranchSummary { id: string; name: string; }
+export function useBranches() {
+  return useApi<BranchSummary[]>("/school-management/branches", []);
+}
+
 // ── Billing — Invoices ────────────────────────────────────────────────────────
 export interface Invoice {
   id: string; invoiceNumber: string; status: string;
