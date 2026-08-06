@@ -26,7 +26,7 @@ import {
   Tag, Bus, Library, MessageSquare, Receipt, UserPlus,
   BookMarked, Package, Award, Layers, BadgeDollarSign, BarChart3,
   Briefcase, Building2, Shield, HeadphonesIcon, Puzzle, Building,
-  Menu, X, Sun, Moon, Search, Building as BranchIcon,
+  Menu, X, Sun, Moon, Search, Building as BranchIcon, AlertCircle, Clock,
 } from "lucide-react";
 
 // ── Nav definition ────────────────────────────────────────────────────────────
@@ -52,8 +52,13 @@ const NAV: NavGroup[] = [
     { href: "/dashboard/reception",  label: "Reception",    icon: Building2,       roles: [...ADMIN, "RECEPTIONIST"] },
   ]},
   { label: "Finance", items: [
-    { href: "/dashboard/billing",           label: "Billing",    icon: CreditCard,      roles: FINANCE },
-    { href: "/dashboard/billing/discounts", label: "Discounts",  icon: Tag,             roles: FINANCE },
+    { href: "/dashboard/billing/collect-fee",  label: "Collect Fee",    icon: CreditCard,      roles: FINANCE },
+    { href: "/dashboard/billing",              label: "Invoices",       icon: FileText,        roles: FINANCE },
+    { href: "/dashboard/billing/defaulters",   label: "Defaulters",     icon: AlertCircle,     roles: FINANCE },
+    { href: "/dashboard/billing/late-fee",     label: "Late Fees",      icon: Clock,           roles: FINANCE },
+    { href: "/dashboard/billing/fee-structure",label: "Fee Structure",  icon: Package,         roles: FINANCE },
+    { href: "/dashboard/billing/discounts",    label: "Discounts",      icon: Tag,             roles: FINANCE },
+    { href: "/dashboard/billing/analytics",    label: "Analytics",      icon: BarChart3,       roles: FINANCE },
     { href: "/dashboard/accounting",        label: "Accounting", icon: Receipt,         roles: FINANCE },
     { href: "/dashboard/payroll",           label: "Payroll",    icon: BadgeDollarSign, roles: [...FINANCE, "HR_MANAGER"] },
   ]},
@@ -217,7 +222,20 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               >
                 <div className="space-y-0.5 pb-1">
                   {group.items.map(({ href, label, icon: Icon, badge }) => {
-                    const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+                    // /dashboard/billing now has 6 sibling routes under it
+                    // (Collect Fee/Defaulters/Late Fees/Fee Structure/
+                    // Discounts/Analytics) as of this Finance navigation
+                    // addition. Without this, "Invoices" -- the item at
+                    // /dashboard/billing itself -- would show active on
+                    // every one of those sub-pages simultaneously
+                    // alongside the actually-current item, since prefix
+                    // matching alone can't distinguish "at this route"
+                    // from "somewhere under this route." Same exact-match
+                    // treatment /dashboard (Overview) already had, applied
+                    // here for the identical structural reason -- not a
+                    // broader change to how active-matching works.
+                    const exactMatchOnly = href === "/dashboard" || href === "/dashboard/billing";
+                    const active = pathname === href || (!exactMatchOnly && pathname.startsWith(href));
                     return (
                       <Link
                         key={href}
