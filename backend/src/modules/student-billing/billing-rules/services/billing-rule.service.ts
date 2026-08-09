@@ -17,10 +17,23 @@ import { CreateBillingRuleDto } from '../../dto/billing.dto';
 export class BillingRuleService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Corrective fix: branchId is optional. Omitted/null creates a
+   * tenant-wide default rule, usable by every branch. Supplied, it scopes
+   * the rule to exactly one branch -- validated here to belong to the
+   * same tenant, matching the same check LateFeeRule's own creation path
+   * already applies.
+   */
   async create(tenantId: string, dto: CreateBillingRuleDto) {
+    if (dto.branchId) {
+      const branch = await this.prisma.branch.findFirst({ where: { id: dto.branchId, tenantId } });
+      if (!branch) throw new NotFoundException(`Branch not found in this tenant: ${dto.branchId}`);
+    }
+
     return this.prisma.billingRule.create({
       data: {
         tenantId,
+        branchId:      dto.branchId ?? null,
         frequency:     dto.frequency,
         billingMonths: dto.billingMonths,
         dueDayOfMonth: dto.dueDayOfMonth,

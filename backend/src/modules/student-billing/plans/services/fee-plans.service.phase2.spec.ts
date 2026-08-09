@@ -118,4 +118,54 @@ describe('FeePlansService — Phase 2: createFeeItem / supersedeFeeItem', () => 
       expect(audit.logUpdate).toHaveBeenCalled();
     });
   });
+
+  describe('createFeeItem — branch scoping (corrective fix)', () => {
+    // Realistic in-memory BillingRule set, filtered by an actual
+    // implementation of the OR-based where clause the service issues --
+    // not a canned mock return value. This is what makes these tests a
+    // real proof of the scoping rule, not just an assertion that some
+    // value was returned.
+    const rules = [
+      { id: 'br-tenant-wide', tenantId: 't-1', branchId: null },
+      { id: 'br-branchA',     tenantId: 't-1', branchId: 'bA' },
+      { id: 'br-branchB',     tenantId: 't-1', branchId: 'bB' },
+      { id: 'br-other-tenant', tenantId: 't-2', branchId: null },
+    ];
+
+    beforeEach(() => {
+      prisma.feePlan.findFirst.mockResolvedValue({ id: 'fp-1' });
+      prisma.feeHead.findFirst.mockResolvedValue({ id: 'fh-1' });
+      prisma.billingRule.findFirst.mockImplementation(({ where }: any) => {
+        const match = rules.find((r) =>
+          r.id === where.id &&
+          r.tenantId === where.tenantId &&
+          where.OR.some((cond: any) => r.branchId === cond.branchId),
+        );
+        return Promise.resolve(match ?? null);
+      });
+    });
+
+    it('a tenant-wide BillingRule (branchId null) can be used by any branch of the same tenant', async () => {
+      const dtoA = { name: 'Tuition', amount: 5000, feeHeadId: 'fh-1', billingRuleId: 'br-tenant-wide' } as any;
+      await expect(service.createFeeItem('t-1', 'bA', 'fp-1', dtoA, 'u-1')).resolves.toBeDefined();
+
+      const dtoB = { name: 'Tuition', amount: 5000, feeHeadId: 'fh-1', billingRuleId: 'br-tenant-wide' } as any;
+      await expect(service.createFeeItem('t-1', 'bB', 'fp-1', dtoB, 'u-1')).resolves.toBeDefined();
+    });
+
+    it('a Branch A rule cannot be used by Branch B', async () => {
+      const dto = { name: 'Tuition', amount: 5000, feeHeadId: 'fh-1', billingRuleId: 'br-branchA' } as any;
+      await expect(service.createFeeItem('t-1', 'bB', 'fp-1', dto, 'u-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('a Branch A rule CAN be used by Branch A itself', async () => {
+      const dto = { name: 'Tuition', amount: 5000, feeHeadId: 'fh-1', billingRuleId: 'br-branchA' } as any;
+      await expect(service.createFeeItem('t-1', 'bA', 'fp-1', dto, 'u-1')).resolves.toBeDefined();
+    });
+
+    it('another tenant\'s BillingRule can never be used, regardless of branch', async () => {
+      const dto = { name: 'Tuition', amount: 5000, feeHeadId: 'fh-1', billingRuleId: 'br-other-tenant' } as any;
+      await expect(service.createFeeItem('t-1', 'bA', 'fp-1', dto, 'u-1')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
 });

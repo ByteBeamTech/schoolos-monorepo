@@ -58,8 +58,17 @@ export class FeePlansService {
     const feeHead = await this.prisma.feeHead.findFirst({ where: { id: dto.feeHeadId, tenantId, branchId } });
     if (!feeHead) throw new NotFoundException(`Fee head not found in this branch: ${dto.feeHeadId}`);
 
-    const billingRule = await this.prisma.billingRule.findFirst({ where: { id: dto.billingRuleId, tenantId } });
-    if (!billingRule) throw new NotFoundException(`Billing rule not found: ${dto.billingRuleId}`);
+    // Corrective fix: a FeeItem may reference a tenant-wide BillingRule
+    // (branchId null) or one scoped to its own branch -- never another
+    // branch's. Reuses LateFeeRule's own OR-based scope-matching idea
+    // rather than inventing a new resolution framework; this is a direct
+    // membership check on a caller-supplied id, not an auto-resolution
+    // chain, since createFeeItem's caller always names the rule
+    // explicitly.
+    const billingRule = await this.prisma.billingRule.findFirst({
+      where: { id: dto.billingRuleId, tenantId, OR: [{ branchId: null }, { branchId }] },
+    });
+    if (!billingRule) throw new NotFoundException(`Billing rule not found, or not usable by this branch: ${dto.billingRuleId}`);
 
     const item = await this.prisma.feeItem.create({
       data: {
@@ -100,8 +109,13 @@ export class FeePlansService {
     if (dto.feeHeadId !== existing.feeHeadId) {
       throw new ConflictException('Supersede must keep the same feeHeadId. Create a new fee item to change the fee head.');
     }
-    const billingRule = await this.prisma.billingRule.findFirst({ where: { id: dto.billingRuleId, tenantId } });
-    if (!billingRule) throw new NotFoundException(`Billing rule not found: ${dto.billingRuleId}`);
+    // Corrective fix: same branch-scoping rule as createFeeItem -- a
+    // superseding item may reference a tenant-wide rule or its own
+    // branch's, never another branch's.
+    const billingRule = await this.prisma.billingRule.findFirst({
+      where: { id: dto.billingRuleId, tenantId, OR: [{ branchId: null }, { branchId }] },
+    });
+    if (!billingRule) throw new NotFoundException(`Billing rule not found, or not usable by this branch: ${dto.billingRuleId}`);
 
     const now = new Date();
     const [, superseded] = await this.prisma.$transaction([

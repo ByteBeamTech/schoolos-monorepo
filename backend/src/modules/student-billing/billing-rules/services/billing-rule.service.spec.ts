@@ -16,11 +16,38 @@ describe('BillingRuleService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
       },
+      branch: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'bA' }),
+      },
     };
     const module = await Test.createTestingModule({
       providers: [BillingRuleService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     service = module.get(BillingRuleService);
+  });
+
+  it('creates a tenant-wide rule (branchId null) when none is supplied', async () => {
+    const rule = await service.create('t-1', {
+      frequency: 'MONTHLY', billingMonths: [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3], dueDayOfMonth: 5,
+    } as any);
+    expect(rule.branchId).toBeNull();
+    expect(prisma.branch.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('creates a branch-scoped rule when branchId is supplied and belongs to the tenant', async () => {
+    const rule = await service.create('t-1', {
+      frequency: 'MONTHLY', billingMonths: [4], dueDayOfMonth: 5, branchId: 'bA',
+    } as any);
+    expect(rule.branchId).toBe('bA');
+    expect(prisma.branch.findFirst).toHaveBeenCalledWith({ where: { id: 'bA', tenantId: 't-1' } });
+  });
+
+  it('rejects a branchId that does not belong to the same tenant', async () => {
+    prisma.branch.findFirst.mockResolvedValue(null);
+    await expect(service.create('t-1', {
+      frequency: 'MONTHLY', billingMonths: [4], dueDayOfMonth: 5, branchId: 'bOtherTenant',
+    } as any)).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.billingRule.create).not.toHaveBeenCalled();
   });
 
   it('creates a rule with the given frequency/billingMonths/dueDayOfMonth, defaulting prorationRule to NO_PRORATION', async () => {

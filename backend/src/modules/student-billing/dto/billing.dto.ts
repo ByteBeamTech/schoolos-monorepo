@@ -60,6 +60,9 @@ export class CreateBillingRuleDto {
   @ApiProperty({ type: [Number] }) @IsArray() @ArrayMinSize(1) @IsInt({ each: true }) @Min(1, { each: true }) billingMonths!: number[];
   @ApiProperty() @IsInt() @Min(1) dueDayOfMonth!: number;
   @ApiPropertyOptional({ enum: ProrationRule }) @IsEnum(ProrationRule) @IsOptional() prorationRule?: ProrationRule;
+  // Corrective fix: null/omitted = tenant-wide default, usable by every
+  // branch. Set = scoped to exactly one branch.
+  @ApiPropertyOptional() @IsString() @IsOptional() branchId?: string;
 }
 
 export class AssignFeePlanDto {

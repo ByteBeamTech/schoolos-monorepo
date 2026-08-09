@@ -49,6 +49,7 @@ model Branch {
   paymentAllocations           PaymentAllocation[]
   feeHeads                     FeeHead[]
   lateFeeRules                 LateFeeRule[]
+  billingRules                 BillingRule[]
   discounts                   Discount[]
   lateFees                    LateFee[]
   calendarEvents              AcademicCalendarEvent[]

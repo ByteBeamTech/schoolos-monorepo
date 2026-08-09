@@ -67,9 +67,18 @@ model FeeItem {
 // LateFeeRule mechanism entirely, never through this model. No update(),
 // no supersede(), no effectiveUntil/isActive/supersededById -- there is
 // nothing for any of them to do under this rule.
+// Corrective fix: BillingRule was missing branchId entirely (an omission,
+// not a deliberate decision -- confirmed against LateFeeRule, the exact
+// model this create-only design cited as its pattern, which already has
+// this field). Nullable, matching LateFeeRule's own scoping precedent:
+// null = tenant-wide default, usable by every branch; non-null = scoped
+// to exactly one branch. A FeeItem may reference a tenant-wide rule or
+// its own branch's rule, never another branch's -- enforced in
+// FeePlansService.createFeeItem()/supersedeFeeItem(), not here.
 model BillingRule {
   id             String                   @id @default(cuid())
   tenantId       String
+  branchId       String?
   frequency      BillingFrequency
   billingMonths  Int[]
   dueDayOfMonth  Int
@@ -77,9 +86,11 @@ model BillingRule {
   createdAt      DateTime                 @default(now())
 
   tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  branch         Branch?   @relation(fields: [branchId], references: [id])
   feeComponents  FeeItem[]
 
   @@index([tenantId])
+  @@index([tenantId, branchId])
 }
 
 model FeeAssignment {
