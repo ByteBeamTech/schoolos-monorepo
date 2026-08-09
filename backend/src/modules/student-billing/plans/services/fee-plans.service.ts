@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }  from '../../../../core/compliance/audit.service';
-import { CreateFeePlanDto, AssignFeePlanDto } from '../../dto/billing.dto';
+import { CreateFeePlanDto, AssignFeePlanDto, CreateFeeItemDto, SupersedeFeeItemDto } from '../../dto/billing.dto';
 
 @Injectable()
 export class FeePlansService {
@@ -18,6 +18,10 @@ export class FeePlansService {
     });
     if (existing) throw new ConflictException(`Fee plan "${dto.name}" already exists.`);
 
+    // Phase 2: no inline feeItems creation. A plan is created bare; its
+    // items are each their own explicit step (createFeeItem, below)
+    // against this plan's id, per the frozen design's "stop being the
+    // thing that also defines fee items inline" decision.
     const plan = await this.prisma.feePlan.create({
       data: {
         tenantId,
@@ -29,17 +33,6 @@ export class FeePlansService {
         grade:        dto.grade       ?? null,
         currency:     (dto.currency as any) ?? 'INR',
         isActive:     true,
-        feeItems: dto.feeItems?.length ? {
-          create: dto.feeItems.map((item, i) => ({
-            name:       item.name,
-            amount:     item.amount,
-            isOptional: item.isOptional ?? false,
-            dueDate:    item.dueDate ? new Date(item.dueDate) : null,
-            gstRate:    item.gstRate  ?? null,
-            gstCode:    item.gstCode  ?? null,
-            sortOrder:  item.sortOrder ?? i,
-          })),
-        } : undefined,
       },
       include: { feeItems: { orderBy: { sortOrder: 'asc' } } },
     });
@@ -47,6 +40,98 @@ export class FeePlansService {
     await this.audit.logCreate({ tenantId, actorId, entityType: 'FeePlan', entityId: plan.id, after: { name: plan.name } });
     this.logger.log(`Fee plan created: ${plan.name} | tenant: ${tenantId}`);
     return plan;
+  }
+
+  /**
+   * Phase 2: fee item creation is its own explicit step against an
+   * existing plan, not inlined into plan creation. feeHeadId/billingRuleId
+   * are required by the DTO itself (not just validated here) -- closes
+   * the original FeeHead/FeeItem disconnection the gap analysis found.
+   */
+  async createFeeItem(tenantId: string, branchId: string, feePlanId: string, dto: CreateFeeItemDto, actorId: string) {
+    const plan = await this.prisma.feePlan.findFirst({ where: { id: feePlanId, tenantId, branchId } });
+    if (!plan) throw new NotFoundException(`Fee plan not found: ${feePlanId}`);
+
+    // feeHeadId must share the target plan's branch (Phase 2's stated
+    // validation rule) -- confirmed against a real branch-scoped row,
+    // not assumed from the id alone.
+    const feeHead = await this.prisma.feeHead.findFirst({ where: { id: dto.feeHeadId, tenantId, branchId } });
+    if (!feeHead) throw new NotFoundException(`Fee head not found in this branch: ${dto.feeHeadId}`);
+
+    const billingRule = await this.prisma.billingRule.findFirst({ where: { id: dto.billingRuleId, tenantId } });
+    if (!billingRule) throw new NotFoundException(`Billing rule not found: ${dto.billingRuleId}`);
+
+    const item = await this.prisma.feeItem.create({
+      data: {
+        feePlanId,
+        name:       dto.name,
+        amount:     dto.amount,
+        feeHeadId:  dto.feeHeadId,
+        billingRuleId: dto.billingRuleId,
+        isOptional: dto.isOptional ?? false,
+        dueDate:    dto.dueDate ? new Date(dto.dueDate) : null,
+        gstRate:    dto.gstRate ?? null,
+        gstCode:    dto.gstCode ?? null,
+        sortOrder:  dto.sortOrder ?? 0,
+        effectiveFrom: new Date(),
+      },
+    });
+
+    await this.audit.logCreate({ tenantId, actorId, entityType: 'FeeItem', entityId: item.id, after: { name: item.name, feePlanId } });
+    return item;
+  }
+
+  /**
+   * Phase 2: create-new-not-edit, matching LateFeeRule's own established
+   * pattern -- reused here, not reinvented. Never mutates the existing
+   * row's calculation fields; sets its effectiveUntil and inserts a new
+   * row, both in one transaction.
+   */
+  async supersedeFeeItem(tenantId: string, branchId: string, feeItemId: string, dto: SupersedeFeeItemDto, actorId: string) {
+    const existing = await this.prisma.feeItem.findFirst({
+      where: { id: feeItemId, feePlan: { tenantId, branchId } },
+    });
+    if (!existing) throw new NotFoundException(`Fee item not found: ${feeItemId}`);
+
+    // Supersede requires the same feeHeadId (Phase 2's stated validation
+    // rule) -- a supersede changes amount/rule, not what the item
+    // fundamentally represents; changing the head is a new item, not a
+    // revision of this one.
+    if (dto.feeHeadId !== existing.feeHeadId) {
+      throw new ConflictException('Supersede must keep the same feeHeadId. Create a new fee item to change the fee head.');
+    }
+    const billingRule = await this.prisma.billingRule.findFirst({ where: { id: dto.billingRuleId, tenantId } });
+    if (!billingRule) throw new NotFoundException(`Billing rule not found: ${dto.billingRuleId}`);
+
+    const now = new Date();
+    const [, superseded] = await this.prisma.$transaction([
+      this.prisma.feeItem.update({
+        where: { id: feeItemId },
+        data:  { effectiveUntil: now },
+      }),
+      this.prisma.feeItem.create({
+        data: {
+          feePlanId:  existing.feePlanId,
+          name:       dto.name,
+          amount:     dto.amount,
+          feeHeadId:  dto.feeHeadId,
+          billingRuleId: dto.billingRuleId,
+          isOptional: dto.isOptional ?? existing.isOptional,
+          dueDate:    dto.dueDate ? new Date(dto.dueDate) : null,
+          gstRate:    dto.gstRate ?? null,
+          gstCode:    dto.gstCode ?? null,
+          sortOrder:  dto.sortOrder ?? existing.sortOrder,
+          effectiveFrom: now,
+        },
+      }),
+    ]);
+
+    await this.audit.logUpdate({
+      tenantId, actorId, entityType: 'FeeItem', entityId: feeItemId,
+      before: { name: existing.name, amount: existing.amount },
+      after:  { name: superseded.name, amount: superseded.amount, supersededBy: superseded.id },
+    });
+    return superseded;
   }
 
   async findAll(tenantId: string, branchId: string, academicYear?: string) {

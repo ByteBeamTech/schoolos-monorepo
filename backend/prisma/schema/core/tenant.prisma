@@ -85,6 +85,7 @@ model Tenant {
   paymentAllocations   PaymentAllocation[]
   feeHeads             FeeHead[]
   lateFeeRules         LateFeeRule[]
+  billingRules         BillingRule[]
   subjects             Subject[]
   staffMembers         Staff[]                    @relation("TenantMembers")
   staffProfiles        StaffProfile[]             @relation("TenantProfiles")

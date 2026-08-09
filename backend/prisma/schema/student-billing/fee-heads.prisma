@@ -32,6 +32,7 @@ model FeeHead {
   children FeeHead[] @relation("FeeHeadHierarchy")
 
   invoiceItems InvoiceItem[]
+  feeItems     FeeItem[]
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   branch Branch @relation(fields: [branchId], references: [id])

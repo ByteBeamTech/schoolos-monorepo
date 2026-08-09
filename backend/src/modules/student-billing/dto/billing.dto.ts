@@ -1,15 +1,20 @@
 import {
   IsString, IsNumber, IsBoolean, IsOptional,
   IsNotEmpty, IsEnum, IsDateString, IsArray,
-  ValidateNested, Min, IsPositive,
+  ValidateNested, Min, IsPositive, IsInt, ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AccountingNature, LateFeeCalculationMethod, LateFeePenaltyType } from '@prisma/client';
+import { AccountingNature, LateFeeCalculationMethod, LateFeePenaltyType, BillingFrequency, ProrationRule } from '@prisma/client';
 
 export class CreateFeeItemDto {
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
   @ApiProperty() @IsNumber() @IsPositive() amount!: number;
+  // Phase 2: required on new writes, closing the original FeeHead/FeeItem
+  // disconnection the gap analysis found. Nullable at the DB level only
+  // for pre-existing rows -- never optional here.
+  @ApiProperty() @IsString() @IsNotEmpty() feeHeadId!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() billingRuleId!: string;
   @ApiPropertyOptional() @IsBoolean() @IsOptional() isOptional?: boolean;
   @ApiPropertyOptional() @IsDateString() @IsOptional() dueDate?: string;
   @ApiPropertyOptional() @IsNumber() @Min(0) @IsOptional() gstRate?: number;
@@ -24,9 +29,37 @@ export class CreateFeePlanDto {
   @ApiPropertyOptional() @IsString() @IsOptional() description?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() grade?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() currency?: string;
-  @ApiPropertyOptional({ type: [CreateFeeItemDto] })
-  @IsArray() @ValidateNested({ each: true }) @Type(() => CreateFeeItemDto) @IsOptional()
-  feeItems?: CreateFeeItemDto[];
+  // feeItems removed, Phase 2: a plan's items are created as their own
+  // explicit step against an existing plan (POST .../fee-plans/:id/fee-items),
+  // not inlined into plan creation -- FeePlansService.create() now only
+  // ever creates the bare plan.
+}
+
+// Phase 2: supersede-only, matching FeeItem's create-new-not-edit
+// discipline (the same pattern LateFeeRule already established). Accepts
+// the same shape as create -- any field could be the reason for the
+// revision, not just amount.
+export class SupersedeFeeItemDto {
+  @ApiProperty() @IsString() @IsNotEmpty() name!: string;
+  @ApiProperty() @IsNumber() @IsPositive() amount!: number;
+  @ApiProperty() @IsString() @IsNotEmpty() feeHeadId!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() billingRuleId!: string;
+  @ApiPropertyOptional() @IsBoolean() @IsOptional() isOptional?: boolean;
+  @ApiPropertyOptional() @IsDateString() @IsOptional() dueDate?: string;
+  @ApiPropertyOptional() @IsNumber() @Min(0) @IsOptional() gstRate?: number;
+  @ApiPropertyOptional() @IsString() @IsOptional() gstCode?: string;
+  @ApiPropertyOptional() @IsNumber() @Min(0) @IsOptional() sortOrder?: number;
+}
+
+// Phase 2: BillingRule is create-only (frozen business rule -- never
+// changes under an active plan), so this is the only DTO it needs. No
+// UpdateBillingRuleDto exists, deliberately -- there is nothing for one
+// to do.
+export class CreateBillingRuleDto {
+  @ApiProperty({ enum: BillingFrequency }) @IsEnum(BillingFrequency) frequency!: BillingFrequency;
+  @ApiProperty({ type: [Number] }) @IsArray() @ArrayMinSize(1) @IsInt({ each: true }) @Min(1, { each: true }) billingMonths!: number[];
+  @ApiProperty() @IsInt() @Min(1) dueDayOfMonth!: number;
+  @ApiPropertyOptional({ enum: ProrationRule }) @IsEnum(ProrationRule) @IsOptional() prorationRule?: ProrationRule;
 }
 
 export class AssignFeePlanDto {

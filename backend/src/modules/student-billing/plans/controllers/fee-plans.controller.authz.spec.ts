@@ -30,7 +30,7 @@ describe('FeePlansController — explicit @Roles on every route (AUTH-041)', () 
 
   it('discovers the expected route handlers (update deliberately when routes change)', () => {
     expect(handlers.sort()).toEqual(
-      ['create', 'findAll', 'getStudentFeePlans', 'getStudentFeeSummary', 'findOne', 'assign'].sort(),
+      ['create', 'findAll', 'getStudentFeePlans', 'getStudentFeeSummary', 'findOne', 'assign', 'createFeeItem', 'supersedeFeeItem'].sort(),
     );
   });
 

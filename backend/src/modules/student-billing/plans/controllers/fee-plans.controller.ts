@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards }  from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards }  from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { FeePlansService }   from '../services/fee-plans.service';
 import { StudentBillingAccessService } from '../../access/student-billing-access.service';
-import { CreateFeePlanDto, AssignFeePlanDto } from '../../dto/billing.dto';
+import { CreateFeePlanDto, AssignFeePlanDto, CreateFeeItemDto, SupersedeFeeItemDto } from '../../dto/billing.dto';
 import { JwtGuard }          from '../../../../core/auth/guards/jwt.guard';
 import { RolesGuard }        from '../../../../core/roles/roles.guard';
 import { Roles }             from '../../../../core/roles/roles.decorator';
@@ -79,5 +79,19 @@ export class FeePlansController {
   @ApiOperation({ summary: 'Assign fee plan to student' })
   assign(@Body() dto: AssignFeePlanDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.assign(user.tenantId, dto, user.id);
+  }
+
+  @Post(':id/fee-items')
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Create a fee item on an existing plan (Phase 2: its own explicit step, not inlined into plan creation)' })
+  createFeeItem(@Param('id') id: string, @Body() dto: CreateFeeItemDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.createFeeItem(user.tenantId, user.branchId, id, dto, user.id);
+  }
+
+  @Patch('fee-items/:id/supersede')
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Supersede a fee item (create-new-not-edit -- never mutates the existing item)' })
+  supersedeFeeItem(@Param('id') id: string, @Body() dto: SupersedeFeeItemDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.supersedeFeeItem(user.tenantId, user.branchId, id, dto, user.id);
   }
 }

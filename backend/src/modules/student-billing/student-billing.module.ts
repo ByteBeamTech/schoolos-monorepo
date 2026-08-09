@@ -27,13 +27,15 @@ import { FeeHeadController }        from './fee-heads/controllers/fee-head.contr
 import { PaymentAllocationService } from './allocation/services/payment-allocation.service';
 import { RulesService }             from './late-fee/rules/rules.service';
 import { RulesController }          from './late-fee/rules/rules.controller';
+import { BillingRuleService }       from './billing-rules/services/billing-rule.service';
+import { BillingRuleController }    from './billing-rules/controllers/billing-rule.controller';
 
 
 @Module({
   imports: [ComplianceModule, StorageModule, AnalyticsModule,],
   providers: [FeePlansService, InvoiceService, PaymentService, DiscountService, ReconciliationService, ReceiptService, RefundService,
-    LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService, DiscountCategoryProvisioningService, LedgerService, FeeHeadService, PaymentAllocationService, RulesService],
-  controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController, LateFeeController, FeeHeadController, RulesController],
+    LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService, DiscountCategoryProvisioningService, LedgerService, FeeHeadService, PaymentAllocationService, RulesService, BillingRuleService],
+  controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController, LateFeeController, FeeHeadController, RulesController, BillingRuleController],
   // DiscountCategoryProvisioningService is exported so the branch-creation
   // paths (OnboardingService, SchoolManagementService) can provision a new
   // branch's default categories inside their own transaction, without

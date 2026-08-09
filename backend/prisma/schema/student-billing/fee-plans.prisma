@@ -29,13 +29,57 @@ model FeeItem {
   name         String
   amount       Decimal       @db.Decimal(12, 2)
   isOptional   Boolean       @default(false)
-  dueDate      DateTime?
+  dueDate      DateTime?     // deprecated in favour of BillingPeriod (Phase 3's
+                              // pure runtime calculation) -- kept nullable, not
+                              // dropped, since existing rows and any code still
+                              // reading it must not break. Removed only once
+                              // nothing queries it anymore.
   gstRate      Decimal?      @db.Decimal(5, 2)
   gstCode      String?
   sortOrder    Int           @default(0)
   createdAt    DateTime      @default(now())
+
+  // Phase 2: closes the FeeHead/FeeItem disconnection the original gap
+  // analysis found. Both nullable at the database level -- existing rows
+  // stay valid with no forced backfill; application-level validation (not
+  // a NOT NULL constraint) requires both on new writes going forward.
+  feeHeadId      String?
+  billingRuleId  String?
+  effectiveFrom  DateTime?
+  effectiveUntil DateTime?
+
   feePlan      FeePlan       @relation(fields: [feePlanId], references: [id])
+  feeHead      FeeHead?      @relation(fields: [feeHeadId], references: [id])
+  billingRule  BillingRule?  @relation(fields: [billingRuleId], references: [id])
   invoiceItems InvoiceItem[]
+
+  @@index([feeHeadId])
+  @@index([billingRuleId])
+}
+
+// Phase 2 (Billing Domain Model / PHASE_2_REVISED_REUSE_CLASSIFICATION.md):
+// genuinely new, no existing analog. Create-only, per frozen business rule --
+// a BillingRule referenced by an active FeePlan never changes. A permanent
+// policy revision is expressed as a new FeePlan for the next Academic
+// Session (or immediately, for a correction caught before any invoice has
+// been generated from it -- FeePlan creation was never restricted to
+// session boundaries). Temporary concessions route through the existing
+// LateFeeRule mechanism entirely, never through this model. No update(),
+// no supersede(), no effectiveUntil/isActive/supersededById -- there is
+// nothing for any of them to do under this rule.
+model BillingRule {
+  id             String                   @id @default(cuid())
+  tenantId       String
+  frequency      BillingFrequency
+  billingMonths  Int[]
+  dueDayOfMonth  Int
+  prorationRule  ProrationRule            @default(NO_PRORATION)
+  createdAt      DateTime                 @default(now())
+
+  tenant         Tenant    @relation(fields: [tenantId], references: [id])
+  feeComponents  FeeItem[]
+
+  @@index([tenantId])
 }
 
 model FeeAssignment {

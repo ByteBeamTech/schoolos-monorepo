@@ -843,6 +843,23 @@ enum LateFeeStatus {
   REVERSED
 }
 
+// Phase 2: BillingRule's calculation configuration.
+enum BillingFrequency {
+  ONE_TIME
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  ANNUAL
+  CUSTOM
+}
+
+enum ProrationRule {
+  NO_PRORATION
+  DAILY
+  FULL_MONTH_IF_BEFORE_15TH
+  HALF_MONTH_AFTER_15TH
+}
+
 // Late Fee FDD v2 / Implementation Roadmap Sprint 1. Distinct from the
 // existing LateFee.calculationType String field (default "FIXED") --
 // that field is untouched (no unrelated refactoring), this is the new,
