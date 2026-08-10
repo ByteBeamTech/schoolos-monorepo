@@ -30,13 +30,26 @@ import { RulesController }          from './late-fee/rules/rules.controller';
 import { BillingRuleService }       from './billing-rules/services/billing-rule.service';
 import { FeePlanAssignmentService } from './plans/services/fee-plan-assignment.service';
 import { BillingRuleController }    from './billing-rules/controllers/billing-rule.controller';
+import { InvoiceBuilderService }    from './billing-run/services/invoice-builder.service';
+import { BillingRunService }        from './billing-run/services/billing-run.service';
+import { BillingRunController }     from './billing-run/controllers/billing-run.controller';
+import { TransportChargeProvider }  from './billing-run/providers/transport-charge.provider';
+import { MODULE_CHARGE_PROVIDERS }  from './billing-run/providers/module-charge-provider.interface';
 
 
 @Module({
   imports: [ComplianceModule, StorageModule, AnalyticsModule,],
   providers: [FeePlansService, InvoiceService, PaymentService, DiscountService, ReconciliationService, ReceiptService, RefundService,
-    LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService, DiscountCategoryProvisioningService, LedgerService, FeeHeadService, PaymentAllocationService, RulesService, BillingRuleService, FeePlanAssignmentService],
-  controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController, LateFeeController, FeeHeadController, RulesController, BillingRuleController],
+    LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService, DiscountCategoryProvisioningService, LedgerService, FeeHeadService, PaymentAllocationService, RulesService, BillingRuleService, FeePlanAssignmentService,
+    InvoiceBuilderService, BillingRunService, TransportChargeProvider,
+    // Phase 4: Transport only, this phase's scope. Hostel/Activities
+    // implement ModuleChargeProvider and are added to this same array
+    // in their own future phase -- InvoiceBuilderService iterates
+    // whatever is registered here, unaware of which specific modules
+    // exist.
+    { provide: MODULE_CHARGE_PROVIDERS, useFactory: (transport: TransportChargeProvider) => [transport], inject: [TransportChargeProvider] },
+  ],
+  controllers: [FeePlansController, InvoiceController, PaymentController, DiscountController, LateFeeController, FeeHeadController, RulesController, BillingRuleController, BillingRunController],
   // DiscountCategoryProvisioningService is exported so the branch-creation
   // paths (OnboardingService, SchoolManagementService) can provision a new
   // branch's default categories inside their own transaction, without

@@ -1,7 +1,7 @@
 import {
   IsString, IsNumber, IsBoolean, IsOptional,
   IsNotEmpty, IsEnum, IsDateString, IsArray,
-  ValidateNested, Min, IsPositive, IsInt, ArrayMinSize,
+  ValidateNested, Min, Max, IsPositive, IsInt, ArrayMinSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -256,4 +256,13 @@ export class PreviewLateFeeDto {
   @ApiPropertyOptional() @IsBoolean() @IsOptional() compoundDaily?: boolean;
   @ApiProperty() @IsNumber() @IsPositive() dueAmount!: number;
   @ApiProperty() @IsNumber() @Min(0) daysOverdue!: number;
+}
+
+// Phase 4 (frozen): BillingRun is Branch+Period scoped, deliberately NOT
+// FeePlan-scoped -- no feePlanId here. periodMonth/periodYear, not a
+// bare label string, so the caller can never supply a periodLabel that
+// doesn't correspond to a real calendar month.
+export class TriggerBillingRunDto {
+  @ApiProperty() @IsInt() @Min(1) @Max(12) periodMonth!: number;
+  @ApiProperty() @IsInt() @Min(2000) periodYear!: number;
 }

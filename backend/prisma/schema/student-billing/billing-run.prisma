@@ -1,0 +1,77 @@
+// Phase 4 (frozen). Genuinely new -- no existing table does this,
+// confirmed by the same absence-check used in every prior phase.
+//
+// BillingRun is Branch+Period scoped, deliberately not FeePlan-scoped --
+// a branch with many active plans (Class 1 Standard, Class 5 Standard,
+// Class 11 Science, Class 11 Commerce, ...) would otherwise need one
+// separate run per plan for the same month. Each student's applicable
+// plan is resolved individually during execution (InvoiceBuilderService,
+// see fee-plan-assignment.service.ts's resolveForClassSection), never
+// filtered at trigger time.
+
+model BillingRun {
+  id          String            @id @default(cuid())
+  tenantId    String
+  branchId    String
+  periodLabel String            // one of calculateBillingPeriods()'s pure-
+                                 // function outputs (Phase 3) -- not a
+                                 // foreign key, there is no BillingPeriod table
+  status      BillingRunStatus  @default(PENDING)
+  triggeredBy BillingRunTrigger
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime          @default(now())
+  createdById String?
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id])
+  branch   Branch              @relation(fields: [branchId], references: [id])
+  attempts BillingRunAttempt[]
+
+  @@index([tenantId, branchId, periodLabel])
+}
+
+enum BillingRunStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+}
+
+enum BillingRunTrigger {
+  SCHEDULED
+  MANUAL
+}
+
+// A student with no resolvable FeePlan for their current class/section,
+// or zero due charges this period, is a valid, recorded SUCCEEDED
+// outcome with feePlanId/invoiceId both null -- not an error. See
+// InvoiceBuilderService for the exact conditions.
+model BillingRunAttempt {
+  id           String        @id @default(cuid())
+  tenantId     String
+  billingRunId String
+  studentId    String
+  feePlanId    String?       // resolved DURING this attempt, not a filter
+                              // the run was ever given -- recorded purely
+                              // for traceability/reporting
+  status       AttemptStatus @default(PENDING)
+  retryCount   Int           @default(0)
+  errorMessage String?
+  invoiceId    String?
+  completedAt  DateTime?
+
+  billingRun BillingRun @relation(fields: [billingRunId], references: [id])
+  invoice    Invoice?   @relation(fields: [invoiceId], references: [id])
+
+  @@unique([billingRunId, studentId])
+  @@index([tenantId, status])
+  @@index([tenantId, feePlanId])
+}
+
+enum AttemptStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}

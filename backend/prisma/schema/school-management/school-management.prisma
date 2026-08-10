@@ -57,6 +57,7 @@ model Branch {
   // Student Billing
   feePlans       FeePlan[]
   feePlanAssignments FeePlanAssignment[]
+  billingRuns        BillingRun[]
 
   invoices      Invoice[]
   payments      Payment[]

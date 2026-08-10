@@ -56,7 +56,12 @@ export class InvoiceService {
   // InvoiceSequence's own schema (@@unique([tenantId, branchId, year]))
   // was already designed for per-branch sequences. This fixes all three
   // by using InvoiceSequence as what it was always meant to be.
-  private async generateInvoiceNumber(tenantId: string, branchId: string): Promise<string> {
+  // Phase 4: made public (was private) so InvoiceBuilderService can reuse
+  // this exact method rather than duplicating a fourth copy of the
+  // advisory-lock sequence-generation pattern already repeated in
+  // refund.service.ts/late-fee.service.ts. Zero behavior change -- same
+  // logic, same result, visibility only.
+  async generateInvoiceNumber(tenantId: string, branchId: string): Promise<string> {
     const year = financialYearFor(new Date());
     const lockKey = `${tenantId}:${branchId}`
       .split('')

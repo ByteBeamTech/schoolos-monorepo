@@ -24,6 +24,7 @@ model Invoice {
   branch         Branch        @relation(fields: [branchId], references: [id])
   items          InvoiceItem[]
   lateFees       LateFee[]
+  billingRunAttempts BillingRunAttempt[]
   payments       Payment[]
   // FEE-1: an invoice may have MANY receipts -- one per payment. This was
   // Receipt? (one-to-one), the back-relation of Receipt.invoiceId @unique.

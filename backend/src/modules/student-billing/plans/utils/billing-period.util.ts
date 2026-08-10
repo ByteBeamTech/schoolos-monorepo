@@ -25,6 +25,21 @@ const MONTH_NAMES = [
 ];
 
 /**
+ * Phase 4 addition: extracted so BillingRunService.trigger() can compute
+ * a periodLabel from an operator-supplied (periodMonth, periodYear) pair
+ * WITHOUT needing any BillingRule -- a run's target period is a calendar
+ * fact, independent of any one student's resolved plan/rule. This is
+ * what breaks the chicken-and-egg problem calculateBillingPeriods()
+ * alone would otherwise create: computing "which month" requires a rule
+ * per Phase 3's original design, but a BillingRun doesn't know any
+ * student's rule until it resolves their plan, per-student, during
+ * execution.
+ */
+export function formatPeriodLabel(month: number, year: number): string {
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}
+
+/**
  * The calendar YEAR a given month falls in, relative to a session's start.
  * A session starting in April (month 4): months 4-12 fall in the start
  * year; months 1-3 fall in the start year + 1. This is what makes the
@@ -42,7 +57,7 @@ function resolveYearForMonth(sessionStartMonth: number, sessionStartYear: number
  * invalid date (new Date(2026, 1, 30) would silently roll over into
  * March otherwise).
  */
-function lastDayOfMonth(year: number, month: number): number {
+export function lastDayOfMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate(); // month is 1-indexed here; JS Date's day-0-of-next-month trick
 }
 
@@ -65,7 +80,7 @@ export function calculateBillingPeriods(
     const year = resolveYearForMonth(sessionStartMonth, sessionStartYear, month);
     const day  = Math.min(rule.dueDayOfMonth, lastDayOfMonth(year, month));
     return {
-      periodLabel: `${MONTH_NAMES[month - 1]} ${year}`,
+      periodLabel: formatPeriodLabel(month, year),
       periodMonth: month,
       periodYear:  year,
       dueDate:     new Date(year, month - 1, day),
