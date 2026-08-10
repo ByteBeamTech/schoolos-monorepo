@@ -171,6 +171,28 @@ export class BillingRunService {
     return this.execute(billingRunId);
   }
 
+  /**
+   * Additive read endpoint -- no change to trigger/execute/retryFailed,
+   * their transaction behavior, or the idempotency rules. Reuses the
+   * exact {data, meta} pagination shape InvoiceService.findAll already
+   * established, and the same single branchId scoping every other
+   * method on this service already uses (this controller has no
+   * multi-branch authorizedBranchIds concept anywhere -- not introduced
+   * here either).
+   */
+  async findAll(tenantId: string, branchId: string, page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      this.prisma.billingRun.findMany({
+        where: { tenantId, branchId },
+        orderBy: { createdAt: 'desc' },
+        skip, take: limit,
+      }),
+      this.prisma.billingRun.count({ where: { tenantId, branchId } }),
+    ]);
+    return { data, meta: { total, page, limit, lastPage: Math.ceil(total / limit) } };
+  }
+
   async findById(tenantId: string, id: string) {
     const run = await this.prisma.billingRun.findFirst({ where: { id, tenantId } });
     if (!run) throw new NotFoundException(`Billing run not found: ${id}`);

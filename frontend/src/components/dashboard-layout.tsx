@@ -26,7 +26,7 @@ import {
   Tag, Bus, Library, MessageSquare, Receipt, UserPlus,
   BookMarked, Package, Award, Layers, BadgeDollarSign, BarChart3,
   Briefcase, Building2, Shield, HeadphonesIcon, Puzzle, Building,
-  Menu, X, Sun, Moon, Search, Building as BranchIcon, AlertCircle, Clock,
+  Menu, X, Sun, Moon, Search, Building as BranchIcon, AlertCircle, Clock, PlayCircle,
 } from "lucide-react";
 
 // ── Nav definition ────────────────────────────────────────────────────────────
@@ -54,6 +54,7 @@ const NAV: NavGroup[] = [
   { label: "Finance", items: [
     { href: "/dashboard/billing/collect-fee",  label: "Collect Fee",    icon: CreditCard,      roles: FINANCE },
     { href: "/dashboard/billing",              label: "Invoices",       icon: FileText,        roles: FINANCE },
+    { href: "/dashboard/billing/runs",         label: "Billing Runs",   icon: PlayCircle,      roles: FINANCE },
     { href: "/dashboard/billing/defaulters",   label: "Defaulters",     icon: AlertCircle,     roles: FINANCE },
     { href: "/dashboard/billing/late-fee",     label: "Late Fees",      icon: Clock,           roles: FINANCE },
     { href: "/dashboard/billing/fee-structure",label: "Fee Structure",  icon: Package,         roles: FINANCE },

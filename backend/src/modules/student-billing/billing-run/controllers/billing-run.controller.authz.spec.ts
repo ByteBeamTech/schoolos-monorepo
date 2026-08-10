@@ -22,7 +22,7 @@ describe('BillingRunController — explicit @Roles on every route (AUTH-041)', (
   const handlers = routeHandlerNames(BillingRunController);
 
   it('discovers the expected route handlers (update deliberately when routes change)', () => {
-    expect(handlers.sort()).toEqual(['trigger', 'execute', 'retryFailed', 'findOne', 'findAttempts'].sort());
+    expect(handlers.sort()).toEqual(['findAll', 'trigger', 'execute', 'retryFailed', 'findOne', 'findAttempts'].sort());
   });
 
   it.each(handlers.map((h) => [h]))('%s has non-empty @Roles metadata', (name) => {

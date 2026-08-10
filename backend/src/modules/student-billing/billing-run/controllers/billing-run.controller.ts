@@ -21,6 +21,15 @@ import { AuthenticatedUser } from '../../../../core/auth/guards/jwt.strategy';
 export class BillingRunController {
   constructor(private readonly service: BillingRunService) {}
 
+  @Get()
+  @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'List billing runs for this branch, most recent first' })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  findAll(@CurrentUser() user: AuthenticatedUser, @Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.service.findAll(user.tenantId, user.branchId, page ? parseInt(page, 10) : undefined, limit ? parseInt(limit, 10) : undefined);
+  }
+
   @Post()
   @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
   @ApiOperation({ summary: 'Trigger a billing run for this branch + period (no feePlanId -- resolved per student at execution time)' })

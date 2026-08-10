@@ -20,6 +20,8 @@ describe('BillingRunService', () => {
       billingRun: {
         findFirst: jest.fn().mockResolvedValue(null), // no active run by default
         findUnique: jest.fn().mockResolvedValue(run),
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'run-1', ...data })),
         update: jest.fn().mockImplementation(({ where, data }) => Promise.resolve({ id: where.id, ...run, ...data })),
       },
@@ -48,6 +50,27 @@ describe('BillingRunService', () => {
       ],
     }).compile();
     service = module.get(BillingRunService);
+  });
+
+  describe('findAll', () => {
+    it('scopes the query to the given tenant+branch, most recent first', async () => {
+      await service.findAll('t-1', 'b-1');
+      expect(prisma.billingRun.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: 't-1', branchId: 'b-1' }, orderBy: { createdAt: 'desc' } }),
+      );
+    });
+
+    it('returns the same {data, meta} pagination shape InvoiceService.findAll already established', async () => {
+      prisma.billingRun.findMany.mockResolvedValue([run]);
+      prisma.billingRun.count.mockResolvedValue(1);
+      const result = await service.findAll('t-1', 'b-1', 1, 20);
+      expect(result).toEqual({ data: [run], meta: { total: 1, page: 1, limit: 20, lastPage: 1 } });
+    });
+
+    it('defaults to page 1, limit 20 when not supplied', async () => {
+      await service.findAll('t-1', 'b-1');
+      expect(prisma.billingRun.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 20 }));
+    });
   });
 
   describe('trigger', () => {
