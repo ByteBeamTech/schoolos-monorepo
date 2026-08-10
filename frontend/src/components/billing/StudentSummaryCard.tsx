@@ -115,7 +115,7 @@ export function StudentSummaryCard({
           </div>
         )}
         {currentPlan && (
-          <div className="text-xs text-slate-500">Plan: {currentPlan.feePlan.name}</div>
+          <div className="text-xs text-slate-500">Plan: {currentPlan.name}</div>
         )}
         {/* FDD FR-OUTSTANDING-05 / FR-SUMMARY: Advance Balance deliberately
             absent -- no held-balance concept exists in the backend. Not a

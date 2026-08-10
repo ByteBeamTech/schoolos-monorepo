@@ -341,15 +341,27 @@ export function useInvoiceStats(academicYear?: string) {
 export interface DiscountSummary {
   id: string; category?: { name?: string }; isActive: boolean; approvalStatus: string; appliedAmount: number; createdAt?: string;
 }
-// Bug fix: GET /billing/fee-plans/student/:id returns FeeAssignment[], not
-// FeePlan[] directly -- confirmed by reading fee-plans.service.ts's
-// getStudentFeePlans() precisely. The plan's own name/id live nested under
-// .feePlan, not at the top level. The previous version of this type
-// (`{id, name, academicYear}`) never matched what this endpoint actually
-// returns.
+// ROOT CAUSE FIX: this type described GET /billing/fee-plans/student/:id's
+// OLD response shape (a FeeAssignment[] wrapper -- {assignedAt, feePlan:
+// {...}}). Phase 3 retired FeeAssignment entirely and rewrote
+// getStudentFeePlans() to resolve the applicable plan via the student's
+// class/section instead, returning a flat FeePlan[] directly -- confirmed
+// against the real, current backend method
+// (backend/src/modules/student-billing/plans/services/fee-plans.service.ts)
+// before writing this fix, not assumed. This type (and the one call site
+// that read the old .feePlan.name nesting, in StudentSummaryCard.tsx) were
+// never updated when that backend change shipped -- the actual root cause
+// of the "Application error: a client-side exception has occurred" crash
+// on /dashboard/billing/students/[studentId]: a plain object access on
+// `undefined`, since `.feePlan` no longer exists on the real response.
 export interface FeePlanSummary {
-  id: string; assignedAt?: string;
-  feePlan: { id: string; name: string; academicYear?: string };
+  id: string;
+  name: string;
+  academicYear: string;
+  description?: string | null;
+  grade?: string | null;
+  currency?: string;
+  isActive?: boolean;
 }
 
 export function useStudentBilling(studentId?: string) {
