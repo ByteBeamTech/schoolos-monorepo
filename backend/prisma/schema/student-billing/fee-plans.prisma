@@ -11,7 +11,7 @@ model FeePlan {
   isActive     Boolean         @default(true)
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
-  assignments  FeeAssignment[]
+  assignments  FeePlanAssignment[]
   lateFeeRules LateFeeRule[]
   feeItems     FeeItem[]
 
@@ -93,20 +93,43 @@ model BillingRule {
   @@index([tenantId, branchId])
 }
 
-model FeeAssignment {
-  id           String   @id @default(cuid())
-  tenantId     String
-  studentId    String
-  branchId     String
-  feePlanId    String
-  academicYear String
-  assignedAt   DateTime @default(now())
-  assignedBy   String
-  feePlan      FeePlan  @relation(fields: [feePlanId], references: [id])
-  student      Student  @relation(fields: [studentId], references: [id])
-  branch       Branch   @relation(fields: [branchId], references: [id])
+// Phase 3: FeeAssignment retired. Replaced by FeePlanAssignment, which is
+// deliberately NOT a repurposing of this table -- a fundamentally
+// different shape (Class/Section, never a student FK), per the frozen
+// "no student-level FeePlan ownership in V1" rule. All three real
+// consumers (FeePlansService.assign/getStudentFeePlans/getStudentFeeSummary,
+// InvoiceService.bulkGenerate) were confirmed and migrated before this
+// table was removed -- not assumed safe to drop.
+model FeePlanAssignment {
+  id          String   @id @default(cuid())
+  tenantId    String
+  branchId    String
+  sessionId   String
+  feePlanId   String
+  classId     String
+  sectionId   String?           // null = applies to every section of classId;
+                                 // set = narrower override, wins over the
+                                 // class-level row (enforced in the
+                                 // resolution service, not the schema)
+  createdAt   DateTime @default(now())
+  createdById String?
 
-  @@unique([studentId, feePlanId, academicYear])
-  @@index([tenantId])
-  @@index([tenantId, branchId])
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  branch  Branch          @relation(fields: [branchId], references: [id])
+  session AcademicSession @relation(fields: [sessionId], references: [id])
+  feePlan FeePlan         @relation(fields: [feePlanId], references: [id])
+  class   Class           @relation(fields: [classId], references: [id])
+  section Section?        @relation(fields: [sectionId], references: [id])
+
+  @@index([tenantId, branchId, sessionId, classId])
+  @@index([tenantId, feePlanId])
+  // Uniqueness on (tenantId, sessionId, classId, sectionId) is enforced at
+  // the SQL level in this table's migration, not expressed here as
+  // @@unique -- the identical lesson already learned building
+  // LateFeeRule's own scope constraint: a plain @@unique on a nullable
+  // column does NOT catch two class-level assignments (sectionId both
+  // NULL) for the same class+session, because Postgres treats NULL as
+  // never equal to NULL. The migration builds a COALESCE-based unique
+  // index instead, which Prisma's schema language has no direct syntax
+  // for.
 }

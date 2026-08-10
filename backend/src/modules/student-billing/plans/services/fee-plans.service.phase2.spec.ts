@@ -9,6 +9,7 @@
 import { Test } from '@nestjs/testing';
 import { NotFoundException, ConflictException } from '@nestjs/common';
 import { FeePlansService } from './fee-plans.service';
+import { FeePlanAssignmentService } from './fee-plan-assignment.service';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../../core/compliance/audit.service';
 
@@ -36,6 +37,12 @@ describe('FeePlansService — Phase 2: createFeeItem / supersedeFeeItem', () => 
         FeePlansService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
+        // Phase 3: FeePlansService now depends on FeePlanAssignmentService
+        // (getStudentFeePlans/getStudentFeeSummary resolution) -- these
+        // Phase 2 tests don't exercise that path, so a bare mock is
+        // sufficient here; FeePlanAssignmentService has its own dedicated
+        // spec file covering its actual behaviour.
+        { provide: FeePlanAssignmentService, useValue: { resolveForClassSection: jest.fn() } },
       ],
     }).compile();
     service = module.get(FeePlansService);

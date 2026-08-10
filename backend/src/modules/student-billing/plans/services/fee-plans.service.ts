@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }  from '../../../../core/compliance/audit.service';
-import { CreateFeePlanDto, AssignFeePlanDto, CreateFeeItemDto, SupersedeFeeItemDto } from '../../dto/billing.dto';
+import { CreateFeePlanDto, CreateFeeItemDto, SupersedeFeeItemDto } from '../../dto/billing.dto';
+import { FeePlanAssignmentService } from './fee-plan-assignment.service';
 
 @Injectable()
 export class FeePlansService {
@@ -10,6 +11,7 @@ export class FeePlansService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit:  AuditService,
+    private readonly feePlanAssignments: FeePlanAssignmentService,
   ) {}
 
   async create(tenantId: string, branchId: string, dto: CreateFeePlanDto, actorId: string) {
@@ -161,93 +163,67 @@ export class FeePlansService {
       where:   { id, tenantId, branchId },
       include: {
         feeItems:    { orderBy: { sortOrder: 'asc' } },
-        assignments: { include: { student: { select: { id: true, firstName: true, lastName: true, admissionNumber: true } } } },
+        // Phase 3: assignments are now Class/Section-scoped, not
+        // student-scoped -- there is no student relation to include
+        // here anymore. "Which students" is answered by resolving
+        // class/section membership separately, not by this include.
+        assignments: true,
       },
     });
     if (!plan) throw new NotFoundException(`Fee plan not found: ${id}`);
     return plan;
   }
 
-  async assign(tenantId: string, dto: AssignFeePlanDto, actorId: string) {
-	  const student = await this.prisma.student.findFirst({
-  where: {
-    id: dto.studentId,
-    tenantId,
-  },
-  select: {
-    branchId: true,
-  },
-});
+  // Phase 3: assign() retired entirely -- student-level plan assignment
+  // contradicts the frozen "no student-level FeePlan ownership in V1"
+  // rule. Assigning a plan now means creating a FeePlanAssignment
+  // against a class/section (FeePlanAssignmentService.create), never a
+  // direct studentId. No method replaces this one's old shape because
+  // its old shape is exactly what the frozen architecture rules out.
 
-if (!student) {
-  throw new NotFoundException('Student not found');
-}
-    const existing = await this.prisma.feeAssignment.findFirst({
-      where: { tenantId, branchId: student.branchId, studentId: dto.studentId, feePlanId: dto.feePlanId, academicYear: dto.academicYear },
-    });
-    if (existing) throw new ConflictException('Fee plan already assigned to this student.');
-
-    const assignment = await this.prisma.feeAssignment.create({
-      data: { tenantId, branchId: student.branchId, studentId: dto.studentId, feePlanId: dto.feePlanId, academicYear: dto.academicYear, assignedBy: actorId },
-      include: {
-        student: { select: { firstName: true, lastName: true, admissionNumber: true } },
-        feePlan: { select: { name: true } },
-      },
-    });
-
-    await this.audit.logCreate({ tenantId, actorId, entityType: 'FeeAssignment', entityId: assignment.id, after: { studentId: dto.studentId, feePlanId: dto.feePlanId } });
-    return assignment;
-  }
-
+  /**
+   * Refactored: resolves the student's CURRENT class/section against the
+   * tenant's current AcademicSession, then the applicable
+   * FeePlanAssignment for that class/section (section-specific wins over
+   * class-level), then returns that plan with its items. No FeeAssignment
+   * lookup -- there is no per-student assignment row anymore.
+   */
   async getStudentFeePlans(tenantId: string, studentId: string) {
-   
-	  const student = await this.prisma.student.findFirst({
-  where: {
-    id: studentId,
-    tenantId,
-  },
-  select: {
-    branchId: true,
-  },
-});
+    const student = await this.prisma.student.findFirst({ where: { id: studentId, tenantId } });
+    if (!student) throw new NotFoundException('Student not found');
 
-if (!student) {
-  throw new NotFoundException('Student not found');
-}
-	  return this.prisma.feeAssignment.findMany({
-      where:   { tenantId, branchId: student.branchId, studentId },
-      include: { feePlan: { include: { feeItems: { orderBy: { sortOrder: 'asc' } } } } },
-      orderBy: { assignedAt: 'desc' },
+    const session = await this.prisma.academicSession.findFirst({ where: { tenantId, isCurrent: true } });
+    if (!session) return [];
+
+    const assignment = await this.feePlanAssignments.resolveForClassSection(
+      tenantId, student.branchId, session.id, student.classId, student.sectionId,
+    );
+    if (!assignment) return [];
+
+    const plan = await this.prisma.feePlan.findFirst({
+      where: { id: assignment.feePlanId, tenantId },
+      include: { feeItems: { orderBy: { sortOrder: 'asc' } } },
     });
+    return plan ? [plan] : [];
   }
 
-  async getStudentFeeSummary(tenantId: string, studentId: string, academicYear: string) {
- 
-	  const student = await this.prisma.student.findFirst({
-  where: {
-    id: studentId,
-    tenantId,
-  },
-  select: {
-    branchId: true,
-  },
-});
-
-if (!student) {
-  throw new NotFoundException('Student not found');
-}
-      
-	  const assignments = await this.prisma.feeAssignment.findMany({
-      where:   { tenantId, branchId: student.branchId, studentId, academicYear },
-      include: { feePlan: { include: { feeItems: true } } },
-    });
+  /**
+   * Refactored: same class/section -> FeePlanAssignment resolution as
+   * getStudentFeePlans, then computes the summary from that plan's
+   * items. The old academicYear string parameter is gone -- resolution
+   * against the tenant's current session replaces it, since there's no
+   * longer a per-student-per-year assignment row to filter by that
+   * string.
+   */
+  async getStudentFeeSummary(tenantId: string, studentId: string) {
+    const plans = await this.getStudentFeePlans(tenantId, studentId);
     let totalFees = 0;
     const breakdown: any[] = [];
-    for (const a of assignments) {
-      const items = a.feePlan.feeItems.map((i: any) => ({ name: i.name, amount: Number(i.amount) }));
+    for (const plan of plans) {
+      const items = plan.feeItems.map((i: any) => ({ name: i.name, amount: Number(i.amount) }));
       totalFees += items.reduce((s: number, i: any) => s + i.amount, 0);
-      breakdown.push({ planName: a.feePlan.name, items });
+      breakdown.push({ planName: plan.name, items });
     }
-    return { studentId, academicYear, totalFees, breakdown };
+    return { studentId, totalFees, breakdown };
   }
 }

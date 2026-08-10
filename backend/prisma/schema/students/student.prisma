@@ -114,7 +114,6 @@ model Student {
 
   attendances    Attendance[]
   discounts      Discount[]
-  feeAssignments FeeAssignment[]
   guardianLinks  GuardianStudent[]
   invoices       Invoice[]
   documents      Document[]

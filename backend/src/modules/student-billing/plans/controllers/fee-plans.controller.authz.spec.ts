@@ -11,6 +11,7 @@ import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
 import { ROLES_KEY } from '../../../../core/roles/roles.decorator';
 import { FeePlansController } from './fee-plans.controller';
 import { FeePlansService } from '../services/fee-plans.service';
+import { FeePlanAssignmentService } from '../services/fee-plan-assignment.service';
 import { StudentBillingAccessService } from '../../access/student-billing-access.service';
 
 function routeHandlerNames(controller: any): string[] {
@@ -30,7 +31,7 @@ describe('FeePlansController — explicit @Roles on every route (AUTH-041)', () 
 
   it('discovers the expected route handlers (update deliberately when routes change)', () => {
     expect(handlers.sort()).toEqual(
-      ['create', 'findAll', 'getStudentFeePlans', 'getStudentFeeSummary', 'findOne', 'assign', 'createFeeItem', 'supersedeFeeItem'].sort(),
+      ['create', 'findAll', 'getStudentFeePlans', 'getStudentFeeSummary', 'findOne', 'createAssignment', 'findAllAssignments', 'createFeeItem', 'supersedeFeeItem'].sort(),
     );
   });
 
@@ -68,6 +69,7 @@ describe('FeePlansController — student-scoped reads gate on assertCanAccessStu
       controllers: [FeePlansController],
       providers: [
         { provide: FeePlansService, useValue: service },
+        { provide: FeePlanAssignmentService, useValue: { create: jest.fn(), findAll: jest.fn() } },
         { provide: StudentBillingAccessService, useValue: access },
       ],
     }).compile();
@@ -82,7 +84,7 @@ describe('FeePlansController — student-scoped reads gate on assertCanAccessStu
   });
 
   it('getStudentFeeSummary calls the ownership check before the service', async () => {
-    await controller.getStudentFeeSummary('s-1', '2025-26', user);
+    await controller.getStudentFeeSummary('s-1', user);
     expect(access.assertCanAccessStudent).toHaveBeenCalledWith(user, 's-1');
     expect(access.assertCanAccessStudent.mock.invocationCallOrder[0])
       .toBeLessThan(service.getStudentFeeSummary.mock.invocationCallOrder[0]);
@@ -90,7 +92,7 @@ describe('FeePlansController — student-scoped reads gate on assertCanAccessStu
 
   it('a denied ownership check propagates and the service is NEVER called', async () => {
     access.assertCanAccessStudent.mockRejectedValue(new NotFoundException());
-    await expect(controller.getStudentFeeSummary('s-x', '2025-26', user))
+    await expect(controller.getStudentFeeSummary('s-x', user))
       .rejects.toBeInstanceOf(NotFoundException);
     expect(service.getStudentFeeSummary).not.toHaveBeenCalled();
   });

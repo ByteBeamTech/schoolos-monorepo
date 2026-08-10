@@ -20,6 +20,7 @@ import { GenerateInvoiceDto, BulkGenerateInvoicesDto } from '../../dto/billing.d
 import { overdueWhere, isInvoiceOverdue } from '../overdue.util';
 import { financialYearFor } from '../../ledger/financial-year.util';
 import { LedgerService } from '../../ledger/services/ledger.service';
+import { FeePlanAssignmentService } from '../../plans/services/fee-plan-assignment.service';
 import { derivePaymentRefundState, refundedAmountFor } from '../../refund/refund-status.util';
 
 
@@ -39,6 +40,7 @@ export class InvoiceService {
     private readonly audit:   AuditService,
     private readonly emitter: EventEmitter2,
     private readonly ledger:  LedgerService,
+    private readonly feePlanAssignments: FeePlanAssignmentService,
   ) {}
 
   // ── Invoice number — advisory-lock-safe ───────────────────────────────────
@@ -219,17 +221,45 @@ export class InvoiceService {
   }
 
   // ── Bulk generate ─────────────────────────────────────────────────────────
+  /**
+   * Phase 3: FeeAssignment (student-level) is retired. Students eligible
+   * for this plan are now resolved via FeePlanAssignment -> Class/Section
+   * -> Student, not a per-student assignment row. This is deliberately
+   * careful, not a direct "find every student in this plan's classes"
+   * query: every FeePlanAssignment referencing this plan is found first
+   * (class-level and section-level both), every student in those
+   * class/sections is gathered, and then EACH student's actual resolved
+   * assignment is re-checked (section-wins-over-class) -- a student in a
+   * class-level-assigned class can still have their own section-level
+   * override pointing at a *different* plan, and must not be bulk-billed
+   * for this one if so. Kept deliberately minimal -- this is not
+   * BillingRun (Phase 4), just enough to keep this existing bulk path
+   * functionally correct against the new assignment model.
+   */
   async bulkGenerate(tenantId: string, dto: BulkGenerateInvoicesDto, actorId: string) {
-    const assignments = await this.prisma.feeAssignment.findMany({ where: { tenantId, feePlanId: dto.feePlanId } });
-    if (!assignments.length) throw new BadRequestException('No students assigned to this fee plan.');
+    const relevantAssignments = await this.prisma.feePlanAssignment.findMany({
+      where: { tenantId, feePlanId: dto.feePlanId },
+    });
+    if (!relevantAssignments.length) throw new BadRequestException('No class/section assigned to this fee plan.');
+
+    const classIds = [...new Set(relevantAssignments.map((a) => a.classId))];
+    const candidateStudents = await this.prisma.student.findMany({
+      where: { tenantId, classId: { in: classIds } },
+    });
+
     const results = { generated: 0, skipped: 0, errors: [] as string[] };
-    for (const a of assignments) {
+    for (const student of candidateStudents) {
+      const resolved = await this.feePlanAssignments.resolveForClassSection(
+        tenantId, student.branchId, relevantAssignments[0].sessionId, student.classId, student.sectionId,
+      );
+      if (resolved?.feePlanId !== dto.feePlanId) continue; // superseded by a more specific section override
+
       try {
-        await this.generate(tenantId, { studentId: a.studentId, feePlanId: dto.feePlanId, dueDate: dto.dueDate }, actorId);
+        await this.generate(tenantId, { studentId: student.id, feePlanId: dto.feePlanId, dueDate: dto.dueDate }, actorId);
         results.generated++;
       } catch (err: any) {
         results.skipped++;
-        results.errors.push(`Student ${a.studentId}: ${err.message}`);
+        results.errors.push(`Student ${student.id}: ${err.message}`);
       }
     }
     return results;

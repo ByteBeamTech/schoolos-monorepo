@@ -6,6 +6,7 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }    from '../../../../core/compliance/audit.service';
 import { EventEmitter2 }   from '@nestjs/event-emitter';
 import { LedgerService } from '../../ledger/services/ledger.service';
+import { FeePlanAssignmentService } from '../../plans/services/fee-plan-assignment.service';
 
 const mockFeePlan = {
   id: 'plan-1', tenantId: 't-1', name: 'Annual Fee', academicYear: '2025-26',
@@ -25,6 +26,7 @@ describe('InvoiceService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InvoiceService,
+        { provide: FeePlanAssignmentService, useValue: { resolveForClassSection: jest.fn().mockResolvedValue(null) } },
         {
           provide: PrismaService,
           useValue: {
@@ -230,6 +232,7 @@ describe('InvoiceService', () => {
     const mod = await Test.createTestingModule({
       providers: [
         InvoiceService,
+        { provide: FeePlanAssignmentService, useValue: { resolveForClassSection: jest.fn().mockResolvedValue(null) } },
         { provide: PrismaService, useValue: { feePlan: { findFirst: jest.fn().mockResolvedValue(mockFeePlan) }, student: { findFirst: jest.fn().mockResolvedValue(mockStudent) }, transportAssignment: { findFirst: jest.fn().mockResolvedValue(null) }, discount: { findMany: jest.fn().mockResolvedValue([]) }, invoice: { count: jest.fn().mockResolvedValue(0), create: jest.fn().mockResolvedValue({ id: 'inv-1', invoiceNumber: 'INV-2025-00001', totalAmount: 12360 }) }, $transaction: jest.fn().mockImplementation(async (fn) => fn({ $executeRawUnsafe: jest.fn(), invoiceSequence: { upsert: jest.fn().mockResolvedValue({ lastNumber: 1 }) } })) } },
         { provide: AuditService, useValue: { logCreate: jest.fn() } },
         { provide: EventEmitter2, useValue: emitter },

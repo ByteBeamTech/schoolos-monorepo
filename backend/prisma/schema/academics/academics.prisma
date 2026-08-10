@@ -11,6 +11,7 @@ model Class {
   sections          Section[]
   TeacherAssignment TeacherAssignment[]
   students          Student[]
+  feePlanAssignments FeePlanAssignment[]
 
   feeStructures FeeStructure[]
 
@@ -35,6 +36,7 @@ model Section {
   createdAt            DateTime                      @default(now())
   class                Class                         @relation(fields: [classId], references: [id])
   students             Student[]
+  feePlanAssignments   FeePlanAssignment[]
   timetableSlots       TimetableSlot[]
   TeacherAssignment    TeacherAssignment[]
   calendarEventTargets AcademicCalendarEventTarget[]

@@ -11,6 +11,7 @@ import { InvoiceService } from './invoice.service';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../../core/compliance/audit.service';
 import { LedgerService } from '../../ledger/services/ledger.service';
+import { FeePlanAssignmentService } from '../../plans/services/fee-plan-assignment.service';
 
 describe('InvoiceService — FEE-0 branch scoping', () => {
   let service: InvoiceService;
@@ -27,6 +28,7 @@ describe('InvoiceService — FEE-0 branch scoping', () => {
     const module = await Test.createTestingModule({
       providers: [
         InvoiceService,
+        { provide: FeePlanAssignmentService, useValue: { resolveForClassSection: jest.fn().mockResolvedValue(null) } },
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { logCreate: jest.fn(), logUpdate: jest.fn() } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
@@ -100,6 +102,7 @@ describe('InvoiceService.getDefaulters — AUTH-054 branch intersection', () => 
     const module = await T2.createTestingModule({
       providers: [
         InvoiceService,
+        { provide: FeePlanAssignmentService, useValue: { resolveForClassSection: jest.fn().mockResolvedValue(null) } },
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { logCreate: jest.fn(), logUpdate: jest.fn() } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },

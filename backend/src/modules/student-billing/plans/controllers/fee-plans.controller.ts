@@ -1,8 +1,9 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, UseGuards }  from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { FeePlansService }   from '../services/fee-plans.service';
+import { FeePlanAssignmentService } from '../services/fee-plan-assignment.service';
 import { StudentBillingAccessService } from '../../access/student-billing-access.service';
-import { CreateFeePlanDto, AssignFeePlanDto, CreateFeeItemDto, SupersedeFeeItemDto } from '../../dto/billing.dto';
+import { CreateFeePlanDto, CreateFeePlanAssignmentDto, CreateFeeItemDto, SupersedeFeeItemDto } from '../../dto/billing.dto';
 import { JwtGuard }          from '../../../../core/auth/guards/jwt.guard';
 import { RolesGuard }        from '../../../../core/roles/roles.guard';
 import { Roles }             from '../../../../core/roles/roles.decorator';
@@ -16,6 +17,7 @@ import { AuthenticatedUser } from '../../../../core/auth/guards/jwt.strategy';
 export class FeePlansController {
   constructor(
     private readonly service: FeePlansService,
+    private readonly assignments: FeePlanAssignmentService,
     private readonly access:  StudentBillingAccessService,
   ) {}
 
@@ -55,15 +57,28 @@ export class FeePlansController {
   // FEE-0: was unguarded -- the audit's canonical example ("any authenticated
   // user can query any student's summary"). Same treatment as above.
   @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Get fee summary for student' })
-  @ApiQuery({ name: 'academicYear', required: true })
+  @ApiOperation({ summary: 'Get fee summary for student (resolved against the tenant\'s current session -- Phase 3)' })
   async getStudentFeeSummary(
     @Param('studentId') studentId: string,
-    @Query('academicYear') academicYear: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     await this.access.assertCanAccessStudent(user, studentId);
-    return this.service.getStudentFeeSummary(user.tenantId, studentId, academicYear);
+    return this.service.getStudentFeeSummary(user.tenantId, studentId);
+  }
+
+  @Post('assignments')
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Assign a fee plan to a class or section (Phase 3: Class/Section scoped -- there is no student-level assignment)' })
+  createAssignment(@Body() dto: CreateFeePlanAssignmentDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.assignments.create(user.tenantId, user.branchId, dto, user.id);
+  }
+
+  @Get('assignments')
+  @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'List fee plan assignments' })
+  @ApiQuery({ name: 'sessionId', required: false })
+  findAllAssignments(@CurrentUser() user: AuthenticatedUser, @Query('sessionId') sessionId?: string) {
+    return this.assignments.findAll(user.tenantId, user.branchId, sessionId);
   }
 
   @Get(':id')
@@ -72,13 +87,6 @@ export class FeePlansController {
   @ApiOperation({ summary: 'Get fee plan by ID' })
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
   return this.service.findById(  user.tenantId,  user.branchId,  id,);
-  }
-
-  @Post('assign')
-  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
-  @ApiOperation({ summary: 'Assign fee plan to student' })
-  assign(@Body() dto: AssignFeePlanDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.assign(user.tenantId, dto, user.id);
   }
 
   @Post(':id/fee-items')

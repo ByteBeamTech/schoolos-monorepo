@@ -65,10 +65,17 @@ export class CreateBillingRuleDto {
   @ApiPropertyOptional() @IsString() @IsOptional() branchId?: string;
 }
 
-export class AssignFeePlanDto {
-  @ApiProperty() @IsString() @IsNotEmpty() studentId!: string;
+// Phase 3: AssignFeePlanDto retired -- student-level plan assignment
+// contradicts the frozen "no student-level FeePlan ownership in V1"
+// rule. Replaced entirely by CreateFeePlanAssignmentDto, Class/Section
+// scoped, never a studentId.
+export class CreateFeePlanAssignmentDto {
+  @ApiProperty() @IsString() @IsNotEmpty() sessionId!: string;
   @ApiProperty() @IsString() @IsNotEmpty() feePlanId!: string;
-  @ApiProperty() @IsString() @IsNotEmpty() academicYear!: string;
+  @ApiProperty() @IsString() @IsNotEmpty() classId!: string;
+  // null/omitted = applies to every section of classId; set = a narrower
+  // override that wins over the class-level assignment for that section.
+  @ApiPropertyOptional() @IsString() @IsOptional() sectionId?: string;
 }
 
 export class GenerateInvoiceDto {

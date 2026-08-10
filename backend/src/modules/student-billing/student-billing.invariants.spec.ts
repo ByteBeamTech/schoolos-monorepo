@@ -141,12 +141,14 @@ describe('student-billing invariant suite (INV-1 … INV-13)', () => {
       const { AuditService } = require('../../core/compliance/audit.service');
       const { EventEmitter2 } = require('@nestjs/event-emitter');
       const { LedgerService } = require('./ledger/services/ledger.service');
+      const { FeePlanAssignmentService } = require('./plans/services/fee-plan-assignment.service');
       const prisma = {
         invoice: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
       };
       const mod = await Test.createTestingModule({
         providers: [
           InvoiceService,
+          { provide: FeePlanAssignmentService, useValue: { resolveForClassSection: jest.fn().mockResolvedValue(null) } },
           { provide: PrismaService, useValue: prisma },
           { provide: AuditService, useValue: {} },
           { provide: EventEmitter2, useValue: { emit: jest.fn() } },

@@ -18,6 +18,7 @@ import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../core/compliance/audit.service';
 import { DiscountService } from './discounts/services/discount.service';
 import { InvoiceService } from './invoice/services/invoice.service';
+import { FeePlanAssignmentService } from './plans/services/fee-plan-assignment.service';
 import { LedgerService } from './ledger/services/ledger.service';
 
 /**
@@ -163,6 +164,7 @@ describe('Invoice send / cancel CAS (FEE-1)', () => {
     const module = await Test.createTestingModule({
       providers: [
         InvoiceService,
+        { provide: FeePlanAssignmentService, useValue: { resolveForClassSection: jest.fn().mockResolvedValue(null) } },
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: { logCreate: jest.fn(), logUpdate: jest.fn() } },
         { provide: EventEmitter2, useValue: emitter },
