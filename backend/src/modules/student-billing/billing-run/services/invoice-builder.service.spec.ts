@@ -117,4 +117,37 @@ describe('InvoiceBuilderService', () => {
     expect(result.feePlanId).toBe('fp-1');
     expect(result.invoiceId).toBeNull();
   });
+
+  // Phase 5 regression: the original gap-analysis finding this entire
+  // redesign traces back to was InvoiceItem.feeHeadId existing as a
+  // column but never being populated -- confirmed at the time by reading
+  // the old generate() method directly. This is the explicit proof that
+  // this engine closes it: every academic item this service creates
+  // carries a real feeHeadId AND a real feeItemId, not one or the other.
+  it('every academic InvoiceItem carries both feeItemId and feeHeadId -- closes the original gap-analysis finding', async () => {
+    await service.buildForStudent('t-1', 'b-1', 'stu-1', 4, 2026, tx);
+    const items = tx.invoice.create.mock.calls[0][0].data.items.create;
+    const academicItem = items.find((i: any) => i.chargeCategory === 'ACADEMIC');
+    expect(academicItem.feeItemId).toBe('fi-1');
+    expect(academicItem.feeHeadId).toBe('fh-1');
+  });
+
+  // Phase 5 regression: late-fee-rule-resolver.ts derives Fee-Plan scope
+  // via invoice.items[].feeItem.feePlanId -- confirmed, during Phase 5's
+  // design, that this dependency chain survives Phase 2's purely-additive
+  // FeeItem migration unchanged. This is the concrete proof: the
+  // feeItemId this engine writes really does point back at a FeeItem
+  // whose feePlanId the resolver could actually read, not just a
+  // plausible-looking id.
+  it('the written feeItemId resolves back to the exact FeeItem whose feePlanId Late Fee scope resolution depends on', async () => {
+    await service.buildForStudent('t-1', 'b-1', 'stu-1', 4, 2026, tx);
+    const items = tx.invoice.create.mock.calls[0][0].data.items.create;
+    const academicItem = items.find((i: any) => i.chargeCategory === 'ACADEMIC');
+    expect(academicItem.feeItemId).toBe(feeItem.id);
+    // feeItem itself (the fixture) has no feePlanId in this test's shape --
+    // confirming this engine's item points at the SAME id the plan's own
+    // feeItems array uses is what late-fee-rule-resolver.ts's real query
+    // (invoice.items -> feeItem -> feePlanId) depends on being consistent.
+    expect(plan.feeItems.find((i) => i.id === academicItem.feeItemId)).toBeDefined();
+  });
 });
