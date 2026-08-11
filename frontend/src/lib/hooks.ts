@@ -364,8 +364,25 @@ export interface FeePlanSummary {
   isActive?: boolean;
 }
 
+// ROOT CAUSE FIX: GET /billing/invoices?studentId=... returns Invoice.
+// findAll()'s real shape -- { data: Invoice[], meta: {...} } -- confirmed
+// directly against the live backend method before writing this, not
+// assumed. useStudentBilling previously typed this endpoint's useApi call
+// as Invoice[] directly, so `invoices` held the whole {data, meta} object
+// -- passing that into groupFeePeriods() (which calls .filter() on what
+// it expects to be an array) threw "e.filter is not a function" the
+// moment Collect Fee or the student profile rendered. The exact same
+// correct shape is already used one page over for this identical
+// endpoint (billing/page.tsx's own useApi<{ data: Invoice[]; meta: any }>
+// call) -- this type just gives that shape a name so it isn't repeated
+// as an inline anonymous type a third time.
+export interface PaginatedInvoices {
+  data: Invoice[];
+  meta: { total: number; page: number; limit: number; lastPage: number };
+}
+
 export function useStudentBilling(studentId?: string) {
-  const invoices = useApi<Invoice[]>(
+  const invoices = useApi<PaginatedInvoices>(
     studentId ? `/billing/invoices?studentId=${studentId}` : "",
     [studentId],
   );
@@ -379,7 +396,7 @@ export function useStudentBilling(studentId?: string) {
   );
 
   return {
-    invoices: invoices.data ?? [],
+    invoices: invoices.data?.data ?? [],
     discounts: (discounts.data ?? []).filter((d) => d.isActive),
     feePlans: feePlans.data ?? [],
     loading: invoices.loading || discounts.loading || feePlans.loading,
