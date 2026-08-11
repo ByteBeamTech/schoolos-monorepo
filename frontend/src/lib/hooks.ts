@@ -237,6 +237,15 @@ export function useExamStats(sessionId: string) {
 export interface FeeItem {
   id: string; name: string; amount: number;
   isOptional: boolean; dueDate?: string; gstRate?: number;
+  // Widened: these are required-on-write per the real CreateFeeItemDto/
+  // SupersedeFeeItemDto (backend/src/modules/student-billing/dto/billing.dto.ts)
+  // and are already present on every real FeeItem row returned by
+  // findById()/getStudentFeePlans() -- this type simply never declared
+  // them. No backend change; a type correction matching what the
+  // response already contains.
+  feeHeadId?: string | null;
+  billingRuleId?: string | null;
+  sortOrder?: number;
 }
 export interface FeePlan {
   id: string; name: string; academicYear: string; grade?: string;
@@ -249,6 +258,31 @@ export function useFeePlans(academicYear?: string) {
     `/billing/fee-plans${academicYear ? `?academicYear=${academicYear}` : ""}`,
     [academicYear]
   );
+}
+
+// FeePlan.findById() also includes bare `assignments` (FeePlanAssignment
+// rows, no nested class/section/feePlan names -- confirmed against
+// fee-plans.service.ts directly) -- widened here rather than typed `any`,
+// since the Fee Plan detail page needs to read it.
+export interface FeePlanDetail extends FeePlan {
+  sessionId?: string; branchId?: string; academicYear: string;
+  assignments?: Array<{ id: string; classId: string; sectionId: string | null; feePlanId: string }>;
+}
+export function useFeePlan(id?: string) {
+  return useApi<FeePlanDetail>(id ? `/billing/fee-plans/${id}` : "", [id]);
+}
+
+// GET /billing/fee-heads' real response shape (backend/src/modules/
+// student-billing/fee-heads/services/fee-head.service.ts) -- confirmed
+// directly, not assumed. Replaces the untyped useApi<any[]> the Fee
+// Structure page currently uses for this same endpoint.
+export interface FeeHead {
+  id: string; name: string; code: string;
+  accountingNature: "REVENUE" | "LIABILITY";
+  parentId?: string | null; isActive: boolean; displayOrder: number;
+}
+export function useFeeHeads() {
+  return useApi<FeeHead[]>("/billing/fee-heads", []);
 }
 
 // Late Fee FDD v2 Sprint 4: needed for the Rule creation form's scope
@@ -362,6 +396,11 @@ export interface FeePlanSummary {
   grade?: string | null;
   currency?: string;
   isActive?: boolean;
+  // Widened: getStudentFeePlans() already includes feeItems (confirmed
+  // against fee-plans.service.ts directly) -- this type never declared
+  // the field, so callers had no typed way to read what the response
+  // already contained.
+  feeItems?: FeeItem[];
 }
 
 // ROOT CAUSE FIX: GET /billing/invoices?studentId=... returns Invoice.

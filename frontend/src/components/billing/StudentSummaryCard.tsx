@@ -9,6 +9,8 @@ import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fmt, fmtDate } from "@/lib/format";
 import type { Student, DiscountSummary, FeePlanSummary } from "@/lib/hooks";
+import { useFeeHeads } from "@/lib/hooks";
+import { useBillingRules, billingRuleLabel } from "@/lib/billing/fee-plan-config";
 import type { OutstandingSummary } from "@/lib/billing/fee-period";
 
 interface Sibling { id: string; firstName: string; lastName: string }
@@ -42,6 +44,16 @@ export function StudentSummaryCard({
   const father = student.guardianLinks?.find((l) => l.relation === "FATHER")?.guardian;
   const activeDiscount = discounts[0]; // FR-SUMMARY-06: compact indicator, first active/approved discount
   const currentPlan = feePlans[0]; // FR-SUMMARY-11
+  // Purely for display -- FeeItem only carries feeHeadId/billingRuleId
+  // (confirmed against the real response), so the head name and
+  // frequency label are joined against these separately-fetched lists.
+  // This is a UI-layer lookup, not fee-plan resolution -- which plan
+  // applies, and which items belong to it, is entirely the backend's
+  // answer (currentPlan itself), never recomputed here.
+  const { data: feeHeads } = useFeeHeads();
+  const { data: billingRules } = useBillingRules();
+  const feeHeadName = (id?: string | null) => feeHeads?.find((h) => h.id === id)?.name ?? "—";
+  const billingRuleName = (id?: string | null) => billingRuleLabel(billingRules?.find((r) => r.id === id));
 
   return (
     <div className="rounded-lg border bg-white" style={{ borderColor: "var(--border-light)" }}>
@@ -115,7 +127,33 @@ export function StudentSummaryCard({
           </div>
         )}
         {currentPlan && (
-          <div className="text-xs text-slate-500">Plan: {currentPlan.name}</div>
+          <div className="text-xs text-slate-500 space-y-1">
+            <div>
+              <span className="text-slate-400">Applicable Fee Plan: </span>
+              <span className="font-medium text-slate-700">{currentPlan.name}</span>
+            </div>
+            {/* "Derived from", never "assigned to student" -- there is no
+                student-level FeePlan assignment (frozen architecture).
+                Uses the student's own class/section (already on the
+                Student object) purely as a label for what the backend
+                already resolved -- not a second resolution. */}
+            {student.section && (
+              <div className="text-slate-400">
+                Derived from: {student.section.class.name} → {student.section.name}
+              </div>
+            )}
+            {currentPlan.feeItems && currentPlan.feeItems.length > 0 && (
+              <div className="pt-1 space-y-0.5">
+                {currentPlan.feeItems.map((item) => (
+                  <div key={item.id} className="flex justify-between gap-3">
+                    <span>{feeHeadName(item.feeHeadId)}</span>
+                    <span className="text-slate-400">{billingRuleName(item.billingRuleId)}</span>
+                    <span className="font-medium text-slate-700">{fmt(Number(item.amount))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {/* FDD FR-OUTSTANDING-05 / FR-SUMMARY: Advance Balance deliberately
             absent -- no held-balance concept exists in the backend. Not a

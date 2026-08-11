@@ -12,12 +12,16 @@
 // (M9) fully supporting it -- confirmed by search before building this.
 
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { useFeePlans, useAcademicSessions, useApi } from "@/lib/hooks";
+import { useFeePlans, useAcademicSessions, useFeeHeads, type FeeHead } from "@/lib/hooks";
 import { apiClient } from "@/lib/api";
 import { useToast } from "@/lib/use-toast";
+import { createFeePlan } from "@/lib/billing/fee-plan-config";
+import { AssignmentsTab } from "@/components/billing/FeePlanAssignments";
 
 function fmt(n: number) {
   return `₹${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -26,14 +30,16 @@ function fmt(n: number) {
 export default function FeeStructurePage() {
   return (
     <div>
-      <PageHeader title="Fee Structure" subtitle="Fee plans and fee heads" />
+      <PageHeader title="Fee Structure" subtitle="Fee plans, fee heads, and class/section assignments" />
       <Tabs defaultValue="plans">
         <TabsList>
           <TabsTrigger value="plans">Fee Plans</TabsTrigger>
           <TabsTrigger value="heads">Fee Heads</TabsTrigger>
+          <TabsTrigger value="assignments">Assignments</TabsTrigger>
         </TabsList>
         <TabsContent value="plans"><FeePlansTab /></TabsContent>
         <TabsContent value="heads"><FeeHeadsTab /></TabsContent>
+        <TabsContent value="assignments"><AssignmentsTab /></TabsContent>
       </Tabs>
     </div>
   );
@@ -41,43 +47,45 @@ export default function FeeStructurePage() {
 
 // ── Fee Plans (relocated verbatim from billing/page.tsx) ──────────────────
 function FeePlansTab() {
+  const router = useRouter();
   const { toast } = useToast();
   const { data: sessions } = useAcademicSessions();
   const currentSession = sessions?.find((s) => s.isCurrent) ?? sessions?.[0];
   const academicYear = currentSession?.name ?? "";
 
-  const { data: feePlans, loading: pLoading, refetch: refetchPlans } = useFeePlans(academicYear);
+  const { data: feePlans, loading: pLoading } = useFeePlans(academicYear);
 
   const [showPlanForm, setShowPlanForm] = useState(false);
   const [savingPlan, setSavingPlan] = useState(false);
-  const [planForm, setPlanForm] = useState({
-    name: "", grade: "", currency: "INR",
-    items: [{ name: "", amount: "" }],
-  });
-
-  const addItem = () => setPlanForm((p) => ({ ...p, items: [...p.items, { name: "", amount: "" }] }));
-  const removeItem = (i: number) => setPlanForm((p) => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }));
-  const setItem = (i: number, k: string, v: string) =>
-    setPlanForm((p) => ({ ...p, items: p.items.map((item, idx) => (idx === i ? { ...item, [k]: v } : item)) }));
+  // ROOT CAUSE FIX: this form previously collected fee items inline and
+  // POSTed them as a `feeItems` array embedded in the plan-creation
+  // body. The real, current CreateFeePlanDto (Phase 2, frozen) has no
+  // such field at all -- confirmed directly against billing.dto.ts --
+  // so those items were silently dropped; the plan was created with
+  // none of them. Fee items are their own explicit step against an
+  // existing plan (POST /billing/fee-plans/:id/fee-items, which requires
+  // a real feeHeadId and billingRuleId this form never collected either)
+  // -- matching the backend's own design, this form now only ever
+  // creates the bare plan, then navigates to its detail page where items
+  // are added one at a time with the pickers that step actually needs.
+  const [planForm, setPlanForm] = useState({ name: "", grade: "", currency: "INR" });
 
   const createPlan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentSession?.id) { toast.error("Select a session first"); return; }
     setSavingPlan(true);
     try {
-      await apiClient.post("/billing/fee-plans", {
+      const plan = await createFeePlan({
         sessionId: currentSession.id,
         academicYear: academicYear || currentSession.id,
         name: planForm.name,
         grade: planForm.grade || undefined,
         currency: planForm.currency,
-        feeItems: planForm.items.filter((i) => i.name && i.amount).map((i, idx) => ({
-          name: i.name, amount: parseFloat(i.amount), sortOrder: idx,
-        })),
       });
       setShowPlanForm(false);
-      setPlanForm({ name: "", grade: "", currency: "INR", items: [{ name: "", amount: "" }] });
-      refetchPlans();
+      setPlanForm({ name: "", grade: "", currency: "INR" });
+      toast.success("Fee plan created. Add fee items on the next screen.");
+      router.push(`/dashboard/billing/fee-structure/plans/${plan.id}`);
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Failed to create fee plan");
     } finally { setSavingPlan(false); }
@@ -99,17 +107,20 @@ function FeePlansTab() {
       {showPlanForm && (
         <div className="bg-white border border-blue-100 rounded-xl p-5 mb-5 shadow-sm">
           <h3 className="font-semibold text-slate-900 mb-4 text-sm">Create Fee Plan</h3>
+          <p className="text-xs text-slate-400 mb-4">
+            Fee items are added on the next screen, once the plan exists.
+          </p>
           <form onSubmit={createPlan}>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Plan Name *</label>
-                <input required type="text" placeholder="e.g. Annual Tuition 2025-26"
+                <input required type="text" placeholder="e.g. Class 5 Standard"
                   value={planForm.name} onChange={(e) => setPlanForm((p) => ({ ...p, name: e.target.value }))}
                   className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Grade / Class</label>
-                <input type="text" placeholder="e.g. Grade 10"
+                <input type="text" placeholder="e.g. Class 5"
                   value={planForm.grade} onChange={(e) => setPlanForm((p) => ({ ...p, grade: e.target.value }))}
                   className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
@@ -121,23 +132,6 @@ function FeePlansTab() {
                 </select>
               </div>
             </div>
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Fee Items</p>
-            {planForm.items.map((item, i) => (
-              <div key={i} className="flex gap-3 mb-2">
-                <input type="text" placeholder="Item name (e.g. Tuition Fee)"
-                  value={item.name} onChange={(e) => setItem(i, "name", e.target.value)}
-                  className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <input type="number" min="0" placeholder="Amount"
-                  value={item.amount} onChange={(e) => setItem(i, "amount", e.target.value)}
-                  className="w-32 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                {planForm.items.length > 1 && (
-                  <button type="button" onClick={() => removeItem(i)}
-                    className="px-3 py-2 text-red-500 hover:text-red-700 text-sm">✕</button>
-                )}
-              </div>
-            ))}
-            <button type="button" onClick={addItem}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium mb-4">+ Add fee item</button>
             <div className="flex gap-3 pt-2 border-t border-slate-100">
               <button type="submit" disabled={savingPlan}
                 className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium disabled:opacity-50 transition-colors">
@@ -160,10 +154,15 @@ function FeePlansTab() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {feePlans.map((plan: any) => {
-            const total = plan.feeItems.reduce((s: number, i: any) => s + Number(i.amount), 0);
+          {feePlans.map((plan) => {
+            const items = plan.feeItems ?? [];
+            const total = items.reduce((s, i) => s + Number(i.amount), 0);
             return (
-              <div key={plan.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-5">
+              <Link
+                key={plan.id}
+                href={`/dashboard/billing/fee-structure/plans/${plan.id}`}
+                className="text-left bg-white rounded-xl border border-slate-100 shadow-sm p-5 hover:border-blue-200 hover:shadow-md transition-all block"
+              >
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="font-bold text-slate-900">{plan.name}</p>
@@ -172,7 +171,9 @@ function FeePlansTab() {
                   <span className="font-mono text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded">{plan.currency}</span>
                 </div>
                 <div className="space-y-1.5 mb-4">
-                  {plan.feeItems.map((item: any) => (
+                  {items.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">No fee items yet</p>
+                  ) : items.map((item) => (
                     <div key={item.id} className="flex justify-between text-xs">
                       <span className="text-slate-600">{item.name}</span>
                       <span className="font-medium text-slate-900">{fmt(Number(item.amount))}</span>
@@ -183,7 +184,7 @@ function FeePlansTab() {
                   <span className="text-sm font-bold text-slate-900">Total: {fmt(total)}</span>
                   <Badge label={plan.isActive ? "Active" : "Inactive"} variant={plan.isActive ? "success" : "neutral"} />
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -197,7 +198,7 @@ const ACCOUNTING_NATURES = ["REVENUE", "LIABILITY"] as const;
 
 function FeeHeadsTab() {
   const { toast } = useToast();
-  const { data: heads, loading, refetch } = useApi<any[]>("/billing/fee-heads", []);
+  const { data: heads, loading, refetch } = useFeeHeads();
 
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -290,7 +291,7 @@ function FeeHeadsTab() {
               <select value={form.parentId} onChange={(e) => setForm((p) => ({ ...p, parentId: e.target.value }))}
                 className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">None (top-level)</option>
-                {roots.map((h: any) => <option key={h.id} value={h.id}>{h.name}</option>)}
+                {roots.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
               </select>
             </div>
             <div className="md:col-span-4 flex gap-3 pt-2 border-t border-slate-100">
@@ -315,7 +316,7 @@ function FeeHeadsTab() {
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-100 shadow-sm divide-y divide-slate-50">
-          {roots.map((head: any) => (
+          {roots.map((head) => (
             <div key={head.id}>
               <FeeHeadRow
                 head={head}
@@ -325,7 +326,7 @@ function FeeHeadsTab() {
                 onChangeNature={setEditNature}
                 onSave={() => saveEdit(head.id)}
               />
-              {childrenOf(head.id).map((child: any) => (
+              {childrenOf(head.id).map((child) => (
                 <div key={child.id} className="pl-8 border-t border-slate-50">
                   <FeeHeadRow
                     head={child}
@@ -348,7 +349,7 @@ function FeeHeadsTab() {
 function FeeHeadRow({
   head, editingId, editNature, savingEdit, onEdit, onCancelEdit, onChangeNature, onSave,
 }: {
-  head: any; editingId: string | null; editNature: string; savingEdit: boolean;
+  head: FeeHead; editingId: string | null; editNature: string; savingEdit: boolean;
   onEdit: () => void; onCancelEdit: () => void; onChangeNature: (v: string) => void; onSave: () => void;
 }) {
   const isEditing = editingId === head.id;
