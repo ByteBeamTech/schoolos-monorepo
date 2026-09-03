@@ -295,7 +295,14 @@ export class InvoiceService {
         where,
         include: {
           items:   { orderBy: { sortOrder: 'asc' } },
-          student: { select: { firstName: true, lastName: true, admissionNumber: true } },
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              admissionNumber: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip, take: limit,

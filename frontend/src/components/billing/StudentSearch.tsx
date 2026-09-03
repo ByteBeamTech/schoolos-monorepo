@@ -86,7 +86,11 @@ export function StudentSearch({ onSelect }: StudentSearchProps) {
             results.map((s) => (
               <button
                 key={s.id}
-                onClick={() => onSelect(s)}
+                onClick={() => {
+              setQuery("");
+              setDebounced("");
+              onSelect(s);
+            }}
                 className="w-full text-left px-4 py-2.5 hover:bg-slate-50 border-b last:border-b-0 flex items-center justify-between"
                 style={{ borderColor: "var(--border-light)" }}
               >
