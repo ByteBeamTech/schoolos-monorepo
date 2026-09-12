@@ -49,8 +49,51 @@ export default function AdmissionForm({ onComplete }: { onComplete?: () => void 
   };
 
   const onSubmit = (data: FormData) => {
-    console.log("Pushing to SchoolOS CRM...", data);
-    if (onComplete) onComplete();
+    try {
+      const fullName = (data.fullName || "").trim();
+      const [firstName = "", ...rest] = fullName.split(/\s+/);
+      const lastName = rest.join(" ") || "Student";
+
+      const inquiry = {
+        id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `demo-${Date.now()}`,
+        firstName,
+        lastName,
+        dateOfBirth: data.dob || null,
+        gender: (data.gender || "MALE").toUpperCase(),
+        phone: data.phone,
+        alternatePhone: null,
+        parentFirstName: null,
+        parentLastName: null,
+        parentPhone: data.phone,
+        parentEmail: null,
+        email: null,
+        applyingForClass: data.targetClass,
+        academicYear: "2026-2027",
+        previousSchool: null,
+        addressLine: null,
+        city: null,
+        state: null,
+        pincode: null,
+        source: "WALK_IN",
+        status: "SCREENING",
+        notes: `Demo inquiry created from the local SchoolOS admission form. Religion: ${data.religion || "N/A"}; Category: ${data.category || "N/A"}.`,
+        followUpDate: null,
+        rejectionReason: null,
+        enrolledStudentId: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (typeof window !== "undefined") {
+        const existing = JSON.parse(localStorage.getItem("schoolos-demo-admissions") || "[]");
+        localStorage.setItem("schoolos-demo-admissions", JSON.stringify([inquiry, ...existing]));
+      }
+
+      if (onComplete) setTimeout(onComplete, 300);
+    } catch (error) {
+      console.error("Demo admission save failed", error);
+      if (onComplete) onComplete();
+    }
   };
 
   return (

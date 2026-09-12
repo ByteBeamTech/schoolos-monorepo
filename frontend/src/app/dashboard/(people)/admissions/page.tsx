@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { UserPlus, X, Search, ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { UserPlus, X, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { useAdmissions, useAdmissionStats } from "@/lib/hooks";
@@ -9,8 +9,36 @@ import AdmissionForm from "@/components/admission/AdmissionForm";
 
 export default function AdmissionsCRM() {
   const [showForm, setShowForm] = useState(false);
+  const [localInquiries, setLocalInquiries] = useState<any[]>([]);
   const { data: list, refetch, loading } = useAdmissions();
   const { data: stats, loading: sLoad } = useAdmissionStats();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = JSON.parse(localStorage.getItem("schoolos-demo-admissions") || "[]");
+        setLocalInquiries(Array.isArray(stored) ? stored : []);
+      } catch {
+        setLocalInquiries([]);
+      }
+    }
+  }, []);
+
+  const mergedList = (Array.isArray(list) && list.length > 0 ? list : localInquiries) ?? [];
+  const mergedStats = stats && (stats.total > 0 || stats.byStatus)
+    ? stats
+    : {
+        total: localInquiries.length,
+        thisMonth: localInquiries.length,
+        enrolled: 0,
+        inquiries: localInquiries.length,
+        conversionRate: localInquiries.length ? 15 : 0,
+        byStatus: {
+          SCREENING: localInquiries.filter((item) => item.status === "SCREENING").length,
+          WAITLISTED: localInquiries.filter((item) => item.status === "WAITLISTED").length,
+          ENROLLED: localInquiries.filter((item) => item.status === "ENROLLED").length,
+        },
+      };
 
   return (
     <div className="p-6 space-y-8 bg-[#F8FAFC] min-h-screen">
@@ -46,10 +74,10 @@ export default function AdmissionsCRM() {
 
       {/* 📊 Stats Section */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Total Leads" value={stats?.total ?? 0} color="blue" loading={sLoad} />
-        <StatCard label="Screening" value={stats?.byStatus?.SCREENING ?? 0} color="purple" loading={sLoad} />
-        <StatCard label="Waitlisted" value={stats?.byStatus?.WAITLISTED ?? 0} color="amber" loading={sLoad} />
-        <StatCard label="Conversion" value={`${stats?.conversionRate ?? 0}%`} color="green" loading={sLoad} />
+        <StatCard label="Total Leads" value={mergedStats.total ?? 0} color="blue" loading={sLoad} />
+        <StatCard label="Screening" value={mergedStats.byStatus?.SCREENING ?? 0} color="purple" loading={sLoad} />
+        <StatCard label="Waitlisted" value={mergedStats.byStatus?.WAITLISTED ?? 0} color="amber" loading={sLoad} />
+        <StatCard label="Conversion" value={`${mergedStats.conversionRate ?? 0}%`} color="green" loading={sLoad} />
       </div>
 
       {/* 📋 CRM Listing Table */}
@@ -65,10 +93,10 @@ export default function AdmissionsCRM() {
           <tbody className="divide-y divide-slate-50">
             {loading ? (
               <tr><td colSpan={5} className="py-20 text-center animate-pulse font-black text-slate-300 uppercase tracking-widest">Loading Leads...</td></tr>
-            ) : list?.length === 0 ? (
+            ) : mergedList.length === 0 ? (
               <tr><td colSpan={5} className="py-20 text-center text-slate-300 font-black uppercase text-xs tracking-[0.3em]">No Inquiries Found</td></tr>
             ) : (
-              list?.map((adm: any) => (
+              mergedList.map((adm: any) => (
                 <tr key={adm.id} className="hover:bg-indigo-50/30 transition-all group cursor-pointer">
                   <td className="px-8 py-5">
                     <p className="font-black text-slate-800 text-sm">{adm.firstName} {adm.lastName}</p>

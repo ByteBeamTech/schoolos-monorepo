@@ -254,3 +254,20 @@ SchoolOS is designed as:
 
 Focused on building a **real SaaS product**, not just a project.
 
+Current running URLs:
+•
+API: http://localhost:3000/api/v1/docs
+•
+School frontend: http://localhost:4000
+•
+Superadmin: http://localhost:3001
+If you want to restart later:
+•
+Start Docker/Colima: colima start
+•
+Start backend: cd backend && pnpm dev
+•
+Start frontend: cd frontend && NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1 pnpm dev
+•
+Start superadmin: cd superadmin && NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1 pnpm dev
+I can also help with the first login flow / tenant setup next.
