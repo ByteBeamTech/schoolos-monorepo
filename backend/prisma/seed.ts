@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -798,6 +798,340 @@ for (const s of additionalStaff) {
 }
 
 console.log('✅ Phase 3B Complete');
+
+  // =====================================================
+  // ACADEMIC DATA FOR LOCAL DEMO WORKFLOWS
+  // =====================================================
+
+  const subjectPresets = [
+    { name: 'Mathematics', code: 'MATH', isElective: false },
+    { name: 'English', code: 'ENG', isElective: false },
+    { name: 'Hindi', code: 'HIN', isElective: false },
+    { name: 'Science', code: 'SCI', isElective: false },
+    { name: 'Social Studies', code: 'SST', isElective: false },
+    { name: 'Computer Science', code: 'CS', isElective: false },
+    { name: 'Physics', code: 'PHY', isElective: false },
+    { name: 'Chemistry', code: 'CHEM', isElective: false },
+    { name: 'Biology', code: 'BIO', isElective: false },
+    { name: 'Physical Education', code: 'PE', isElective: false },
+    { name: 'Art & Craft', code: 'ART', isElective: true },
+    { name: 'Music', code: 'MUS', isElective: true },
+    { name: 'Economics', code: 'ECO', isElective: false },
+    { name: 'Accountancy', code: 'ACC', isElective: false },
+    { name: 'Business Studies', code: 'BST', isElective: false },
+  ];
+
+  const subjectRows = new Map<string, any>();
+
+  for (const subject of subjectPresets) {
+    const created = await prisma.subject.upsert({
+      where: {
+        tenantId_code: {
+          tenantId: demoTenant.id,
+          code: subject.code,
+        },
+      },
+      update: {
+        name: subject.name,
+        isActive: true,
+        isElective: subject.isElective,
+      },
+      create: {
+        tenantId: demoTenant.id,
+        branchId: lucknowBranch.id,
+        name: subject.name,
+        code: subject.code,
+        isActive: true,
+        type: 'THEORY',
+        isElective: subject.isElective,
+      },
+    });
+    subjectRows.set(subject.code, created);
+  }
+
+  console.log('✅ Academic Subjects Ready');
+
+  const demoTeacherStaff = await prisma.staff.findFirst({
+    where: {
+      tenantId: demoTenant.id,
+      branchId: lucknowBranch.id,
+      designation: 'Teacher',
+      isActive: true,
+    },
+  });
+
+  const demoTeacherProfile = demoTeacherStaff
+    ? await prisma.staffProfile.findFirst({
+        where: { staffId: demoTeacherStaff.id },
+      })
+    : null;
+
+  const allClasses = await prisma.class.findMany({
+    where: {
+      tenantId: demoTenant.id,
+      sessionId: academicSession.id,
+    },
+    include: { sections: true },
+  });
+
+  for (const currentClass of allClasses) {
+    const mappedSubjects = subjectPresets.slice(0, currentClass.name.startsWith('Class 6') ? 7 : 5);
+
+    for (const subject of mappedSubjects) {
+      const subjectRow = subjectRows.get(subject.code);
+      if (!subjectRow) continue;
+
+      await prisma.subjectMapping.upsert({
+        where: {
+          tenantId_academicYearId_classId_subjectId: {
+            tenantId: demoTenant.id,
+            academicYearId: academicSession.id,
+            classId: currentClass.id,
+            subjectId: subjectRow.id,
+          },
+        },
+        update: {
+          weeklyPeriods: 5,
+        },
+        create: {
+          tenantId: demoTenant.id,
+          academicYearId: academicSession.id,
+          classId: currentClass.id,
+          subjectId: subjectRow.id,
+          weeklyPeriods: 5,
+        },
+      });
+    }
+
+    for (const section of currentClass.sections) {
+      if (demoTeacherStaff && demoTeacherProfile) {
+        const classTeacherId = section.classTeacherId ?? demoTeacherStaff.id;
+        await prisma.section.update({
+          where: { id: section.id },
+          data: { classTeacherId },
+        });
+
+        for (const subject of mappedSubjects.slice(0, 4)) {
+          const subjectRow = subjectRows.get(subject.code);
+          if (!subjectRow) continue;
+
+          await prisma.teacherAssignment.upsert({
+            where: {
+              teacherId_subjectId_classId_sectionId_academicYearId: {
+                teacherId: demoTeacherProfile.id,
+                subjectId: subjectRow.id,
+                classId: currentClass.id,
+                sectionId: section.id,
+                academicYearId: academicSession.id,
+              },
+            },
+            update: {},
+            create: {
+              tenantId: demoTenant.id,
+              branchId: lucknowBranch.id,
+              teacherId: demoTeacherProfile.id,
+              subjectId: subjectRow.id,
+              classId: currentClass.id,
+              sectionId: section.id,
+              academicYearId: academicSession.id,
+              isClassTeacher: section.classTeacherId === demoTeacherStaff.id || section.id === currentClass.sections[0]?.id,
+            },
+          });
+        }
+      }
+
+      if (section.name === 'A') {
+        const teacherId = demoTeacherStaff?.id ?? '';
+        if (teacherId) {
+          const timeTableSubjects = mappedSubjects.slice(0, 5);
+          for (let period = 1; period <= 5; period++) {
+            const subject = timeTableSubjects[period - 1];
+            if (!subject) continue;
+            const subjectRow = subjectRows.get(subject.code);
+            if (!subjectRow) continue;
+
+            const slotStart = ['08:00', '08:45', '09:30', '10:15', '11:00'][period - 1];
+            const slotEnd = ['08:45', '09:30', '10:15', '11:00', '11:45'][period - 1];
+
+            await prisma.timetableSlot.upsert({
+              where: {
+                tenantId_sectionId_dayOfWeek_periodNumber: {
+                  tenantId: demoTenant.id,
+                  sectionId: section.id,
+                  dayOfWeek: 1,
+                  periodNumber: period,
+                },
+              },
+              update: {
+                subjectId: subjectRow.id,
+                teacherId: teacherId,
+                startTime: slotStart,
+                endTime: slotEnd,
+              },
+              create: {
+                tenantId: demoTenant.id,
+                sectionId: section.id,
+                subjectId: subjectRow.id,
+                teacherId: teacherId,
+                dayOfWeek: 1,
+                periodNumber: period,
+                startTime: slotStart,
+                endTime: slotEnd,
+                roomId: `R-${section.name}`,
+                isActive: true,
+              },
+            });
+          }
+        }
+      }
+    }
+  }
+
+  console.log('✅ Timetable and Section Mappings Ready');
+
+  const targetClass = allClasses.find((item) => item.name === 'Class 6');
+  const targetSection = targetClass?.sections.find((item) => item.name === 'A') ?? targetClass?.sections[0];
+  const targetSubjects = subjectPresets.slice(0, 5).map((s) => subjectRows.get(s.code)).filter(Boolean);
+
+  let targetExam = await prisma.exam.findFirst({
+    where: {
+      tenantId: demoTenant.id,
+      sessionId: academicSession.id,
+      name: 'Mid Term Exam 2026',
+    },
+  });
+
+  if (!targetExam) {
+    targetExam = await prisma.exam.create({
+      data: {
+        tenantId: demoTenant.id,
+        sessionId: academicSession.id,
+        name: 'Mid Term Exam 2026',
+        type: 'MID_TERM',
+        startDate: new Date('2026-09-10'),
+        endDate: new Date('2026-09-18'),
+        isPublished: true,
+      },
+    });
+  }
+
+  const studentSeeds = [
+    { admissionNumber: 'ADM-CL6-001', firstName: 'Aarav', lastName: 'Sharma', rollNumber: '01' },
+    { admissionNumber: 'ADM-CL6-002', firstName: 'Diya', lastName: 'Verma', rollNumber: '02' },
+    { admissionNumber: 'ADM-CL6-003', firstName: 'Rohan', lastName: 'Gupta', rollNumber: '03' },
+    { admissionNumber: 'ADM-CL6-004', firstName: 'Meera', lastName: 'Singh', rollNumber: '04' },
+    { admissionNumber: 'ADM-CL6-005', firstName: 'Kabir', lastName: 'Patel', rollNumber: '05' },
+    { admissionNumber: 'ADM-CL6-006', firstName: 'Ananya', lastName: 'Nair', rollNumber: '06' },
+  ];
+
+  if (targetClass && targetSection) {
+    for (const seed of studentSeeds) {
+      await prisma.student.upsert({
+        where: {
+          tenantId_admissionNumber: {
+            tenantId: demoTenant.id,
+            admissionNumber: seed.admissionNumber,
+          },
+        },
+        update: {
+          firstName: seed.firstName,
+          lastName: seed.lastName,
+          classId: targetClass.id,
+          sectionId: targetSection.id,
+          academicYear: academicSession.name,
+          sessionId: academicSession.id,
+          rollNumber: seed.rollNumber,
+          isActive: true,
+        },
+        create: {
+          tenantId: demoTenant.id,
+          branchId: lucknowBranch.id,
+          admissionNumber: seed.admissionNumber,
+          firstName: seed.firstName,
+          lastName: seed.lastName,
+          classId: targetClass.id,
+          sectionId: targetSection.id,
+          academicYear: academicSession.name,
+          sessionId: academicSession.id,
+          rollNumber: seed.rollNumber,
+          status: 'ENROLLED',
+          isActive: true,
+          email: `${seed.firstName.toLowerCase()}.${seed.lastName.toLowerCase()}@demo-school.com`,
+          phone: `9${String(Math.floor(Math.random() * 900000000) + 100000000)}`,
+        },
+      });
+    }
+  }
+
+  if (targetClass && targetSection && targetExam) {
+    for (const subject of targetSubjects) {
+      if (!subject) continue;
+
+      const schedule = await prisma.examSchedule.upsert({
+        where: {
+          examId_classId_subjectId: {
+            examId: targetExam.id,
+            classId: targetClass.id,
+            subjectId: subject.id,
+          },
+        },
+        update: {},
+        create: {
+          examId: targetExam.id,
+          classId: targetClass.id,
+          subjectId: subject.id,
+          date: new Date('2026-09-12T09:00:00.000Z'),
+          startTime: '09:00',
+          endTime: '10:30',
+          maxMarks: new Prisma.Decimal(100),
+          passMarks: new Prisma.Decimal(33),
+        },
+      });
+
+      const classStudents = await prisma.student.findMany({
+        where: {
+          tenantId: demoTenant.id,
+          classId: targetClass.id,
+          sectionId: targetSection.id,
+        },
+      });
+
+      for (let index = 0; index < classStudents.length; index++) {
+        const student = classStudents[index];
+        if (!student) continue;
+
+        const marksObtained = [88, 76, 91, 65][index % 4] ?? 72;
+        await prisma.mark.upsert({
+          where: {
+            examId_studentId_scheduleId: {
+              examId: targetExam.id,
+              studentId: student.id,
+              scheduleId: schedule.id,
+            },
+          },
+          update: {
+            marksObtained: new Prisma.Decimal(String(marksObtained)),
+            isAbsent: false,
+            remarks: 'Good performance',
+            enteredBy: schoolAdmin.id,
+          },
+          create: {
+            tenantId: demoTenant.id,
+            examId: targetExam.id,
+            studentId: student.id,
+            scheduleId: schedule.id,
+            marksObtained: new Prisma.Decimal(String(marksObtained)),
+            isAbsent: false,
+            remarks: 'Good performance',
+            enteredBy: schoolAdmin.id,
+          },
+        });
+      }
+    }
+  }
+
+  console.log('✅ Demo Students Ready');
+
   console.log('\n🎉 PHASE-1 SEED COMPLETE\n');
 
   console.log('====================================');
