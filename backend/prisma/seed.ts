@@ -1132,6 +1132,90 @@ console.log('✅ Phase 3B Complete');
 
   console.log('✅ Demo Students Ready');
 
+  const transportRoutes = [
+    {
+      name: 'City Pickup Route',
+      branchId: lucknowBranch.id,
+      vehicleNumber: 'UP32 AB 1234',
+      driverName: 'Ramesh Kumar',
+      driverPhone: '9876543210',
+      feeAmount: 1200,
+      description: 'Pickup for residential areas near Hazratganj and Aliganj',
+      stops: ['Hazratganj', 'Aliganj', 'Aashiyana'],
+    },
+    {
+      name: 'School Loop Route',
+      branchId: aliganjBranch.id,
+      vehicleNumber: 'UP32 CD 5678',
+      driverName: 'Sanjay Singh',
+      driverPhone: '9876543211',
+      feeAmount: 1500,
+      description: 'Pickup for Aliganj and surrounding neighbourhoods',
+      stops: ['Aliganj', 'Indira Nagar', 'Mahanagar'],
+    },
+  ];
+
+  for (const route of transportRoutes) {
+    const createdRoute = await prisma.transportRoute.upsert({
+      where: {
+        id: `${demoTenant.id}:${route.name}`,
+      },
+      update: {
+        branchId: route.branchId,
+        vehicleNumber: route.vehicleNumber,
+        driverName: route.driverName,
+        driverPhone: route.driverPhone,
+        feeAmount: new Prisma.Decimal(route.feeAmount),
+        description: route.description,
+        stops: route.stops as any,
+        status: 'ACTIVE',
+      },
+      create: {
+        id: `${demoTenant.id}:${route.name}`,
+        tenantId: demoTenant.id,
+        branchId: route.branchId,
+        name: route.name,
+        vehicleNumber: route.vehicleNumber,
+        driverName: route.driverName,
+        driverPhone: route.driverPhone,
+        feeAmount: new Prisma.Decimal(route.feeAmount),
+        description: route.description,
+        stops: route.stops as any,
+        status: 'ACTIVE',
+      },
+    });
+
+    const candidates = await prisma.student.findMany({
+      where: {
+        tenantId: demoTenant.id,
+        branchId: route.branchId,
+        isActive: true,
+      },
+      take: 3,
+      orderBy: { firstName: 'asc' },
+    });
+
+    for (const student of candidates) {
+      await prisma.transportAssignment.upsert({
+        where: {
+          studentId: student.id,
+        },
+        update: {
+          routeId: createdRoute.id,
+          boardingStop: route.stops[0],
+          endedAt: null,
+        },
+        create: {
+          studentId: student.id,
+          routeId: createdRoute.id,
+          boardingStop: route.stops[0],
+        },
+      });
+    }
+  }
+
+  console.log('✅ Transport routes and assignments Ready');
+
   console.log('\n🎉 PHASE-1 SEED COMPLETE\n');
 
   console.log('====================================');
