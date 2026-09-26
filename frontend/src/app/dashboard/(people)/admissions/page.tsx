@@ -35,8 +35,9 @@ export default function AdmissionsCRM() {
         conversionRate: localInquiries.length ? 15 : 0,
         byStatus: {
           SCREENING: localInquiries.filter((item) => item.status === "SCREENING").length,
+          INQUIRY: localInquiries.filter((item) => item.status === "INQUIRY").length,
           WAITLISTED: localInquiries.filter((item) => item.status === "WAITLISTED").length,
-          ENROLLED: localInquiries.filter((item) => item.status === "ENROLLED").length,
+          CONVERTED: localInquiries.filter((item) => item.status === "CONVERTED").length,
         },
       };
 
@@ -75,7 +76,7 @@ export default function AdmissionsCRM() {
       {/* 📊 Stats Section */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard label="Total Leads" value={mergedStats.total ?? 0} color="blue" loading={sLoad} />
-        <StatCard label="Screening" value={mergedStats.byStatus?.SCREENING ?? 0} color="purple" loading={sLoad} />
+        <StatCard label="Inquiries" value={mergedStats.byStatus?.INQUIRY ?? mergedStats.byStatus?.SCREENING ?? 0} color="purple" loading={sLoad} />
         <StatCard label="Waitlisted" value={mergedStats.byStatus?.WAITLISTED ?? 0} color="amber" loading={sLoad} />
         <StatCard label="Conversion" value={`${mergedStats.conversionRate ?? 0}%`} color="green" loading={sLoad} />
       </div>

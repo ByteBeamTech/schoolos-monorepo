@@ -159,7 +159,7 @@ export default function BillingAnalyticsPage() {
           </div>
 
           {/* Outstanding trend */}
-          {outstandingData.some(d => d.value > 0) && (
+          {outstandingData.some((d: { label: string; value: number; color?: string }) => d.value > 0) && (
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
               <h2 className="text-sm font-semibold text-slate-700 mb-5">Outstanding Trend</h2>
               <BarChart data={outstandingData} />

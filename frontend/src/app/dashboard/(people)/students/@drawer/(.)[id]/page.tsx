@@ -36,7 +36,7 @@ const { data: invoiceResponse } = useApi<any>(
 const invoices = invoiceResponse?.data ?? [];
 
 const totalDue = invoices.reduce(
-  (sum, inv) =>
+  (sum: number, inv: any) =>
       sum + (Number(inv.totalAmount || 0) - Number(inv.paidAmount || 0)),
     0
   );

@@ -325,6 +325,48 @@ const classNames = [
   'Class 12',
 ];
 
+function feeItemsForClass(className: string) {
+  const lower = className.toLowerCase();
+
+  if (lower.includes('nursery') || lower.includes('lkg') || lower.includes('ukg')) {
+    return [
+      { name: 'Tuition Fee', amount: 1500, sortOrder: 1 },
+      { name: 'Development Fee', amount: 500, sortOrder: 2 },
+      { name: 'Exam Fee', amount: 200, sortOrder: 3 },
+    ];
+  }
+
+  const match = className.match(/(\d+)/);
+  const classNumber = match ? Number(match[1]) : 0;
+
+  if (classNumber >= 1 && classNumber <= 5) {
+    return [
+      { name: 'Tuition Fee', amount: 2500, sortOrder: 1 },
+      { name: 'Development Fee', amount: 700, sortOrder: 2 },
+      { name: 'Exam Fee', amount: 300, sortOrder: 3 },
+      { name: 'Sports Fee', amount: 200, sortOrder: 4 },
+    ];
+  }
+
+  if (classNumber >= 6 && classNumber <= 8) {
+    return [
+      { name: 'Tuition Fee', amount: 3500, sortOrder: 1 },
+      { name: 'Development Fee', amount: 1000, sortOrder: 2 },
+      { name: 'Exam Fee', amount: 500, sortOrder: 3 },
+      { name: 'Sports Fee', amount: 300, sortOrder: 4 },
+      { name: 'Computer Fee', amount: 500, sortOrder: 5 },
+    ];
+  }
+
+  return [
+    { name: 'Tuition Fee', amount: 5000, sortOrder: 1 },
+    { name: 'Development Fee', amount: 1500, sortOrder: 2 },
+    { name: 'Exam Fee', amount: 700, sortOrder: 3 },
+    { name: 'Sports Fee', amount: 500, sortOrder: 4 },
+    { name: 'Computer Fee', amount: 1000, sortOrder: 5 },
+  ];
+}
+
 let classCount = 0;
 let sectionCount = 0;
 
@@ -402,6 +444,112 @@ for (const branch of branches) {
 
 console.log(`✅ Classes Created: ${classCount}`);
 console.log(`✅ Sections Created: ${sectionCount}`);
+
+// =====================================================
+// CLASS-LEVEL FEE PLANS + ASSIGNMENTS
+// =====================================================
+
+const feePlanClasses = await prisma.class.findMany({
+  where: { tenantId: demoTenant.id, sessionId: academicSession.id },
+  include: { sections: true },
+  orderBy: { displayOrder: 'asc' },
+});
+
+for (const currentClass of feePlanClasses) {
+  const planName = `${currentClass.name} Fee Plan`;
+  let plan = await prisma.feePlan.findFirst({
+    where: {
+      tenantId: demoTenant.id,
+      branchId: currentClass.branchId,
+      name: planName,
+      academicYear: academicSession.name,
+    },
+  });
+
+  if (!plan) {
+    plan = await prisma.feePlan.create({
+      data: {
+        tenantId: demoTenant.id,
+        branchId: currentClass.branchId,
+        sessionId: academicSession.id,
+        name: planName,
+        academicYear: academicSession.name,
+        grade: currentClass.name,
+        description: `${currentClass.name} standard fee plan`,
+        currency: 'INR',
+        isActive: true,
+      },
+    });
+  }
+
+  for (const item of feeItemsForClass(currentClass.name)) {
+    const existingItem = await prisma.feeItem.findFirst({
+      where: { feePlanId: plan.id, name: item.name },
+    });
+    if (!existingItem) {
+      await prisma.feeItem.create({
+        data: {
+          feePlanId: plan.id,
+          name: item.name,
+          amount: item.amount,
+          sortOrder: item.sortOrder,
+          isOptional: false,
+        },
+      });
+    }
+  }
+
+  for (const section of currentClass.sections) {
+    const existingAssignment = await prisma.feePlanAssignment.findFirst({
+      where: {
+        tenantId: demoTenant.id,
+        sessionId: academicSession.id,
+        classId: currentClass.id,
+        sectionId: section.id,
+      },
+    });
+
+    if (!existingAssignment) {
+      await prisma.feePlanAssignment.create({
+        data: {
+          tenantId: demoTenant.id,
+          branchId: currentClass.branchId,
+          sessionId: academicSession.id,
+          feePlanId: plan.id,
+          classId: currentClass.id,
+          sectionId: section.id,
+          createdById: 'seed-system',
+        },
+      });
+    }
+  }
+
+  const classLevelAssignment = await prisma.feePlanAssignment.findFirst({
+    where: {
+      tenantId: demoTenant.id,
+      sessionId: academicSession.id,
+      classId: currentClass.id,
+      sectionId: null,
+    },
+  });
+
+  if (!classLevelAssignment) {
+    await prisma.feePlanAssignment.create({
+      data: {
+        tenantId: demoTenant.id,
+        branchId: currentClass.branchId,
+        sessionId: academicSession.id,
+        feePlanId: plan.id,
+        classId: currentClass.id,
+        sectionId: null,
+        createdById: 'seed-system',
+      },
+    });
+  }
+}
+
+console.log(`✅ Fee Plans Ready: ${await prisma.feePlan.count({ where: { tenantId: demoTenant.id } })}`);
+console.log(`✅ Fee Plan Assignments Ready: ${await prisma.feePlanAssignment.count({ where: { tenantId: demoTenant.id } })}`);
 
 // =====================================================
 // STAFF USERS + STAFF + STAFF PROFILES
@@ -989,7 +1137,9 @@ console.log('✅ Phase 3B Complete');
 
   console.log('✅ Timetable and Section Mappings Ready');
 
-  const targetClass = allClasses.find((item) => item.name === 'Class 6');
+  const targetClass = allClasses.find(
+    (item) => item.name === 'Class 6' && item.branchId === lucknowBranch.id,
+  );
   const targetSection = targetClass?.sections.find((item) => item.name === 'A') ?? targetClass?.sections[0];
   const targetSubjects = subjectPresets.slice(0, 5).map((s) => subjectRows.get(s.code)).filter(Boolean);
 
@@ -1034,6 +1184,7 @@ console.log('✅ Phase 3B Complete');
           },
         },
         update: {
+          branchId: lucknowBranch.id,
           firstName: seed.firstName,
           lastName: seed.lastName,
           classId: targetClass.id,

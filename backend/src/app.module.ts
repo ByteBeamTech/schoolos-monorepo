@@ -66,6 +66,7 @@ import { ReceptionModule } from './modules/reception/reception.module';
 import { SupportModule } from './modules/support/support.module';
 import { BehaviorModule } from './modules/behavior/behavior.module';
 import { LicenseModule } from './core/license/license.module';
+import { HealthController } from './core/health.controller';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -147,6 +148,7 @@ import { LicenseModule } from './core/license/license.module';
     LicenseModule,
   ],
 
+  controllers: [HealthController],
   providers: [
     {
       provide: APP_GUARD,

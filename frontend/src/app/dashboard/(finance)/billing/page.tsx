@@ -171,8 +171,12 @@ export default function BillingPage() {
   const overdueLastPage = Math.max(1, Math.ceil(overdueTotal / pageSize));
   const overduePage     = Math.min(page, overdueLastPage);
 
+  // Students for invoice generation and local fallback rows.
+  const { data: studentsData } = useStudents(1, {});
+  const students = studentsData?.data ?? [];
+
   const fetchedInvoices = (invoiceData as any)?.data ?? invoiceData ?? [];
-  const fallbackStudentsForInvoices = (students ?? []).slice(0, 3);
+  const fallbackStudentsForInvoices = (students as any[]).slice(0, 3);
   const fallbackInvoices: Invoice[] = fallbackStudentsForInvoices.length
     ? fallbackStudentsForInvoices.map((student: any, idx: number) => ({
         id: `demo-invoice-${student.id ?? idx}`,
@@ -251,11 +255,6 @@ export default function BillingPage() {
     isActive: true,
     feeItems: [{ id: "demo-fee-item-1", name: "Tuition Fee", amount: 18000, isOptional: false }],
   }];
-
-  // Students for invoice generation
-  const { data: studentsData } =
-  useStudents(1, {});
-  const students = studentsData?.data ?? [];
 
   // ── Generate invoice ─────────────────────────────────────────────────────
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);

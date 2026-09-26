@@ -8,6 +8,9 @@ import {
   User, Users, HeartPulse, GraduationCap, ShieldCheck, 
   UploadCloud, ChevronRight, ChevronLeft, SkipForward, Link2 
 } from "lucide-react";
+import { apiClient } from "@/lib/api";
+import { useApi } from "@/lib/hooks";
+import { useToast } from "@/lib/use-toast";
 
 // --- 🛡️ Validation Schema ---
 const schema = z.object({
@@ -27,6 +30,14 @@ type FormData = z.infer<typeof schema>;
 export default function AdmissionForm({ onComplete }: { onComplete?: () => void }) {
   const [step, setStep] = useState(1);
   const [appId, setAppId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const { toast } = useToast();
+  const { data: sessions } = useApi<any[]>("/academic-sessions");
+  const currentSession = sessions?.find((session) => session.isCurrent) ?? sessions?.[0];
+  const { data: classes } = useApi<any[]>(
+    currentSession?.id ? `/academics/classes?sessionId=${currentSession.id}` : "",
+    [currentSession?.id],
+  );
 
   const { register, handleSubmit, formState: { errors }, trigger, watch } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -48,51 +59,42 @@ export default function AdmissionForm({ onComplete }: { onComplete?: () => void 
     }
   };
 
-  const onSubmit = (data: FormData) => {
+  const onSubmit = async (data: FormData) => {
+    const requestedClass = String(data.targetClass);
+    const className = /^\d+$/.test(requestedClass) ? `Class ${requestedClass}` : requestedClass;
+    const targetClass = classes?.find((item) => item.name === className);
+    if (!currentSession?.id || !targetClass) {
+      toast.error("Academic session or selected class is not available.");
+      return;
+    }
+
+    setSubmitting(true);
     try {
       const fullName = (data.fullName || "").trim();
       const [firstName = "", ...rest] = fullName.split(/\s+/);
       const lastName = rest.join(" ") || "Student";
 
-      const inquiry = {
-        id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `demo-${Date.now()}`,
+      await apiClient.post("/admissions", {
         firstName,
         lastName,
-        dateOfBirth: data.dob || null,
+        dateOfBirth: data.dob,
         gender: (data.gender || "MALE").toUpperCase(),
         phone: data.phone,
-        alternatePhone: null,
-        parentFirstName: null,
-        parentLastName: null,
-        parentPhone: data.phone,
-        parentEmail: null,
-        email: null,
-        applyingForClass: data.targetClass,
-        academicYear: "2026-2027",
-        previousSchool: null,
-        addressLine: null,
-        city: null,
-        state: null,
-        pincode: null,
-        source: "WALK_IN",
-        status: "SCREENING",
-        notes: `Demo inquiry created from the local SchoolOS admission form. Religion: ${data.religion || "N/A"}; Category: ${data.category || "N/A"}.`,
-        followUpDate: null,
-        rejectionReason: null,
-        enrolledStudentId: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      if (typeof window !== "undefined") {
-        const existing = JSON.parse(localStorage.getItem("schoolos-demo-admissions") || "[]");
-        localStorage.setItem("schoolos-demo-admissions", JSON.stringify([inquiry, ...existing]));
-      }
-
-      if (onComplete) setTimeout(onComplete, 300);
-    } catch (error) {
-      console.error("Demo admission save failed", error);
-      if (onComplete) onComplete();
+        guardianPhone: data.phone,
+        applyingClassId: targetClass.id,
+        academicYear: currentSession.name,
+        admissionMode: "OFFLINE",
+        religion: data.religion.toUpperCase(),
+        category: data.category.toUpperCase(),
+        sourceId: "WALK_IN",
+        notes: `Inquiry created from the SchoolOS admission form. Religion: ${data.religion}; Category: ${data.category}.`,
+      });
+      toast.success("Admission inquiry created.");
+      onComplete?.();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? "Failed to create admission inquiry.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -184,9 +186,10 @@ export default function AdmissionForm({ onComplete }: { onComplete?: () => void 
           <button 
             type="button" 
             onClick={step === 7 ? handleSubmit(onSubmit) : handleNext} 
+            disabled={submitting}
             className="bg-indigo-600 text-white font-black uppercase text-[10px] tracking-widest px-8 py-3.5 rounded-xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2"
           >
-            {step === 7 ? "Confirm Inquiry" : "Next Step"} <ChevronRight size={16} />
+            {submitting ? "Saving..." : step === 7 ? "Confirm Inquiry" : "Next Step"} <ChevronRight size={16} />
           </button>
         </div>
       </div>

@@ -112,7 +112,7 @@ export default function SupportPage() {
   // back to its own tenant room) -- so this handler only ever fires here
   // for messages that genuinely came from a superadmin.
   useSocketEvent("support:new-message", (payload: any) => {
-    if (payload?.ticketId === selected) fetchTicket(selected);
+    if (selected && payload?.ticketId === selected) fetchTicket(selected);
     refetch();
     toast.info(`New reply on ${payload?.ticketNumber ?? "your ticket"}`);
     notifyTab("New reply");

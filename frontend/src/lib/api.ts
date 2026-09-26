@@ -23,6 +23,8 @@ export const apiClient = {
   delete: (url: string, config?: any) => getClient().delete(url, config),
 };
 
+export default apiClient;
+
 // Re-exporting from the package we just updated
 export {
   authApi, studentsApi, attendanceApi, billingApi, academicsApi,

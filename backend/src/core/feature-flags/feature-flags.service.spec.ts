@@ -17,6 +17,7 @@ import { AuditService } from '../compliance/audit.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { getQueueToken } from '@nestjs/bull';
 import { QUEUE_NAMES } from '../../infra/queue/queue.module';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 describe('FeatureFlagService', () => {
   let service: FeatureFlagService;
@@ -24,6 +25,7 @@ describe('FeatureFlagService', () => {
   const mockFlag = { id: 'flag-1', name: 'FEATURE_WHATSAPP_INTEGRATION', tenantControllable: true };
 
   const mockPrismaService: any = {
+    tenant: { findUnique: jest.fn().mockResolvedValue({ id: 'platform-tenant' }) },
     featureFlag:              { findUnique: jest.fn() },
     featureFlagOverride:      { upsert: jest.fn(), deleteMany: jest.fn(), delete: jest.fn() },
     featureFlagOverrideRequest: {
@@ -38,6 +40,7 @@ describe('FeatureFlagService', () => {
   const mockAudit = { logCreate: jest.fn(), logUpdate: jest.fn() };
   const mockEmitter = { emit: jest.fn() };
   const mockQueue = { add: jest.fn() };
+  const mockRealtime = { emitToTenant: jest.fn(), emitToAdmins: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -48,6 +51,7 @@ describe('FeatureFlagService', () => {
         { provide: AuditService, useValue: mockAudit },
         { provide: EventEmitter2, useValue: mockEmitter },
         { provide: getQueueToken(QUEUE_NAMES.NOTIFICATIONS), useValue: mockQueue },
+        { provide: RealtimeGateway, useValue: mockRealtime },
       ],
     }).compile();
 
