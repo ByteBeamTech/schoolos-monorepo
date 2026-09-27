@@ -1,11 +1,6 @@
 "use client";
 /**
- * Inventory Page — Complete flow:
- *   Tab 1: Vendors        → list + add vendor
- *   Tab 2: Purchase Orders → list + create PO from vendor
- *   Tab 3: Stock           → list + GRN entry
- *   Tab 4: Issues          → issue item to student/staff + returns
- *   Tab 5: Assets          → assets + maintenance
+ * Inventory Page — currently backed by the available stock and asset APIs.
  */
 import { useState, useCallback } from "react";
 import {
@@ -21,10 +16,7 @@ import { apiClient }   from "@/lib/api";
 type Tab = "vendors" | "orders" | "stock" | "issues" | "assets";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: "vendors",  label: "Vendors",         icon: <Building2 className="w-4 h-4" /> },
-  { id: "orders",   label: "Purchase Orders", icon: <ShoppingCart className="w-4 h-4" /> },
   { id: "stock",    label: "Stock",           icon: <Package className="w-4 h-4" /> },
-  { id: "issues",   label: "Issue Items",     icon: <ArrowUpFromLine className="w-4 h-4" /> },
   { id: "assets",   label: "Assets",          icon: <Wrench className="w-4 h-4" /> },
 ];
 
@@ -34,42 +26,35 @@ export default function InventoryPage() {
   const [saving, setSaving] = useState(false);
 
   // Data hooks
-  const { data: vendors,   loading: vLoad, refetch: rv } = useApi<any[]>("/inventory/vendors");
-  const { data: orders,    loading: oLoad, refetch: ro } = useApi<any[]>("/inventory/purchase-orders");
   const { data: stock,     loading: sLoad, refetch: rs } = useApi<any[]>("/inventory/stock");
   const { data: lowStock,  loading: lLoad               } = useApi<any[]>("/inventory/stock/low");
-  const { data: issues,    loading: iLoad, refetch: ri } = useApi<any[]>("/inventory/issues");
   const { data: assets,    loading: aLoad, refetch: ra } = useApi<any[]>("/inventory/assets");
 
   // Forms
+  // Legacy form state is retained for the hidden legacy panels below; those
+  // panels are no longer reachable until their backend contracts exist.
+  const vendors: any[] = [];
+  const orders: any[] = [];
+  const issues: any[] = [];
+  const vLoad = false;
+  const oLoad = false;
+  const iLoad = false;
   const [vendorForm, setVendorForm] = useState({ name: "", contactName: "", phone: "", email: "", category: "GENERAL", gstNumber: "" });
-  const [poForm, setPoForm]         = useState({ vendorId: "", poNumber: "", expectedAt: "", notes: "" });
+  const [poForm, setPoForm] = useState({ vendorId: "", poNumber: "", expectedAt: "", notes: "" });
   const [stockEntryForm, setStockEntryForm] = useState({ stockItemId: "", quantity: "0", entryType: "PURCHASE", remarks: "" });
-  const [issueForm, setIssueForm]   = useState({ stockItemId: "", issueType: "STUDENT", entityId: "", quantity: "1", purpose: "", returnDue: "" });
+  const [issueForm, setIssueForm] = useState({ stockItemId: "", issueType: "STUDENT", entityId: "", quantity: "1", purpose: "", returnDue: "" });
   const [assetForm, setAssetForm]   = useState({ name: "", category: "FURNITURE", serialNumber: "", purchaseDate: "", purchasePrice: "", location: "", condition: "GOOD" });
 
   const handleSave = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      if (tab === "vendors") {
-        await apiClient.post("/inventory/vendors", vendorForm);
-        rv();
-      } else if (tab === "orders") {
-        await apiClient.post("/inventory/purchase-orders", poForm);
-        ro();
-      } else if (tab === "stock") {
+      if (tab === "stock") {
         await apiClient.post("/inventory/stock/entry", {
           ...stockEntryForm,
           quantity: Number(stockEntryForm.quantity),
         });
         rs();
-      } else if (tab === "issues") {
-        await apiClient.post("/inventory/issues", {
-          ...issueForm,
-          quantity: Number(issueForm.quantity),
-        });
-        ri();
       } else if (tab === "assets") {
         await apiClient.post("/inventory/assets", {
           ...assetForm,
@@ -83,31 +68,29 @@ export default function InventoryPage() {
     } finally {
       setSaving(false);
     }
-  }, [tab, vendorForm, poForm, stockEntryForm, issueForm, assetForm]);
+  }, [tab, stockEntryForm, assetForm, rs, ra]);
 
   return (
     <div>
       <PageHeader
         title="Inventory"
-        subtitle="Vendor → PO → Stock → Issue — complete flow"
+        subtitle="Manage stock levels and school assets"
         action={
           <button
             onClick={() => setShowForm(p => !p)}
             className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
           >
             <Plus className="w-4 h-4" />
-            Add {tab === "vendors" ? "Vendor" : tab === "orders" ? "PO" : tab === "stock" ? "Stock Entry" : tab === "issues" ? "Issue" : "Asset"}
+            Add {tab === "stock" ? "Stock Entry" : "Asset"}
           </button>
         }
       />
 
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <StatCard label="Vendors"        value={vendors?.length   ?? 0} icon={<Building2 className="w-5 h-5"/>} color="blue"   loading={vLoad} />
-        <StatCard label="Open POs"       value={orders?.filter((o:any) => o.status !== 'RECEIVED' && o.status !== 'CANCELLED').length ?? 0} icon={<ShoppingCart className="w-5 h-5"/>} color="purple" loading={oLoad} />
         <StatCard label="Stock Items"    value={stock?.length     ?? 0} icon={<Package className="w-5 h-5"/>}  color="green"  loading={sLoad} />
         <StatCard label="Low Stock"      value={lowStock?.length  ?? 0} icon={<AlertTriangle className="w-5 h-5"/>} color="red" loading={lLoad} />
-        <StatCard label="Active Issues"  value={issues?.filter((i:any) => i.status === 'ISSUED').length ?? 0} icon={<ArrowUpFromLine className="w-5 h-5"/>} color="amber" loading={iLoad} />
+        <StatCard label="Assets"         value={assets?.length     ?? 0} icon={<Wrench className="w-5 h-5"/>} color="blue" loading={aLoad} />
       </div>
 
       {/* Tabs */}
@@ -129,7 +112,7 @@ export default function InventoryPage() {
       {showForm && (
         <div className="bg-white border border-blue-100 rounded-xl p-5 mb-5 shadow-sm">
           <h3 className="font-semibold text-slate-900 text-sm mb-4">
-            Add {tab === "vendors" ? "Vendor" : tab === "orders" ? "Purchase Order" : tab === "stock" ? "Stock Entry (GRN)" : tab === "issues" ? "Issue Item" : "Asset"}
+            Add {tab === "stock" ? "Stock Entry" : "Asset"}
           </h3>
 
           <form onSubmit={handleSave}>
