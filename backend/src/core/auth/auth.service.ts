@@ -45,10 +45,6 @@ if (!tenant) {
 
 tenantId = tenant.id;
     const user = await this.users.findByEmailWithPassword(tenantId, dto.email);
-     console.log('LOGIN tenantId=', tenantId);
-console.log('LOGIN email=', dto.email);
-console.log('LOGIN user=', user?.id);
-console.log('LOGIN role=', user?.role);
     if (!user) {
       await this.fakePasswordCheck(dto.password);
       throw new UnauthorizedException('Invalid email or password.');
@@ -66,12 +62,10 @@ console.log('LOGIN role=', user?.role);
         'Password login is not enabled for this account. Use SSO to sign in.',
       );
     }
-     console.log('PASSWORD HASH EXISTS=', !!user?.passwordHash);
     const isValid = await this.users.validatePassword(
       dto.password,
       user.passwordHash,
     );
-      console.log('PASSWORD VALID=', isValid);
     if (!isValid) {
       await this.audit.log({
         tenantId, actorId: user.id, actorRole: user.role as any,
