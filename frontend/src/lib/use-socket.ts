@@ -16,7 +16,7 @@ import { io, Socket } from "socket.io-client";
 // page -- every caller should still keep its own poll as a fallback,
 // since a dropped/failed socket degrades silently here (pages just fall
 // back to their existing poll cadence) rather than throwing.
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").replace(/\/api\/v1\/?$/, "");
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1").replace(/\/api\/v1\/?$/, "");
 
 let sharedSocket: Socket | null = null;
 

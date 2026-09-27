@@ -1,6 +1,6 @@
 // superadmin/src/lib/api.ts
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 // BUG 4 FIX: The superadmin app was sending Bearer tokens but never the
 // x-tenant-id header. TenantMiddleware on the backend requires this header
@@ -92,4 +92,3 @@ export const api = {
   patch:  <T>(path: string, body: unknown) => request<T>(path, { method: "PATCH",  body: JSON.stringify(body) }),
   delete: <T>(path: string)               => request<T>(path, { method: "DELETE" }),
 };
-

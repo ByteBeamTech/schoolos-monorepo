@@ -23,7 +23,7 @@ import { io, Socket } from "socket.io-client";
 // actual production config the first time this is tested for real,
 // since a misroute here fails silently (falls back to polling) rather
 // than throwing an error anyone would notice.
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").replace(/\/api\/v1\/?$/, "");
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1").replace(/\/api\/v1\/?$/, "");
 
 let sharedSocket: Socket | null = null;
 
