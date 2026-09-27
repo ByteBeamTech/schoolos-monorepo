@@ -44,15 +44,6 @@ export class AcademicSessionsController {
     return this.service.findCurrent(user.tenantId);
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Get session by ID' })
-  findOne(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.service.findById(user.tenantId, id);
-  }
-
   @Get(':id/stats')
   @ApiOperation({ summary: 'Get session stats (classes, students)' })
   getStats(
@@ -60,6 +51,15 @@ export class AcademicSessionsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.getStats(user.tenantId, id);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get session by ID' })
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.findById(user.tenantId, id);
   }
 
   @Patch(':id')
