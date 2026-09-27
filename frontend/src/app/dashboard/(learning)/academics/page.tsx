@@ -127,8 +127,12 @@ export default function AcademicsPage() {
   };
 
   const quickAddSection = async (classId: string, name: string) => {
-    await apiClient.post("/academics/sections", { classId, name, capacity: 40 }).catch(() => {});
-    refetchClasses();
+    try {
+      await apiClient.post("/academics/sections", { classId, name, capacity: 40 });
+      refetchClasses();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Failed to create section");
+    }
   };
 
   // ── SUBJECT HANDLERS ────────────────────────────────────────────────────────
@@ -163,8 +167,12 @@ export default function AcademicsPage() {
     if (toAdd.length === 0) { toast.error("All preset subjects already exist."); return; }
     setBulkLoading(true);
     try {
-      for (const s of toAdd) {
-        await apiClient.post("/academics/subjects", s).catch(() => {});
+      const results = await Promise.allSettled(
+        toAdd.map((subject) => apiClient.post("/academics/subjects", subject)),
+      );
+      const failed = results.filter((result) => result.status === "rejected");
+      if (failed.length > 0) {
+        toast.error(`${failed.length} subject${failed.length === 1 ? "" : "s"} could not be created`);
       }
       refetchSubjects();
     } finally { setBulkLoading(false); }

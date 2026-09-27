@@ -108,9 +108,16 @@ export default function StaffPage() {
       // 3 — save subject preferences (teacher roles only)
       if (IS_TEACHER(form.role) && selectedSubjects.length > 0 && staffId) {
         setStep("Saving subject preferences…");
-        await apiClient.post(`/staff/${staffId}/subject-preferences`, {
-          subjectIds: selectedSubjects,
-        }).catch(() => {}); // non-fatal — profile still created
+        try {
+          await apiClient.post(`/staff/${staffId}/subject-preferences`, {
+            subjectIds: selectedSubjects,
+          });
+        } catch (err: any) {
+          toast.error(
+            err?.response?.data?.message ??
+              "Staff profile created, but subject preferences could not be saved",
+          );
+        }
       }
 
       resetForm();
