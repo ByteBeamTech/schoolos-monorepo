@@ -1,6 +1,6 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
-import { Prisma, AdmissionStepStatus } from '@prisma/client';
+import { Prisma, AdmissionStepStatus, StudentStatus } from '@prisma/client';
 
 // Alias: the service was written using 'AdmissionStatus'; schema uses AdmissionStepStatus
 export type AdmissionStatus = AdmissionStepStatus;
@@ -87,6 +87,93 @@ export class AdmissionStateMachineService {
   });
 
   constructor(private readonly prisma: PrismaService) {}
+
+  async convertToStudent(
+    admissionId: string,
+    tenantId: string,
+    branchId: string,
+    sectionId: string,
+    rollNumber: string,
+    actorId: string,
+  ) {
+    if (!rollNumber.trim()) throw new BadRequestException('Roll number is required.');
+
+    return this.prisma.$transaction(async (tx) => {
+      const admission = await tx.admission.findFirst({
+        where: { id: admissionId, tenantId, branchId },
+      });
+      if (!admission) throw new NotFoundException('Admission record not found.');
+      if (admission.status === AdmissionStepStatus.CONVERTED || admission.enrolledStudentId) {
+        throw new ConflictException('Admission is already converted to a student.');
+      }
+      if (admission.status !== AdmissionStepStatus.FEE_DEPOSIT) {
+        throw new BadRequestException('Admission must reach fee deposit before enrollment.');
+      }
+      if (!admission.applyingClassId) {
+        throw new BadRequestException('Admission has no target class.');
+      }
+
+      const section = await tx.section.findFirst({
+        where: { id: sectionId, tenantId, branchId, classId: admission.applyingClassId },
+      });
+      if (!section) throw new NotFoundException('Section does not belong to the target class.');
+
+      await tx.$executeRaw`
+        SELECT id FROM "Section"
+        WHERE id = ${sectionId} AND "tenantId" = ${tenantId} AND "branchId" = ${branchId}
+        FOR UPDATE
+      `;
+      const occupied = await tx.student.count({
+        where: { tenantId, branchId, sectionId, isActive: true },
+      });
+      if (occupied >= section.capacity) {
+        throw new BadRequestException('Target section is at capacity.');
+      }
+      const rollConflict = await tx.student.findFirst({
+        where: { tenantId, branchId, sectionId, rollNumber: rollNumber.trim(), isActive: true },
+      });
+      if (rollConflict) throw new ConflictException('Roll number is already assigned in this section.');
+
+      const student = await tx.student.create({
+        data: {
+          tenantId,
+          branchId,
+          classId: admission.applyingClassId,
+          sectionId,
+          admissionNumber: `ADM-${admission.id.slice(-8).toUpperCase()}`,
+          firstName: admission.firstName.trim(),
+          lastName: admission.lastName.trim(),
+          dateOfBirth: admission.dateOfBirth,
+          gender: admission.gender,
+          academicYear: admission.academicYear,
+          rollNumber: rollNumber.trim(),
+          email: admission.email,
+          phone: admission.guardianPhone ?? admission.fatherPhone ?? admission.motherPhone,
+          status: StudentStatus.ENROLLED,
+          isActive: true,
+        },
+      });
+
+      const updated = await tx.admission.update({
+        where: { id: admission.id },
+        data: {
+          status: AdmissionStepStatus.CONVERTED,
+          enrolledStudentId: student.id,
+          updatedAt: new Date(),
+        },
+      });
+      await tx.admissionActivity.create({
+        data: {
+          admissionId: admission.id,
+          tenantId,
+          actorId,
+          action: 'ENROLLMENT_CREATED',
+          note: `Student ${student.admissionNumber} created from admission`,
+        },
+      });
+      return { admission: updated, student };
+    });
+  }
 
   async transition(admissionId: string, tenantId: string, toStatus: AdmissionStatus, ctx: TransitionContext) {
     const startTime = Date.now();

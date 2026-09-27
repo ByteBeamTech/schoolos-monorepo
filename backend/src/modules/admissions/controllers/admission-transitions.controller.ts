@@ -1,6 +1,5 @@
-import { Body, Controller, Get, Param, Post, Request } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Request } from '@nestjs/common';
 import { AdmissionStateMachineService, AdmissionStatus } from '../services/admission-state-machine.service';
-import { PrismaService } from '@infra/database/prisma.service';
 
 import { UseGuards } from '@nestjs/common';
 import { JwtGuard } from '../../../core/auth/guards/jwt.guard';
@@ -12,11 +11,7 @@ import { Roles } from '../../../core/roles/roles.decorator';
 @Roles('SCHOOL_ADMIN', 'PRINCIPAL')
 
 export class AdmissionTransitionsController {
-  private readonly sm: AdmissionStateMachineService;
-
-  constructor(private readonly prisma: PrismaService) {
-    this.sm = new AdmissionStateMachineService(prisma);
-  }
+  constructor(private readonly sm: AdmissionStateMachineService) {}
 
   @Post(':id/transition')
   async transition(
@@ -33,6 +28,25 @@ export class AdmissionTransitionsController {
       note: body.note,
       payload: body.payload,
     });
+  }
+
+  @Post(':id/convert')
+  async convert(
+    @Param('id') id: string,
+    @Request() req: any,
+    @Body() body: { sectionId: string; rollNumber: string },
+  ) {
+    if (!body.sectionId || !body.rollNumber) {
+      throw new BadRequestException('sectionId and rollNumber are required.');
+    }
+    return this.sm.convertToStudent(
+      id,
+      req.user.tenantId,
+      req.user.branchId,
+      body.sectionId,
+      body.rollNumber,
+      req.user.id,
+    );
   }
 
   @Get('funnel')
