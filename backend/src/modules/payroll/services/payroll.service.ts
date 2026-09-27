@@ -103,6 +103,12 @@ export class PayrollService {
     });
   }
 
+  async getPayslip(tenantId: string, id: string) {
+    return this.prisma.payrollEntry.findFirst({
+      where: { id, tenantId },
+    });
+  }
+
   async approvePayslip(tenantId: string, id: string) {
     const entry = await this.prisma.payrollEntry.findFirst({ where: { id, tenantId } });
     if (!entry) throw new NotFoundException('Payslip not found');

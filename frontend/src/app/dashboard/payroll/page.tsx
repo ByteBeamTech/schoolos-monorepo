@@ -11,7 +11,7 @@
  * Tab 2: Payslips
  * • List all payslips for selected month
  * • Filter by status (Draft/Approved/Paid)
- * • Download individual payslip PDF
+ * • Download individual printable payslip
  *
  * Tab 3: Salary Structures
  * • List all staff salary structures
@@ -139,7 +139,7 @@ export default function PayrollPage() {
       const res = await apiClient.get(`/payroll/payslips/${id}/pdf`, { responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement("a"); a.href = url;
-      a.download = `payslip-${staffName}-${MONTHS[month-1]}-${year}.pdf`;
+      a.download = `payslip-${staffName}-${MONTHS[month-1]}-${year}.html`;
       a.click(); window.URL.revokeObjectURL(url);
     } catch (err: any) { toast.error(err); }
     finally { setDownloading(null); }
@@ -330,7 +330,7 @@ export default function PayrollPage() {
                           <button onClick={() => downloadPayslip(p.id, staffMember?.user?.firstName ?? "staff")} disabled={downloading === p.id}
                             className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 font-medium disabled:opacity-50 transition-colors">
                             {downloading === p.id ? <span className="w-3 h-3 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"/> : <Download className="w-3.5 h-3.5"/>}
-                            PDF
+                            Print
                           </button>
                         </div>
                       </td>
