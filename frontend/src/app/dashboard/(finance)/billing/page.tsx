@@ -171,59 +171,14 @@ export default function BillingPage() {
   const overdueLastPage = Math.max(1, Math.ceil(overdueTotal / pageSize));
   const overduePage     = Math.min(page, overdueLastPage);
 
-  // Students for invoice generation and local fallback rows.
+  // Students for invoice generation.
   const { data: studentsData } = useStudents(1, {});
   const students = studentsData?.data ?? [];
 
   const fetchedInvoices = (invoiceData as any)?.data ?? invoiceData ?? [];
-  const fallbackStudentsForInvoices = (students as any[]).slice(0, 3);
-  const fallbackInvoices: Invoice[] = fallbackStudentsForInvoices.length
-    ? fallbackStudentsForInvoices.map((student: any, idx: number) => ({
-        id: `demo-invoice-${student.id ?? idx}`,
-        invoiceNumber: `INV-${String(student.admissionNumber ?? idx + 1).toUpperCase().replace(/\s+/g, "")}`,
-        status: idx % 3 === 0 ? "SENT" : idx === 1 ? "PARTIALLY_PAID" : "PAID",
-        academicYear: academicYear || "2026-2027",
-        currency: "INR",
-        subtotal: 18000 + idx * 2000,
-        totalAmount: 18000 + idx * 2000,
-        paidAmount: idx === 1 ? 11000 : idx === 2 ? 18000 : 15000,
-        dueAmount: idx === 1 ? 7000 : idx === 2 ? 0 : 3000,
-        dueDate: new Date(Date.now() + (idx - 1) * 120000000).toISOString(),
-        issuedAt: new Date().toISOString(),
-        isOverdue: idx === 0,
-        student: {
-          id: student.id ?? `demo-student-${idx}`,
-          firstName: student.firstName ?? "Demo",
-          lastName: student.lastName ?? "Student",
-          admissionNumber: student.admissionNumber ?? `ADM-${1000 + idx}`,
-        },
-        items: [{ name: "Tuition Fee", amount: 18000 + idx * 2000, netAmount: 18000 + idx * 2000 }],
-        payments: idx === 1 ? [{ id: `pay-${idx}`, amount: 11000, status: "SUCCESS", paidAt: new Date().toISOString(), paymentMethod: "UPI" }] : [],
-        receipts: [],
-      }))
-    : [
-        {
-          id: "demo-invoice-generic",
-          invoiceNumber: "INV-1001",
-          status: "SENT",
-          academicYear: academicYear || "2026-2027",
-          currency: "INR",
-          subtotal: 18000,
-          totalAmount: 18000,
-          paidAmount: 12000,
-          dueAmount: 6000,
-          dueDate: new Date(Date.now() + 7 * 86400000).toISOString(),
-          issuedAt: new Date().toISOString(),
-          isOverdue: false,
-          student: { id: "demo-student-generic", firstName: "Demo", lastName: "Student", admissionNumber: "ADM-1001" },
-          items: [{ name: "Tuition Fee", amount: 18000, netAmount: 18000 }],
-          payments: [{ id: "pay-generic", amount: 12000, status: "SUCCESS", paidAt: new Date().toISOString(), paymentMethod: "UPI" }],
-          receipts: [],
-        },
-      ];
   const invoices: Invoice[] = overdueOnly
     ? overdueFiltered.slice((overduePage - 1) * pageSize, overduePage * pageSize)
-    : (fetchedInvoices.length > 0 ? fetchedInvoices : fallbackInvoices);
+    : fetchedInvoices;
   const invoiceMeta = overdueOnly
     ? {
         total: overdueTotal, page: overduePage, limit: pageSize, lastPage: overdueLastPage,
@@ -232,29 +187,21 @@ export default function BillingPage() {
     : ((invoiceData as any)?.meta ?? { total: invoices.length, page, limit: pageSize, lastPage: 1 });
   const overdueLoading = overdueOnly && overdueScan.loading;
 
-  const fallbackStats = {
-    totalInvoices: invoices.length,
-    totalAmount: invoices.reduce((sum, invoice) => sum + (invoice.totalAmount ?? 0), 0),
-    collectedAmount: invoices.reduce((sum, invoice) => sum + (invoice.paidAmount ?? 0), 0),
-    overdueCount: invoices.filter((invoice) => invoice.isOverdue).length,
-    draftCount: invoices.filter((invoice) => invoice.status === "DRAFT").length,
-    paidCount: invoices.filter((invoice) => invoice.status === "PAID").length,
+  const safeStats = stats ?? {
+    totalInvoices: 0,
+    totalAmount: 0,
+    collectedAmount: 0,
+    overdueCount: 0,
+    draftCount: 0,
+    paidCount: 0,
   };
-  const safeStats = stats && Object.values(stats).some((value) => Number(value) > 0) ? stats : fallbackStats;
 
   // Fee plans (not paginated) -- still needed here for the Generate/Bulk
   // Generate dropdowns below. Fee Plan *creation* moved to the dedicated
   // Fee Structure page (FDD Section 17) -- this page reads plans, it
   // doesn't create them.
   const { data: feePlans } = useFeePlans(academicYear);
-  const safeFeePlans = (feePlans && feePlans.length > 0) ? feePlans : [{
-    id: "demo-fee-plan",
-    name: "Academic Fee Plan",
-    academicYear: academicYear || "2026-2027",
-    currency: "INR",
-    isActive: true,
-    feeItems: [{ id: "demo-fee-item-1", name: "Tuition Fee", amount: 18000, isOptional: false }],
-  }];
+  const safeFeePlans = feePlans ?? [];
 
   // ── Generate invoice ─────────────────────────────────────────────────────
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);

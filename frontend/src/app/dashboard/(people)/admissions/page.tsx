@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { UserPlus, X, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
@@ -9,37 +9,15 @@ import AdmissionForm from "@/components/admission/AdmissionForm";
 
 export default function AdmissionsCRM() {
   const [showForm, setShowForm] = useState(false);
-  const [localInquiries, setLocalInquiries] = useState<any[]>([]);
   const { data: list, refetch, loading } = useAdmissions();
   const { data: stats, loading: sLoad } = useAdmissionStats();
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = JSON.parse(localStorage.getItem("schoolos-demo-admissions") || "[]");
-        setLocalInquiries(Array.isArray(stored) ? stored : []);
-      } catch {
-        setLocalInquiries([]);
-      }
-    }
-  }, []);
-
-  const mergedList = (Array.isArray(list) && list.length > 0 ? list : localInquiries) ?? [];
-  const mergedStats = stats && (stats.total > 0 || stats.byStatus)
-    ? stats
-    : {
-        total: localInquiries.length,
-        thisMonth: localInquiries.length,
-        enrolled: 0,
-        inquiries: localInquiries.length,
-        conversionRate: localInquiries.length ? 15 : 0,
-        byStatus: {
-          SCREENING: localInquiries.filter((item) => item.status === "SCREENING").length,
-          INQUIRY: localInquiries.filter((item) => item.status === "INQUIRY").length,
-          WAITLISTED: localInquiries.filter((item) => item.status === "WAITLISTED").length,
-          CONVERTED: localInquiries.filter((item) => item.status === "CONVERTED").length,
-        },
-      };
+  const mergedList = Array.isArray(list) ? list : [];
+  const mergedStats = stats ?? {
+    total: 0,
+    byStatus: {},
+    conversionRate: 0,
+  };
 
   return (
     <div className="p-6 space-y-8 bg-[#F8FAFC] min-h-screen">

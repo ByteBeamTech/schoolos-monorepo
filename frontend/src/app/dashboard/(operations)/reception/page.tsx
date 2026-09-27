@@ -35,13 +35,7 @@ export default function ReceptionPage() {
   const { data: visitors, loading: loadingVisitors, refetch: refetchVisitors } = useApi<any[]>("/reception/visitors?status=CHECKED_IN", []);
   const { data: visitorStats } = useApi<any>("/reception/visitors/stats/today", []);
   const { data: staffList } = useStaff();
-  const fallbackStaff = [
-    { id: "staff-demo-1", employeeId: "EMP-101", designation: "Principal", department: "Administration", user: { firstName: "Anita", lastName: "Sharma", role: "PRINCIPAL" } },
-    { id: "staff-demo-2", employeeId: "EMP-102", designation: "Receptionist", department: "Front Office", user: { firstName: "Rahul", lastName: "Verma", role: "RECEPTIONIST" } },
-    { id: "staff-demo-3", employeeId: "EMP-103", designation: "HR Manager", department: "HR", user: { firstName: "Meera", lastName: "Patel", role: "HR_MANAGER" } },
-    { id: "staff-demo-4", employeeId: "EMP-104", designation: "Teacher", department: "Mathematics", user: { firstName: "Karan", lastName: "Singh", role: "TEACHER" } },
-  ];
-  const staff = staffList && staffList.length > 0 ? staffList : fallbackStaff;
+  const staff = staffList ?? [];
   const today = new Date().toISOString().split("T")[0];
   const [attendanceDate, setAttendanceDate] = useState(today);
   const [staffAttendance, setStaffAttendance] = useState<Record<string, string>>({});
