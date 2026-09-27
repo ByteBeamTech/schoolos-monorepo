@@ -1,22 +1,81 @@
 "use client";
 
 import { useState } from "react";
-import { UserPlus, X, ChevronRight } from "lucide-react";
+import { UserPlus, X, ChevronRight, ArrowRight, UserCheck } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { useAdmissions, useAdmissionStats } from "@/lib/hooks";
 import AdmissionForm from "@/components/admission/AdmissionForm";
+import { apiClient } from "@/lib/api";
 
 export default function AdmissionsCRM() {
   const [showForm, setShowForm] = useState(false);
   const { data: list, refetch, loading } = useAdmissions();
   const { data: stats, loading: sLoad } = useAdmissionStats();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [convertTarget, setConvertTarget] = useState<any | null>(null);
+  const [sections, setSections] = useState<any[]>([]);
+  const [convertForm, setConvertForm] = useState({ sectionId: "", rollNumber: "" });
+  const [actionError, setActionError] = useState("");
 
   const mergedList = Array.isArray(list) ? list : [];
   const mergedStats = stats ?? {
     total: 0,
     byStatus: {},
     conversionRate: 0,
+  };
+
+  const nextStatus: Record<string, string> = {
+    INQUIRY: "UNDER_REVIEW",
+    UNDER_REVIEW: "DOCUMENT_UPLOAD",
+    DOCUMENT_UPLOAD: "VERIFICATION",
+    VERIFICATION: "FEE_DEPOSIT",
+  };
+
+  const advance = async (admission: any) => {
+    const toStatus = nextStatus[admission.status];
+    if (!toStatus) return;
+    setBusyId(admission.id);
+    setActionError("");
+    try {
+      await apiClient.post(`/admissions/${admission.id}/transition`, { toStatus });
+      await refetch();
+    } catch (error: any) {
+      setActionError(error?.response?.data?.message ?? "Could not update admission status.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const openConversion = async (admission: any) => {
+    setBusyId(admission.id);
+    setActionError("");
+    try {
+      const response = await apiClient.get(`/academics/sections?classId=${admission.applyingClassId}`);
+      setSections(Array.isArray(response.data) ? response.data : []);
+      setConvertTarget(admission);
+      setConvertForm({ sectionId: "", rollNumber: "" });
+    } catch (error: any) {
+      setActionError(error?.response?.data?.message ?? "Could not load sections.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const convert = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!convertTarget) return;
+    setBusyId(convertTarget.id);
+    setActionError("");
+    try {
+      await apiClient.post(`/admissions/${convertTarget.id}/convert`, convertForm);
+      setConvertTarget(null);
+      await refetch();
+    } catch (error: any) {
+      setActionError(error?.response?.data?.message ?? "Could not enroll student.");
+    } finally {
+      setBusyId(null);
+    }
   };
 
   return (
@@ -37,6 +96,27 @@ export default function AdmissionsCRM() {
         </div>
       )}
 
+      {convertTarget && (
+        <div className="fixed inset-0 z-[120] bg-slate-900/60 flex items-center justify-center p-6">
+          <form onSubmit={convert} className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-black text-slate-900">Enroll {convertTarget.firstName} {convertTarget.lastName}</h2>
+              <button type="button" onClick={() => setConvertTarget(null)}><X size={18} /></button>
+            </div>
+            <p className="text-xs text-slate-500">Select the section and assign the student a roll number.</p>
+            <select required value={convertForm.sectionId} onChange={e => setConvertForm(p => ({ ...p, sectionId: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm">
+              <option value="">Select section</option>
+              {sections.map(section => <option key={section.id} value={section.id}>{section.name}</option>)}
+            </select>
+            <input required value={convertForm.rollNumber} onChange={e => setConvertForm(p => ({ ...p, rollNumber: e.target.value }))} placeholder="Roll number" className="w-full border rounded-lg px-3 py-2 text-sm" />
+            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            <button disabled={busyId === convertTarget.id} className="w-full bg-indigo-600 text-white rounded-lg py-2.5 text-sm font-bold disabled:opacity-50">
+              {busyId === convertTarget.id ? "Enrolling..." : "Create student"}
+            </button>
+          </form>
+        </div>
+      )}
+
       {/* 🔝 Header Section */}
       <PageHeader
         title="Admissions CRM"
@@ -50,6 +130,7 @@ export default function AdmissionsCRM() {
           </button>
         }
       />
+      {actionError && !convertTarget && <div className="bg-red-50 text-red-700 border border-red-100 rounded-xl px-4 py-3 text-sm">{actionError}</div>}
 
       {/* 📊 Stats Section */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
@@ -95,9 +176,19 @@ export default function AdmissionsCRM() {
                     </span>
                   </td>
                   <td className="px-8 py-5">
-                    <button className="p-2 hover:bg-white rounded-lg transition-all text-slate-300 group-hover:text-indigo-600">
-                      <ChevronRight size={18} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {nextStatus[adm.status] && (
+                        <button onClick={() => advance(adm)} disabled={busyId === adm.id} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold disabled:opacity-50">
+                          <ArrowRight size={13} /> {busyId === adm.id ? "Saving" : "Advance"}
+                        </button>
+                      )}
+                      {adm.status === "FEE_DEPOSIT" && !adm.enrolledStudentId && (
+                        <button onClick={() => openConversion(adm)} disabled={busyId === adm.id} className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-emerald-100 text-emerald-700 text-[10px] font-bold disabled:opacity-50">
+                          <UserCheck size={13} /> Enroll
+                        </button>
+                      )}
+                      <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-600" />
+                    </div>
                   </td>
                 </tr>
               ))
