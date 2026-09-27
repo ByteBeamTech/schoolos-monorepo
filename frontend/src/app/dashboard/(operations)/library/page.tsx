@@ -64,7 +64,10 @@ export default function LibraryPage() {
   const saveBook = async (e:React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try {
-      await apiClient.post("/library/books", { ...bookForm, initialCopies: parseInt(bookForm.initialCopies) || 0 });
+      await apiClient.post("/library/books", {
+        ...bookForm,
+        initialCopies: Number.parseInt(bookForm.initialCopies, 10) || 0,
+      });
       setShowAdd(false); setBookForm({ title:"", authorName:"", isbn:"", categoryName:"", initialCopies:"1" });
       refetchAll();
     } catch(err:any) { toast.error(err?.response?.data?.message ?? "Failed"); }
