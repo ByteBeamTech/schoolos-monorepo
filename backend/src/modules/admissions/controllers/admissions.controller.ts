@@ -26,7 +26,7 @@ export class AdmissionsController {
   ) {}
 
   @Get()
-  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL', 'REGISTRAR', 'ACCOUNTANT')
+  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL', 'ACCOUNTANT')
   async findAll(
     @CurrentUser() user: AuthenticatedUser,
     @Query('status') status?: AdmissionStepStatus,
@@ -63,10 +63,15 @@ export class AdmissionsController {
   @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL', 'REGISTRAR', 'ACCOUNTANT')
   async stats(@CurrentUser() user: AuthenticatedUser) {
     const where = { tenantId: user.tenantId, branchId: user.branchId };
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const [total, grouped] = await Promise.all([
       this.prisma.admission.count({ where }),
       this.prisma.admission.groupBy({ by: ['status'], where, _count: { id: true } }),
     ]);
+    const thisMonth = await this.prisma.admission.count({
+      where: { ...where, createdAt: { gte: monthStart } },
+    });
     const byStatus = Object.fromEntries(
       grouped.map((entry) => [entry.status, entry._count.id]),
     );
@@ -74,7 +79,7 @@ export class AdmissionsController {
 
     return {
       total,
-      thisMonth: total,
+      thisMonth,
       enrolled,
       inquiries: total - enrolled,
       conversionRate: total ? Math.round((enrolled / total) * 100) : 0,
@@ -83,7 +88,7 @@ export class AdmissionsController {
   }
 
   @Post()
-  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL', 'REGISTRAR')
+  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL')
   async create(
     @Body() dto: CreateAdmissionDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -130,7 +135,7 @@ export class AdmissionsController {
   }
 
   @Post(':id/allocate-seat')
-  @Roles('ADMIN', 'REGISTRAR')
+  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL')
   @ApiOperation({ summary: 'Acquire Pessimistic Section Seat Allocation Lock' })
   async allocateSeat(
     @Param('id') id: string, 
@@ -141,7 +146,7 @@ export class AdmissionsController {
   }
 
   @Post(':id/finalize-enrollment')
-  @Roles('ADMIN', 'REGISTRAR')
+  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL')
   @ApiOperation({ summary: 'Commit Atomic Relational Student Enrollment Handshake' })
   async finalize(
     @Param('id') id: string,
