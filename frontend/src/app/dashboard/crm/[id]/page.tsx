@@ -108,10 +108,10 @@ export default function LeadDetailPage() {
             </button>
             {lead.applicationId ? (
               <Link
-                href={`/dashboard/admissions/${lead.applicationId}`}
+                href="/dashboard/admissions"
                 className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               >
-                View application
+                View admissions
               </Link>
             ) : (
               <button
