@@ -7,7 +7,7 @@ import { use, useState }  from "react";
 import { useRouter }      from "next/navigation";
 import {
   ArrowLeft, Users, CheckCircle2,
-  AlertTriangle, Search, ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
 import { Badge }          from "@/components/ui/badge";
 import { useApi }         from "@/lib/hooks";
@@ -20,15 +20,14 @@ export default function AssignFeePlanPage({ params }: { params: Promise<{ id: st
   const { toast } = useToast();
 
   const { data: plan }     = useApi<any>(`/billing/fee-plans/${id}`, [id]);
-  const { data: classes }  = useApi<any[]>("/classes");
   const { data: sessions } = useApi<any[]>("/academic-sessions");
 
   const current    = sessions?.find((s: any) => s.isCurrent) ?? sessions?.[0];
   const [year, setYear]           = useState<string>("");
-  const activeYear = year || current?.name || "";
+  const activeSessionId = year || current?.id || "";
 
-  // tab: class | section | individual
-  const [tab, setTab]             = useState<"class" | "section" | "individual">("class");
+  // Fee plans are assigned at class or section scope in the backend.
+  const [tab, setTab]             = useState<"class" | "section">("class");
 
   // class tab
   const [selectedClass, setSelectedClass] = useState("");
@@ -36,64 +35,45 @@ export default function AssignFeePlanPage({ params }: { params: Promise<{ id: st
   const [result,        setResult]        = useState<any>(null);
 
   // section tab
+  const { data: classes } = useApi<any[]>(
+    activeSessionId ? `/academics/classes?sessionId=${activeSessionId}` : "",
+    [activeSessionId],
+  );
   const { data: sections } = useApi<any[]>(
-    selectedClass ? `/sections?classId=${selectedClass}` : "", [selectedClass]
+    selectedClass ? `/academics/sections?classId=${selectedClass}` : "",
+    [selectedClass],
   );
   const [selectedSection, setSelectedSection] = useState("");
 
-  // individual tab
-  const [studentSearch, setStudentSearch]     = useState("");
-  const { data: students } = useApi<any>(
-    studentSearch.length > 2
-      ? `/students?search=${encodeURIComponent(studentSearch)}&limit=20`
-      : "",
-    [studentSearch]
-  );
-  const [assigningStudent, setAssigningStudent] = useState<string | null>(null);
-
   const classList    = Array.isArray(classes)  ? classes  : [];
   const sectionList  = Array.isArray(sections) ? sections : [];
-  const studentList  = (students as any)?.data ?? [];
 
   const assignToClass = async () => {
-    if (!selectedClass || !activeYear) { toast.error("Select a class and academic year"); return; }
+    if (!selectedClass || !activeSessionId) { toast.error("Select a class and academic year"); return; }
     setAssigning(true); setResult(null);
     try {
-      const res = await apiClient.post("/billing/fee-plans/assign-class", {
-        feePlanId: id, classId: selectedClass, academicYear: activeYear,
+      const res = await apiClient.post("/billing/fee-plans/assignments", {
+        feePlanId: id, classId: selectedClass, sessionId: activeSessionId,
       });
-      setResult(res as any);
-      toast.success(`Assigned to ${(res as any).assigned} student(s)`);
+      setResult({ assigned: 1, assignment: res.data ?? res });
+      toast.success("Fee plan assigned to the selected class");
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Failed");
     } finally { setAssigning(false); }
   };
 
   const assignToSection = async () => {
-    if (!selectedSection || !activeYear) { toast.error("Select a section and academic year"); return; }
+    if (!selectedSection || !selectedClass || !activeSessionId) { toast.error("Select a section and academic year"); return; }
     setAssigning(true); setResult(null);
     try {
-      const res = await apiClient.post("/billing/fee-plans/assign-section", {
-        feePlanId: id, sectionId: selectedSection, academicYear: activeYear,
+      const res = await apiClient.post("/billing/fee-plans/assignments", {
+        feePlanId: id, classId: selectedClass, sectionId: selectedSection, sessionId: activeSessionId,
       });
-      setResult(res as any);
-      toast.success(`Assigned to ${(res as any).assigned} student(s)`);
+      setResult({ assigned: 1, assignment: res.data ?? res });
+      toast.success("Fee plan assigned to the selected section");
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Failed");
     } finally { setAssigning(false); }
-  };
-
-  const assignToStudent = async (studentId: string, studentName: string) => {
-    if (!activeYear) { toast.error("Select academic year first"); return; }
-    setAssigningStudent(studentId);
-    try {
-      await apiClient.post("/billing/fee-plans/assign", {
-        feePlanId: id, studentId, academicYear: activeYear,
-      });
-      toast.success(`Assigned to ${studentName}`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message ?? "Already assigned or failed");
-    } finally { setAssigningStudent(null); }
   };
 
   if (!plan) return (
@@ -135,11 +115,11 @@ export default function AssignFeePlanPage({ params }: { params: Promise<{ id: st
         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
           Academic Year *
         </label>
-        <select value={activeYear} onChange={e => setYear(e.target.value)}
+        <select value={activeSessionId} onChange={e => setYear(e.target.value)}
           className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="">— select —</option>
           {(sessions ?? []).map((s: any) => (
-            <option key={s.id} value={s.name}>
+            <option key={s.id} value={s.id}>
               {s.name}{s.isCurrent ? " (current)" : ""}
             </option>
           ))}
@@ -149,9 +129,8 @@ export default function AssignFeePlanPage({ params }: { params: Promise<{ id: st
       {/* Tabs */}
       <div className="flex border-b border-slate-200 mb-5">
         {([
-          { key: "class",      label: "By Class"   },
-          { key: "section",    label: "By Section" },
-          { key: "individual", label: "Individual" },
+        { key: "class",      label: "By Class"   },
+        { key: "section",    label: "By Section" },
         ] as const).map(({ key, label }) => (
           <button key={key} onClick={() => { setTab(key); setResult(null); }}
             className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
@@ -177,8 +156,8 @@ export default function AssignFeePlanPage({ params }: { params: Promise<{ id: st
           <div>
             <p className={`text-sm font-semibold ${result.assigned > 0 ? "text-emerald-700" : "text-amber-700"}`}>
               {result.assigned > 0
-                ? `Assigned to ${result.assigned} student${result.assigned !== 1 ? "s" : ""}`
-                : "No new assignments"}
+                ? "Fee plan assignment created"
+                : "No assignment created"}
             </p>
             {result.skipped > 0 && (
               <p className="text-xs text-slate-500 mt-0.5">
@@ -193,8 +172,8 @@ export default function AssignFeePlanPage({ params }: { params: Promise<{ id: st
       {tab === "class" && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
           <p className="text-sm text-slate-600 mb-4">
-            Assigns this fee plan to <strong>every active student</strong> in the selected class.
-            Students already assigned are skipped automatically.
+            Assigns this fee plan to the selected class. The assignment is used
+            when billing resolves a student's class and section.
           </p>
           <div className="mb-4">
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Class</label>
@@ -206,7 +185,7 @@ export default function AssignFeePlanPage({ params }: { params: Promise<{ id: st
               ))}
             </select>
           </div>
-          <button onClick={assignToClass} disabled={assigning || !selectedClass || !activeYear}
+          <button onClick={assignToClass} disabled={assigning || !selectedClass || !activeSessionId}
             className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-xl font-medium disabled:opacity-50 transition-colors">
             {assigning
               ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -242,7 +221,7 @@ export default function AssignFeePlanPage({ params }: { params: Promise<{ id: st
               </select>
             </div>
           </div>
-          <button onClick={assignToSection} disabled={assigning || !selectedSection || !activeYear}
+          <button onClick={assignToSection} disabled={assigning || !selectedSection || !activeSessionId}
             className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-xl font-medium disabled:opacity-50 transition-colors">
             {assigning
               ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -252,45 +231,6 @@ export default function AssignFeePlanPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {/* INDIVIDUAL TAB */}
-      {tab === "individual" && (
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
-          <p className="text-sm text-slate-600 mb-4">
-            Search for a student and assign this plan individually.
-            Use this for exceptions — e.g. a student on a custom fee structure.
-          </p>
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input type="text" placeholder="Search student name or admission no..."
-              value={studentSearch} onChange={e => setStudentSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          {studentSearch.length > 0 && studentSearch.length <= 2 && (
-            <p className="text-xs text-slate-400 text-center py-2">Type at least 3 characters</p>
-          )}
-          {studentList.length > 0 && (
-            <div className="space-y-2">
-              {studentList.map((s: any) => (
-                <div key={s.id} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
-                  <div>
-                    <p className="text-sm font-medium text-slate-800">{s.firstName} {s.lastName}</p>
-                    <p className="text-xs text-slate-400">{s.admissionNumber}</p>
-                  </div>
-                  <button
-                    onClick={() => assignToStudent(s.id, `${s.firstName} ${s.lastName}`)}
-                    disabled={assigningStudent === s.id || !activeYear}
-                    className="px-3 py-1.5 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg font-medium disabled:opacity-50 transition-colors">
-                    {assigningStudent === s.id ? "Assigning..." : "Assign"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {studentSearch.length > 2 && studentList.length === 0 && (
-            <p className="text-sm text-slate-400 text-center py-6">No students found</p>
-          )}
-        </div>
-      )}
     </div>
   );
 }

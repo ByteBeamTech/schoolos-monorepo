@@ -167,4 +167,44 @@ export class ReportCardController {
   ) {
     return this.svc.getClassReportCards(u.tenantId, examId, classId, sessionId);
   }
+
+  @Get(':examId/class/:classId/pdf')
+  @ApiOperation({ summary: 'Download printable report cards for an entire class' })
+  @ApiQuery({ name: 'sessionId', required: true })
+  @ApiQuery({ name: 'schoolName', required: false })
+  async getClassPdf(
+    @CurrentUser() u: AuthenticatedUser,
+    @Param('examId') examId: string,
+    @Param('classId') classId: string,
+    @Query('sessionId') sessionId: string,
+    @Query('schoolName') schoolName: string | undefined,
+    @Res() res: Response,
+  ) {
+    const cards = await this.svc.getClassReportCards(u.tenantId, examId, classId, sessionId);
+    const html = cards
+      .map((card: any) => buildReportCardHtml(card, schoolName ?? 'School'))
+      .join('<div style="page-break-after:always"></div>');
+
+    let pdfBuffer: Buffer | null = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const puppeteer: any = require('puppeteer');
+      const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      pdfBuffer = Buffer.from(await page.pdf({ format: 'A4', printBackground: true }));
+      await browser.close();
+    } catch { /* puppeteer not installed — return HTML */ }
+
+    if (pdfBuffer) {
+      res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="report-cards-${classId}.pdf"`,
+      });
+      res.send(pdfBuffer);
+    } else {
+      res.set({ 'Content-Type': 'text/html' });
+      res.send(html);
+    }
+  }
 }

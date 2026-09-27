@@ -63,7 +63,7 @@ const studentFilterSchema = {
           options:
             sessions?.map((s: any) => ({
               label: s.name,
-              value: s.id,
+              value: s.name,
             })) ?? [],
         };
       }
@@ -112,7 +112,7 @@ const studentFilterSchema = {
   const [form, setForm] = useState({
     firstName: "", lastName: "",
     dateOfBirth: "", gender: "MALE", classId: "", sectionId: "",
-    academicYear: currentSession?.id ?? "",
+    academicYear: currentSession?.name ?? "",
     branchId: "",
     // Guardian
     guardianFirstName: "", guardianLastName: "",
@@ -143,7 +143,7 @@ const studentFilterSchema = {
         gender:          form.gender,
 	classId:         form.classId,
         sectionId:       form.sectionId   || undefined,
-        academicYear:    form.academicYear || currentSession?.id,
+              academicYear:    form.academicYear || currentSession?.name,
         branchId:        form.branchId || (branches && branches[0]?.id) || '',
       });
       const studentId = (res as any).id ?? (res as any).data?.id;
@@ -176,7 +176,7 @@ if (form.guardianFirstName && studentId) {
 }
 setForm({ 
   firstName:"", lastName:"",  dateOfBirth:"", gender:"MALE",
-  sectionId:"", academicYear: currentSession?.id ?? "",
+  sectionId:"", academicYear: currentSession?.name ?? "",
   branchId: "", classId:"",
   guardianFirstName:"", guardianLastName:"", guardianPhone:"", guardianEmail:"", 
   guardianRelation:"FATHER", guardianAadhaar:"", studentAadhaar:"" 

@@ -239,7 +239,7 @@ export default function DashboardPage() {
   const currentSession     = sessions?.find(s => s.isCurrent);
   const today              = new Date().toISOString().split("T")[0];
 
-  const { stats, loading: statsLoading } = useDashboardStats(currentSession?.id);
+  const { stats, loading: statsLoading, error: statsError } = useDashboardStats(currentSession?.name);
   const { data: admStats  }   = useAdmissionStats();
   const { data: invStats  }   = useInvoiceStats(currentSession?.name);
   const { data: attStats  }   = useAttendanceStats(today);
@@ -284,6 +284,13 @@ export default function DashboardPage() {
             style={{ color: "var(--text-accent)" }}>
             Manage <ArrowRight className="w-3 h-3" />
           </Link>
+        </div>
+      )}
+
+      {statsError && (
+        <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 mb-6 text-sm text-red-700">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>{statsError}. Refresh the page or check the backend service.</span>
         </div>
       )}
 

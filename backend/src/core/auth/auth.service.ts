@@ -4,6 +4,7 @@ import { TokenService }  from '../identity/token.service';
 import { AuditService }  from '../compliance/audit.service';
 import { LoginDto, AuthResponseDto, RefreshTokenDto } from './dto/auth.dto';
 import { PrismaService } from '@infra/database/prisma.service';
+import * as bcrypt from 'bcryptjs';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -105,6 +106,37 @@ console.log('LOGIN role=', user?.role);
       },
       redirectPath: this.getRoleBasedRedirect(user.role),
     };
+  }
+
+  async changePassword(
+    userId: string,
+    tenantId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    if (!currentPassword || !newPassword || newPassword.length < 8) {
+      throw new UnauthorizedException('A valid current password and a new password of at least 8 characters are required.');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId },
+      select: { passwordHash: true, role: true },
+    });
+    if (!user?.passwordHash || !(await this.users.validatePassword(currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('Current password is incorrect.');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    await this.audit.log({
+      tenantId,
+      actorId: userId,
+      actorRole: user.role as any,
+      action: 'UPDATE' as any,
+      entityType: 'User',
+      entityId: userId,
+      after: { action: 'PASSWORD_CHANGED' },
+    });
   }
 
   private getRoleBasedRedirect(role: string): string {

@@ -48,40 +48,48 @@ export interface DashboardStats {
 export function useDashboardStats(sessionId?: string) {
   const [stats, setStats]     = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
     const load = async () => {
-      const [studentsRes, notifRes, attendanceRes, billingRes] = await Promise.allSettled([
-        apiClient.get("/students?limit=1"),
-        apiClient.get("/notifications/stats"),
-        apiClient.get(`/attendance/stats?date=${today}`),
-        apiClient.get(`/billing/invoices/stats${sessionId ? `?academicYear=${sessionId}` : ""}`),
-      ]);
+      setError(null);
+      try {
+        const [studentsRes, notifRes, attendanceRes, billingRes] = await Promise.all([
+          apiClient.get(`/students/stats?academicYear=${sessionId ?? ""}`),
+          apiClient.get("/notifications/stats"),
+          apiClient.get(`/attendance/stats?date=${today}`),
+          apiClient.get(`/billing/invoices/stats${sessionId ? `?academicYear=${sessionId}` : ""}`),
+        ]);
 
-      setStats({
-        students: {
-          total:  studentsRes.status === "fulfilled" ? (studentsRes.value.data?.meta?.total ?? 0) : 0,
-          active: studentsRes.status === "fulfilled" ? (studentsRes.value.data?.meta?.total ?? 0) : 0,
-        },
-        billing: {
-          totalCollected: billingRes.status === "fulfilled" ? (billingRes.value.data?.collectedAmount ?? 0) : 0,
-          pending:        billingRes.status === "fulfilled" ? (billingRes.value.data?.totalAmount ?? 0) - (billingRes.value.data?.collectedAmount ?? 0) : 0,
-          overdueCount:   billingRes.status === "fulfilled" ? (billingRes.value.data?.overdueCount ?? 0) : 0,
-        },
-        attendance: {
-          present:    attendanceRes.status === "fulfilled" ? (attendanceRes.value.data?.present    ?? 0) : 0,
-          absent:     attendanceRes.status === "fulfilled" ? (attendanceRes.value.data?.absent     ?? 0) : 0,
-          percentage: attendanceRes.status === "fulfilled" ? (attendanceRes.value.data?.percentage ?? 0) : 0,
-        },
-        notifications: notifRes.status === "fulfilled" ? notifRes.value.data : { sent: 0, failed: 0, deliveryRate: 0 },
-      });
-      setLoading(false);
+        setStats({
+          students: {
+            total: studentsRes.data?.total ?? 0,
+            active: studentsRes.data?.active ?? 0,
+          },
+          billing: {
+            totalCollected: billingRes.data?.collectedAmount ?? 0,
+            pending: (billingRes.data?.totalAmount ?? 0) - (billingRes.data?.collectedAmount ?? 0),
+            overdueCount: billingRes.data?.overdueCount ?? 0,
+          },
+          attendance: {
+            present: attendanceRes.data?.present ?? 0,
+            absent: attendanceRes.data?.absent ?? 0,
+            percentage: attendanceRes.data?.percentage ?? 0,
+          },
+          notifications: notifRes.data,
+        });
+      } catch (e: any) {
+        setStats(null);
+        setError(e?.response?.data?.message ?? "Dashboard metrics could not be loaded");
+      } finally {
+        setLoading(false);
+      }
     };
     load();
   }, [sessionId, today]);
 
-  return { stats, loading };
+  return { stats, loading, error };
 }
 
 // ── Academic sessions ─────────────────────────────────────────────────────────

@@ -101,7 +101,7 @@ export default function GradebookPage() {
         const [studentId, scheduleId] = key.split("-");
         return { studentId, scheduleId, marksObtained: val.absent ? null : parseFloat(val.marks) || 0, isAbsent: val.absent };
       });
-      await apiClient.post("/gradebook/marks/bulk", { examId, marks: entries });
+      await apiClient.post("/examinations/marks/bulk", { examId, marks: entries });
       toast.success("Marks saved successfully");
       refetchResults();
     } catch (err: any) {
@@ -114,7 +114,7 @@ export default function GradebookPage() {
   const downloadReport = async (studentId: string, studentName: string) => {
     setDownloading(studentId);
     try {
-      const res = await apiClient.get(`/gradebook/report-card/pdf?examId=${examId}&studentId=${studentId}&sessionId=${active}`, { responseType: "blob" });
+      const res = await apiClient.get(`/report-cards/${examId}/${studentId}/pdf`, { responseType: "blob" });
       const url  = window.URL.createObjectURL(new Blob([res.data]));
       const a    = document.createElement("a");
       a.href = url;
@@ -131,7 +131,7 @@ export default function GradebookPage() {
   const downloadAllReports = async () => {
     setGenerating(true);
     try {
-      const res = await apiClient.get(`/gradebook/report-card/class-pdf?examId=${examId}&classId=${classId}&sessionId=${active}`, { responseType: "blob" });
+      const res = await apiClient.get(`/report-cards/${examId}/class/${classId}/pdf`, { responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a   = document.createElement("a");
       a.href = url;

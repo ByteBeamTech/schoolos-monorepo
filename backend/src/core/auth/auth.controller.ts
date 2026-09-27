@@ -112,6 +112,22 @@ async login(
     return user;
   }
 
+  @Post('change-password')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Change the authenticated user password' })
+  async changePassword(
+    @Body() body: { currentPassword: string; newPassword: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ message: string }> {
+    await this.auth.changePassword(
+      user.id,
+      user.tenantId,
+      body.currentPassword,
+      body.newPassword,
+    );
+    return { message: 'Password changed successfully.' };
+  }
+
   // --- Password Reset Endpoints (Bug 7 Fix) ---
 
   @Post('forgot-password')
