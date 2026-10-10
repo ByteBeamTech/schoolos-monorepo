@@ -114,9 +114,12 @@ export default function StaffPage() {
           });
         } catch (err: any) {
           toast.error(
-            err?.response?.data?.message ??
+            err?.message ?? err?.response?.data?.message ??
               "Staff profile created, but subject preferences could not be saved",
           );
+          setSaving(false);
+          setStep("");
+          return;
         }
       }
 

@@ -8,7 +8,12 @@ import { BookOpen, Calendar, CreditCard, Bell, User, LogOut } from "lucide-react
 export default function ParentPortal() {
   const router = useRouter();
   useEffect(() => { if (!localStorage.getItem("accessToken")) router.push("/login"); }, [router]);
-  const logout = () => { localStorage.clear(); router.push("/login"); };
+  const logout = () => {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("tenantId");
+    router.push("/login");
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">

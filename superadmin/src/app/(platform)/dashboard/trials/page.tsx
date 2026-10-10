@@ -1,29 +1,13 @@
 "use client";
 import { useState }  from "react";
 import { useApi }    from "@/lib/hooks";
-import { api }       from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 
 export default function TrialsPage() {
-  const { data, loading, refetch } = useApi<any>("/superadmin/trials");
-  const [nudging, setNudging]      = useState<string | null>(null);
+  const { data, loading } = useApi<any>("/superadmin/trials");
   const [filter, setFilter]        = useState<"all"|"critical"|"warning"|"ok">("all");
 
   const list = (data?.list ?? []).filter((t: any) => filter === "all" || t.urgency === filter);
-
-  const sendNudge = async (tenantId: string, email: string) => {
-    setNudging(tenantId);
-    try {
-      await api.post("/notifications/send", {
-        recipientId: tenantId,
-        channel:     "EMAIL",
-        subject:     "Your SchoolOS trial is ending soon",
-        body:        `Hi! Your SchoolOS trial is ending soon. Upgrade now to keep your data and continue managing your school without interruption.`,
-      });
-      alert(`Nudge sent to ${email}`);
-    } catch (e: any) { alert(e.message); }
-    finally { setNudging(null); }
-  };
 
   return (
     <div>
@@ -81,12 +65,7 @@ export default function TrialsPage() {
                   ) : "—"}
                 </td>
                 <td className="px-5 py-3.5">
-                  <button
-                    onClick={() => sendNudge(t.tenantId, t.email)}
-                    disabled={nudging === t.tenantId}
-                    className="text-xs text-orange-400 hover:text-orange-300 font-medium disabled:opacity-40 transition-colors">
-                    {nudging === t.tenantId ? "Sending..." : "Send nudge →"}
-                  </button>
+                  <span className="text-xs text-slate-500">Contact school</span>
                 </td>
               </tr>
             ))}

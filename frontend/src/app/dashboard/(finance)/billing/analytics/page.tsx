@@ -239,7 +239,7 @@ export default function BillingAnalyticsPage() {
             <div className="space-y-2">
               {[
                 { label: "View Defaulters",     href: "/dashboard/billing/defaulters" },
-                { label: "Late Fee Management", href: "/dashboard/billing/late-fees"  },
+                { label: "Late Fee Management", href: "/dashboard/billing/late-fee"  },
                 { label: "All Invoices",         href: "/dashboard/billing"             },
               ].map(({ label, href }) => (
                 <a key={href} href={href}

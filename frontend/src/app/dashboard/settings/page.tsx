@@ -238,7 +238,7 @@ export default function SettingsPage() {
           <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-slate-900">Integrations</h2>
-              <a href="/dashboard/settings/integrations" className="text-xs text-blue-600 hover:text-blue-800">Configure →</a>
+              <span className="text-xs text-slate-400">Environment managed</span>
             </div>
             <div className="space-y-3">
               {[

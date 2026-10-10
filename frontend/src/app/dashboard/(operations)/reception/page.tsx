@@ -68,13 +68,13 @@ export default function ReceptionPage() {
   const submitComplaint = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try { await apiClient.post("/reception/complaints", cf); setShowComplaintForm(false); setCf({ complainantName:"", complainantPhone:"", complainantType:"PARENT", category:"OTHER", subject:"", description:"", priority:"MEDIUM" }); await refetchComplaints(); toast.success("Complaint created"); }
-    catch (err: any) { toast.error(err?.response?.data?.message ?? "Failed to create complaint"); } finally { setSaving(false); }
+    catch (err: any) { toast.error(err?.message ?? err?.response?.data?.message ?? "Failed to create complaint"); } finally { setSaving(false); }
   };
 
   const checkInVisitor = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
     try { await apiClient.post("/reception/visitors", vf); setShowVisitorForm(false); setVf({ visitorName:"", phone:"", email:"", company:"", purpose:"MEETING", personToMeet:"", department:"", idType:"", idNumber:"", vehicleNumber:"", remarks:"" }); await refetchVisitors(); }
-    catch (err: any) { toast.error(err?.response?.data?.message ?? "Failed to check in visitor"); } finally { setSaving(false); }
+    catch (err: any) { toast.error(err?.message ?? err?.response?.data?.message ?? "Failed to check in visitor"); } finally { setSaving(false); }
   };
 
   const checkOut = async (id: string) => {

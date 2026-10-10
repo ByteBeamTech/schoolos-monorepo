@@ -144,11 +144,9 @@ async login(
     @Body() body: { email: string },
     @Req() req: RequestWithTenant,
   ): Promise<{ message: string }> {
-	  console.log(
-    'FORGOT PASSWORD TENANT=',
-    req.tenantId,
-  );
-    await this.passwordReset.requestReset(req.tenantId, body.email);
+    const tenantId = req.tenantId || (req.headers['x-tenant-id'] as string);
+    if (!tenantId) throw new UnauthorizedException('Tenant header missing');
+    await this.passwordReset.requestReset(tenantId, body.email);
     // सिक्योरिटी के लिए हमेशा यही रिस्पॉन्स दें ताकि ईमेल पता न चले
     return { message: 'If an account exists, a reset code has been sent.' };
   }
@@ -162,12 +160,10 @@ async login(
     @Body() body: { email: string; otp: string; newPassword: string },
     @Req() req: RequestWithTenant,
   ) {
-	  console.log(
-    'RESET PASSWORD TENANT=',
-    req.tenantId,
-  );
+    const tenantId = req.tenantId || (req.headers['x-tenant-id'] as string);
+    if (!tenantId) throw new UnauthorizedException('Tenant header missing');
     return this.passwordReset.resetPassword(
-      req.tenantId, 
+      tenantId,
       body.email, 
       body.otp, 
       body.newPassword

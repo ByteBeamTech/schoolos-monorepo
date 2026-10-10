@@ -8,7 +8,12 @@ import { BookOpen, Calendar, Clock, FileText, Bell, User, LogOut, GraduationCap 
 export default function StudentPortal() {
   const router = useRouter();
   useEffect(() => { if (!localStorage.getItem("accessToken")) router.push("/login"); }, [router]);
-  const logout = () => { localStorage.clear(); router.push("/login"); };
+  const logout = () => {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("tenantId");
+    router.push("/login");
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-100">
