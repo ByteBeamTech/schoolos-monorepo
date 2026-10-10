@@ -106,6 +106,16 @@ async createGuardian(
   );
 }
 
+@Patch('guardians/:guardianId')
+@Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL')
+async updateGuardian(
+  @Param('guardianId') guardianId: string,
+  @Body() dto: CreateGuardianDto,
+  @CurrentUser() user: AuthenticatedUser,
+) {
+  return this.service.updateGuardian(user.tenantId, guardianId, dto, user.id);
+}
+
 @Get('guardians/search')
 @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'SUPER_ADMIN',  'PRINCIPAL', 'TEACHER')
 async searchGuardians(

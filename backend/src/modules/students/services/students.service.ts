@@ -455,8 +455,30 @@ async searchGuardians(
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException(`Guardian with phone identity [${dto.phone}] already exists in this registry.`);
       }
+
       throw err;
     }
+  }
+
+  async updateGuardian(tenantId: string, guardianId: string, dto: CreateGuardianDto, actorId: string) {
+    const existing = await this.prisma.guardian.findFirst({ where: { id: guardianId, tenantId } });
+    if (!existing) throw new NotFoundException('Guardian not found');
+    const guardian = await this.prisma.guardian.update({
+      where: { id: guardianId },
+      data: {
+        firstName: dto.firstName.trim(),
+        lastName: dto.lastName.trim(),
+        phone: dto.phone.trim(),
+        email: dto.email ?? null,
+        occupation: dto.occupation ?? null,
+        altPhone: dto.altPhone ?? null,
+      },
+    });
+    await this.audit.logUpdate({
+      tenantId, actorId, entityType: 'Guardian', entityId: guardianId,
+      before: existing, after: guardian,
+    });
+    return guardian;
   }
 
   async linkGuardian(tenantId: string, branchId: string, studentId: string, dto: LinkGuardianDto, actorId: string) {

@@ -77,6 +77,7 @@ export class UpdateStudentDto {
   @ApiPropertyOptional() @IsDateString()  @IsOptional() dateOfBirth?: string;
   @ApiPropertyOptional({ enum: Gender })  @IsEnum(Gender) @IsOptional() gender?: Gender;
   @ApiPropertyOptional() @IsString()      @IsOptional() bloodGroup?:  string;
+  @ApiPropertyOptional() @IsString()      @IsOptional() nationality?: string;
   @ApiPropertyOptional() @IsString()      @IsOptional() sectionId?:   string;
   @ApiPropertyOptional() @IsString()      @IsOptional() rollNumber?:  string;
   @ApiPropertyOptional() @IsBoolean()     @IsOptional() isActive?:    boolean;

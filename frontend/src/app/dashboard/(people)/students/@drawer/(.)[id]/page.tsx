@@ -317,7 +317,11 @@ const totalDue = invoices.reduce(
         {/* 📱 Sticky Fixed Bottom Action Panel for Safe Tap Navigation */}
         <div className="sticky bottom-0 bg-slate-50 border-t px-4 sm:px-6 py-4 flex-shrink-0 z-10">
           <Link
-            href={`/dashboard/students/${id}`}
+            href={`/dashboard/students/${id}?from=student-drawer`}
+            onClick={(event) => {
+              event.preventDefault();
+              window.location.assign(`/dashboard/students/${id}`);
+            }}
             className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-xl font-medium hover:bg-blue-700 transition-colors shadow-md text-sm active:scale-[0.98]"
           >
             <ExternalLink className="w-4 h-4" />

@@ -83,14 +83,14 @@ export class ReceptionController {
 
   @Post('staff-attendance')
   @ApiOperation({ summary: 'Mark staff attendance' })
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'RECEPTIONIST', 'HR_MANAGER')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL', 'RECEPTIONIST', 'HR_MANAGER')
   async markStaffAttendance(@Req() req: any, @Body() dto: MarkStaffAttendanceDto) {
     return this.receptionService.markStaffAttendance(req.tenantId, dto, req.user.id);
   }
 
   @Post('staff-attendance/bulk')
   @ApiOperation({ summary: 'Bulk mark staff attendance' })
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'PRINCIPAL', 'RECEPTIONIST', 'HR_MANAGER')
+  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL', 'RECEPTIONIST', 'HR_MANAGER')
   async bulkMarkStaffAttendance(@Req() req: any, @Body() dto: BulkStaffAttendanceDto) {
     return this.receptionService.bulkMarkStaffAttendance(req.tenantId, dto, req.user.id);
   }

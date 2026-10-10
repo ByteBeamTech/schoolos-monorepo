@@ -73,6 +73,7 @@ const invoices = invoiceResponse?.data ?? [];
   dateOfBirth: "",
   gender: "MALE",
   bloodGroup: "",
+  nationality: "",
 
   classId: "",
   sectionId: "",
@@ -153,6 +154,7 @@ const invoices = invoiceResponse?.data ?? [];
     religion: student?.religion ?? "",
 category: student?.category ?? "",
 status: student?.status ?? "ACTIVE",
+nationality: student?.nationality ?? "",
  email: student?.email ?? "",
 phone: student?.phone ?? "",
 
@@ -231,6 +233,7 @@ await apiClient.patch(`/students/${id}`, {
   isActive: editForm.isActive,
 
   religion: editForm.religion || undefined,
+  nationality: editForm.nationality || undefined,
   category: editForm.category || undefined,
   status: editForm.status,
 
@@ -434,6 +437,18 @@ setBehaviorForm({
           lastName: e.target.value,
         }))
       }
+      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+    />
+  </div>
+
+  <div>
+    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+      Nationality
+    </label>
+    <input
+      type="text"
+      value={editForm.nationality}
+      onChange={(e) => setEditForm((prev) => ({ ...prev, nationality: e.target.value }))}
       className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
     />
   </div>

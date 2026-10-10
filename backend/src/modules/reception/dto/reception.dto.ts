@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsDateString, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsNumber, Matches, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 // ========== COMPLAINTS ==========
@@ -11,6 +11,7 @@ export class CreateComplaintDto {
   @ApiPropertyOptional({ example: '+919876543210' })
   @IsOptional()
   @IsString()
+  @Matches(/^[0-9]{10}$/, { message: 'Phone must be exactly 10 digits' })
   complainantPhone?: string;
 
   @ApiPropertyOptional({ example: 'john@example.com' })
@@ -163,10 +164,13 @@ export class StaffAttendanceQueryDto {
 export class CreateVisitorDto {
   @ApiProperty({ example: 'Mr. Sharma' })
   @IsString()
+  @MinLength(2)
+  @Matches(/^[A-Za-z ]+$/, { message: 'Name may contain letters and spaces only' })
   visitorName!: string;
 
   @ApiProperty({ example: '+919876543210' })
   @IsString()
+  @Matches(/^[0-9]{10}$/, { message: 'Phone must be exactly 10 digits' })
   phone!: string;
 
   @ApiPropertyOptional({ example: 'visitor@example.com' })

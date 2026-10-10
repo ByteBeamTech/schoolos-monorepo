@@ -37,7 +37,8 @@ export class ReceptionService {
   async createComplaint(tenantId: string, dto: CreateComplaintDto, createdBy: string) {
     const ticketNumber = await this.generateTicketNumber(tenantId);
 
-    const complaint = await this.prisma.complaint.create({
+    const complaint = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.complaint.create({
       data: ({
         // @ts-ignore
           tenantId,
@@ -55,18 +56,16 @@ export class ReceptionService {
         status: 'OPEN',
         createdBy,
       }) as any,
-    });
+      });
 
-    // Create activity log
-    await this.prisma.complaintActivity.create({
+      await tx.complaintActivity.create({
       data: {
-        complaintId: complaint.id,
-        // @ts-ignore
-          tenantId,
+        complaintId: created.id,
         actorId: createdBy,
         action: 'created',
-        newValue: 'OPEN',
       },
+      });
+      return created;
     });
 
     this.logger.log(`Complaint created: ${ticketNumber}`);
@@ -108,12 +107,9 @@ export class ReceptionService {
       updateData.status = dto.status;
       activities.push({
         complaintId: id,
-        // @ts-ignore
-          tenantId,
         actorId,
         action: 'status_changed',
-        oldValue: complaint.status,
-        newValue: dto.status,
+        comment: `${complaint.status} -> ${dto.status}`,
       });
     }
 
@@ -121,12 +117,9 @@ export class ReceptionService {
       updateData.assignedTo = dto.assignedTo;
       activities.push({
         complaintId: id,
-        // @ts-ignore
-          tenantId,
         actorId,
         action: 'assigned',
-        oldValue: complaint.assignedTo,
-        newValue: dto.assignedTo,
+        comment: `Assigned to ${dto.assignedTo}`,
       });
     }
 
@@ -134,12 +127,9 @@ export class ReceptionService {
       updateData.priority = dto.priority;
       activities.push({
         complaintId: id,
-        // @ts-ignore
-          tenantId,
         actorId,
         action: 'priority_changed',
-        oldValue: complaint.priority,
-        newValue: dto.priority,
+        comment: `${complaint.priority} -> ${dto.priority}`,
       });
     }
 
@@ -173,8 +163,6 @@ export class ReceptionService {
       data: {
         status: 'RESOLVED',
         resolution: dto.resolution,
-        // @ts-ignore
-        resolvedBy: actorId,
         resolvedAt: new Date(),
       },
     });
@@ -182,12 +170,8 @@ export class ReceptionService {
     await this.prisma.complaintActivity.create({
       data: {
         complaintId: id,
-        // @ts-ignore
-          tenantId,
         actorId,
         action: 'resolved',
-        oldValue: complaint.status,
-        newValue: 'RESOLVED',
         comment: dto.resolution,
       },
     });
@@ -203,8 +187,6 @@ export class ReceptionService {
     await this.prisma.complaintActivity.create({
       data: {
         complaintId: id,
-        // @ts-ignore
-          tenantId,
         actorId,
         action: 'commented',
         comment: dto.comment,

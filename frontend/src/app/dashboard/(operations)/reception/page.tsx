@@ -32,7 +32,7 @@ export default function ReceptionPage() {
   const [saving, setSaving] = useState(false);
 
   const { data: complaints, loading: loadingComplaints, refetch: refetchComplaints } = useApi<any[]>("/reception/complaints", []);
-  const { data: visitors, loading: loadingVisitors, refetch: refetchVisitors } = useApi<any[]>("/reception/visitors?status=CHECKED_IN", []);
+  const { data: visitors, loading: loadingVisitors, refetch: refetchVisitors } = useApi<any[]>("/reception/visitors", []);
   const { data: visitorStats } = useApi<any>("/reception/visitors/stats/today", []);
   const { data: staffList } = useStaff();
   const staff = staffList ?? [];
@@ -67,14 +67,14 @@ export default function ReceptionPage() {
 
   const submitComplaint = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
-    try { await apiClient.post("/reception/complaints", cf); setShowComplaintForm(false); setCf({ complainantName:"", complainantPhone:"", complainantType:"PARENT", category:"OTHER", subject:"", description:"", priority:"MEDIUM" }); refetchComplaints(); }
-    catch { toast.error("Failed to create complaint"); } finally { setSaving(false); }
+    try { await apiClient.post("/reception/complaints", cf); setShowComplaintForm(false); setCf({ complainantName:"", complainantPhone:"", complainantType:"PARENT", category:"OTHER", subject:"", description:"", priority:"MEDIUM" }); await refetchComplaints(); toast.success("Complaint created"); }
+    catch (err: any) { toast.error(err?.response?.data?.message ?? "Failed to create complaint"); } finally { setSaving(false); }
   };
 
   const checkInVisitor = async (e: React.FormEvent) => {
     e.preventDefault(); setSaving(true);
-    try { await apiClient.post("/reception/visitors", vf); setShowVisitorForm(false); setVf({ visitorName:"", phone:"", email:"", company:"", purpose:"MEETING", personToMeet:"", department:"", idType:"", idNumber:"", vehicleNumber:"", remarks:"" }); refetchVisitors(); }
-    catch { toast.error("Failed to check in visitor"); } finally { setSaving(false); }
+    try { await apiClient.post("/reception/visitors", vf); setShowVisitorForm(false); setVf({ visitorName:"", phone:"", email:"", company:"", purpose:"MEETING", personToMeet:"", department:"", idType:"", idNumber:"", vehicleNumber:"", remarks:"" }); await refetchVisitors(); }
+    catch (err: any) { toast.error(err?.response?.data?.message ?? "Failed to check in visitor"); } finally { setSaving(false); }
   };
 
   const checkOut = async (id: string) => {
