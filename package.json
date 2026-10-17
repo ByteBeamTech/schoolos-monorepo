@@ -12,10 +12,15 @@
     "build": "pnpm --recursive build",
     "backend:dev": "pnpm --filter backend dev",
     "backend:start": "pnpm --filter backend start",
+    "e2e": "playwright test",
     "superadmin:dev": "pnpm --filter superadmin dev",
     "superadmin:build": "pnpm --filter superadmin build"
   },
   "dependencies": {
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "playwright": "^1.64.1"
   }
 }

@@ -17,10 +17,11 @@ import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { useFeePlans, useAcademicSessions, useFeeHeads, type FeeHead } from "@/lib/hooks";
+import { EmptyState } from "@/components/ui/empty-state";
+import { useFeePlans, useAcademicSessions, useFeeHeads, useBranches, type FeeHead } from "@/lib/hooks";
 import { apiClient } from "@/lib/api";
 import { useToast } from "@/lib/use-toast";
-import { createFeePlan } from "@/lib/billing/fee-plan-config";
+import { createFeePlan, createBillingRule, useBillingRules, billingRuleLabel, type BillingFrequency, type ProrationRule } from "@/lib/billing/fee-plan-config";
 import { AssignmentsTab } from "@/components/billing/FeePlanAssignments";
 
 function fmt(n: number) {
@@ -35,12 +36,177 @@ export default function FeeStructurePage() {
         <TabsList>
           <TabsTrigger value="plans">Fee Plans</TabsTrigger>
           <TabsTrigger value="heads">Fee Heads</TabsTrigger>
+          <TabsTrigger value="rules">Billing Rules</TabsTrigger>
           <TabsTrigger value="assignments">Assignments</TabsTrigger>
         </TabsList>
         <TabsContent value="plans"><FeePlansTab /></TabsContent>
         <TabsContent value="heads"><FeeHeadsTab /></TabsContent>
+        <TabsContent value="rules"><BillingRulesTab /></TabsContent>
         <TabsContent value="assignments"><AssignmentsTab /></TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+const BILLING_FREQUENCIES: Array<{ value: BillingFrequency; label: string }> = [
+  { value: "ONE_TIME", label: "One-Time" },
+  { value: "MONTHLY", label: "Monthly" },
+  { value: "QUARTERLY", label: "Quarterly" },
+  { value: "HALF_YEARLY", label: "Half-Yearly" },
+  { value: "ANNUAL", label: "Annual" },
+  { value: "CUSTOM", label: "Custom months" },
+];
+
+const PRORATION_RULES: Array<{ value: ProrationRule; label: string }> = [
+  { value: "NO_PRORATION", label: "No proration" },
+  { value: "DAILY", label: "Daily" },
+  { value: "FULL_MONTH_IF_BEFORE_15TH", label: "Full month before 15th" },
+  { value: "HALF_MONTH_AFTER_15TH", label: "Half month after 15th" },
+];
+
+function BillingRulesTab() {
+  const { toast } = useToast();
+  const { data: rules, loading, refetch } = useBillingRules();
+  const { data: branches } = useBranches();
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [frequency, setFrequency] = useState<BillingFrequency>("MONTHLY");
+  const [billingMonths, setBillingMonths] = useState<number[]>(Array.from({ length: 12 }, (_, i) => i + 1));
+  const [dueDay, setDueDay] = useState("10");
+  const [prorationRule, setProrationRule] = useState<ProrationRule>("NO_PRORATION");
+  const [branchId, setBranchId] = useState("");
+
+  const monthsForFrequency = (value: BillingFrequency) => {
+    if (value === "ONE_TIME" || value === "ANNUAL") return [4];
+    if (value === "QUARTERLY") return [4, 7, 10, 1];
+    if (value === "HALF_YEARLY") return [4, 10];
+    return Array.from({ length: 12 }, (_, i) => i + 1);
+  };
+
+  const changeFrequency = (value: BillingFrequency) => {
+    setFrequency(value);
+    setBillingMonths(value === "CUSTOM" ? [] : monthsForFrequency(value));
+  };
+
+  const toggleMonth = (month: number) => {
+    setBillingMonths((current) => current.includes(month)
+      ? current.filter((m) => m !== month)
+      : [...current, month].sort((a, b) => a - b));
+  };
+
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (billingMonths.length === 0) {
+      toast.error("Select at least one billing month");
+      return;
+    }
+    setSaving(true);
+    try {
+      await createBillingRule({
+        frequency,
+        billingMonths,
+        dueDayOfMonth: Number(dueDay),
+        prorationRule,
+        ...(branchId ? { branchId } : {}),
+      });
+      toast.success("Billing rule created.");
+      setShowForm(false);
+      setFrequency("MONTHLY");
+      setBillingMonths(monthsForFrequency("MONTHLY"));
+      setDueDay("10");
+      setProrationRule("NO_PRORATION");
+      setBranchId("");
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Failed to create billing rule");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-xs text-slate-400 max-w-xl">
+          Billing rules decide when a fee item is billed and how it is prorated.
+          Rules are immutable after creation; create a new rule for a policy change.
+        </p>
+        <button onClick={() => setShowForm((value) => !value)}
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          + New Billing Rule
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={create} className="bg-white border border-blue-100 rounded-xl p-5 mb-5 shadow-sm space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Frequency
+              <select value={frequency} onChange={(e) => changeFrequency(e.target.value as BillingFrequency)}
+                className="block w-full mt-1.5 px-3 py-2.5 text-sm border border-slate-200 rounded-lg">
+                {BILLING_FREQUENCIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Due day
+              <input required type="number" min={1} max={31} value={dueDay} onChange={(e) => setDueDay(e.target.value)}
+                className="block w-full mt-1.5 px-3 py-2.5 text-sm border border-slate-200 rounded-lg" />
+            </label>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Proration
+              <select value={prorationRule} onChange={(e) => setProrationRule(e.target.value as ProrationRule)}
+                className="block w-full mt-1.5 px-3 py-2.5 text-sm border border-slate-200 rounded-lg">
+                {PRORATION_RULES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Branch scope
+              <select value={branchId} onChange={(e) => setBranchId(e.target.value)}
+                className="block w-full mt-1.5 px-3 py-2.5 text-sm border border-slate-200 rounded-lg">
+                <option value="">All branches</option>
+                {(branches ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+              </select>
+            </label>
+          </div>
+          {frequency === "CUSTOM" && (
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Billing months</p>
+              <div className="flex flex-wrap gap-2">
+                {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                  <label key={month} className="flex items-center gap-1.5 text-sm text-slate-600">
+                    <input type="checkbox" checked={billingMonths.includes(month)} onChange={() => toggleMonth(month)} />
+                    {new Date(2020, month - 1, 1).toLocaleString("en-IN", { month: "short" })}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button type="submit" disabled={saving} className="px-5 py-2 bg-blue-600 text-white text-sm rounded-lg disabled:opacity-50">
+              {saving ? "Creating…" : "Create Rule"}
+            </button>
+            <button type="button" onClick={() => setShowForm(false)} className="px-5 py-2 bg-slate-100 text-slate-600 text-sm rounded-lg">Cancel</button>
+          </div>
+        </form>
+      )}
+
+      {loading ? <div className="h-24 bg-slate-100 rounded-xl animate-pulse" /> : !rules?.length ? (
+        <EmptyState title="No billing rules yet" message="Create a billing rule before adding fee items to a plan." />
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-100 shadow-sm divide-y divide-slate-50">
+          {rules.map((rule) => (
+            <div key={rule.id} className="px-5 py-4 flex items-center justify-between text-sm">
+              <div>
+                <p className="font-medium text-slate-800">{billingRuleLabel(rule)}</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Months: {rule.billingMonths.join(", ")} · Due day: {rule.dueDayOfMonth} · {PRORATION_RULES.find((item) => item.value === rule.prorationRule)?.label}
+                </p>
+              </div>
+              <Badge label={rule.branchId ? "Branch scoped" : "All branches"} variant={rule.branchId ? "info" : "neutral"} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
