@@ -83,16 +83,18 @@ export default function ReceiptDetailPage() {
       ) : !current ? (
         <p className="text-sm text-slate-400 text-center py-12">Receipt not found.</p>
       ) : (
-        <ReceiptCard
-          receipt={current}
-          onViewInvoice={(id) => router.push(`/dashboard/billing/invoices/${id}`)}
-          onViewProfile={() => invoice && router.push(`/dashboard/billing/students/${invoice.student.id}`)}
-          onPrint={() => window.print()}
-          onPrevious={currentIndex > 0 ? () => navigateTo(currentIndex - 1) : undefined}
-          onNext={currentIndex < allReceipts.length - 1 ? () => navigateTo(currentIndex + 1) : undefined}
-          hasPrevious={currentIndex > 0}
-          hasNext={currentIndex < allReceipts.length - 1}
-        />
+        <div id="receipt-print-area">
+          <ReceiptCard
+            receipt={current}
+            onViewInvoice={(id) => router.push(`/dashboard/billing/invoices/${id}`)}
+            onViewProfile={() => invoice && router.push(`/dashboard/students/${invoice.student.id}`)}
+            onPrint={() => window.print()}
+            onPrevious={currentIndex > 0 ? () => navigateTo(currentIndex - 1) : undefined}
+            onNext={currentIndex < allReceipts.length - 1 ? () => navigateTo(currentIndex + 1) : undefined}
+            hasPrevious={currentIndex > 0}
+            hasNext={currentIndex < allReceipts.length - 1}
+          />
+        </div>
       )}
     </div>
   );

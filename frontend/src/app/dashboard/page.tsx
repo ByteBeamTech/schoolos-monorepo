@@ -158,7 +158,7 @@ const QUICK_ACTIONS: Record<string, Array<{ label: string; href: string; icon: a
 const DEFAULT_QUICK_ACTIONS = [
   { label: "Add Student",       href: "/dashboard/students",    icon: UserPlus,       color: "#2563eb" },
   { label: "Mark Attendance",   href: "/dashboard/attendance",  icon: ClipboardCheck, color: "#7c3aed" },
-  { label: "New Inquiry",       href: "/dashboard/admissions",  icon: Zap,            color: "#059669" },
+  { label: "New Inquiry",       href: "/dashboard/crm",         icon: Zap,            color: "#059669" },
   { label: "Send Notification", href: "/dashboard/notifications",icon: Bell,          color: "#d97706" },
 ];
 
@@ -435,7 +435,7 @@ export default function DashboardPage() {
             style={{ background: "var(--bg-surface)", borderColor: "var(--border-light)", boxShadow: "var(--shadow-sm)" }}>
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Admissions</p>
-              <Link href="/dashboard/admissions" className="text-xs" style={{ color: "var(--text-accent)" }}>→</Link>
+              <Link href="/dashboard/crm" className="text-xs" style={{ color: "var(--text-accent)" }}>→</Link>
             </div>
             <div className="space-y-1.5">
               {[

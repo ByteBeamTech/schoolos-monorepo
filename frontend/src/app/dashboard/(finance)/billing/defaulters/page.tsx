@@ -200,7 +200,7 @@ export default function DefaultersPage() {
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
-                          <Link href={`/dashboard/billing/students/${s.id}/ledger`}
+                          <Link href={`/dashboard/billing/students/${s.id}`}
                             className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors" title="View Ledger">
                             <ExternalLink className="w-4 h-4" />
                           </Link>
@@ -237,7 +237,7 @@ export default function DefaultersPage() {
                     </div>
                   </div>
                   <div className="flex gap-2 mt-3">
-                    <Link href={`/dashboard/billing/students/${s.id}/ledger`}
+                    <Link href={`/dashboard/billing/students/${s.id}`}
                       className="flex-1 text-center py-1.5 text-xs text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
                       View Ledger
                     </Link>

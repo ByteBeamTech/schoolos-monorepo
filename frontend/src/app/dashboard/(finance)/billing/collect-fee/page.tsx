@@ -130,7 +130,7 @@ export default function CollectFeePage() {
         <CollectionOutcome
           result={lastResult}
           onViewInvoice={(id) => router.push(`/dashboard/billing/invoices/${id}`)}
-          onViewProfile={() => student && router.push(`/dashboard/billing/students/${student.id}`)}
+          onViewProfile={() => student && router.push(`/dashboard/students/${student.id}`)}
           onCollectAnother={handleCollectAnother}
         />
       ) : (
@@ -152,7 +152,7 @@ export default function CollectFeePage() {
                     outstanding={outstanding}
                     discounts={discounts}
                     feePlans={feePlans}
-                    onViewProfile={() => router.push(`/dashboard/billing/students/${student.id}`)}
+                    onViewProfile={() => router.push(`/dashboard/students/${student.id}`)}
                   />
 
                   <DueUpcomingPaidSections

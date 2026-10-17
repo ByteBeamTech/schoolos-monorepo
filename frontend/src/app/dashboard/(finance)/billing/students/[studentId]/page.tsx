@@ -84,6 +84,7 @@ export default function StudentFinancialProfilePage({ params }: { params: Promis
               discounts={discounts}
               feePlans={feePlans}
               transportRoute={transportRoute}
+              onViewProfile={() => router.push(`/dashboard/students/${studentId}`)}
             />
             <div className="flex gap-2">
               <button

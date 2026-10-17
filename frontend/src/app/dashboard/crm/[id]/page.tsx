@@ -107,12 +107,9 @@ export default function LeadDetailPage() {
               <PlusCircle className="w-4 h-4" /> Schedule follow-up
             </button>
             {lead.applicationId ? (
-              <Link
-                href="/dashboard/admissions"
-                className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
-                View admissions
-              </Link>
+              <span className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md border border-zinc-200 dark:border-zinc-800 text-zinc-500">
+                Application recorded
+              </span>
             ) : (
               <button
                 disabled
