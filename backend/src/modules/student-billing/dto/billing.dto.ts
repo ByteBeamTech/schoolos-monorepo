@@ -5,7 +5,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AccountingNature, LateFeeCalculationMethod, LateFeePenaltyType, BillingFrequency, ProrationRule } from '@prisma/client';
+import { AccountingNature, LateFeeCalculationMethod, LateFeePenaltyType, BillingFrequency, ProrationRule, Currency } from '@prisma/client';
 
 export class CreateFeeItemDto {
   @ApiProperty() @IsString() @IsNotEmpty() name!: string;
@@ -20,6 +20,8 @@ export class CreateFeeItemDto {
   @ApiPropertyOptional() @IsNumber() @Min(0) @IsOptional() gstRate?: number;
   @ApiPropertyOptional() @IsString() @IsOptional() gstCode?: string;
   @ApiPropertyOptional() @IsNumber() @Min(0) @IsOptional() sortOrder?: number;
+  @ApiPropertyOptional() @IsDateString() @IsOptional() effectiveFrom?: string;
+  @ApiPropertyOptional() @IsDateString() @IsOptional() effectiveUntil?: string;
 }
 
 export class CreateFeePlanDto {
@@ -33,6 +35,12 @@ export class CreateFeePlanDto {
   // explicit step against an existing plan (POST .../fee-plans/:id/fee-items),
   // not inlined into plan creation -- FeePlansService.create() now only
   // ever creates the bare plan.
+}
+
+export class UpdateFeePlanDto {
+  @ApiPropertyOptional() @IsString() @IsNotEmpty() @IsOptional() name?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() grade?: string;
+  @ApiPropertyOptional({ enum: Currency }) @IsEnum(Currency) @IsOptional() currency?: Currency;
 }
 
 // Phase 2: supersede-only, matching FeeItem's create-new-not-edit
@@ -49,6 +57,8 @@ export class SupersedeFeeItemDto {
   @ApiPropertyOptional() @IsNumber() @Min(0) @IsOptional() gstRate?: number;
   @ApiPropertyOptional() @IsString() @IsOptional() gstCode?: string;
   @ApiPropertyOptional() @IsNumber() @Min(0) @IsOptional() sortOrder?: number;
+  @ApiPropertyOptional() @IsDateString() @IsOptional() effectiveFrom?: string;
+  @ApiPropertyOptional() @IsDateString() @IsOptional() effectiveUntil?: string;
 }
 
 // Phase 2: BillingRule is create-only (frozen business rule -- never
@@ -76,6 +86,16 @@ export class CreateFeePlanAssignmentDto {
   // null/omitted = applies to every section of classId; set = a narrower
   // override that wins over the class-level assignment for that section.
   @ApiPropertyOptional() @IsString() @IsOptional() sectionId?: string;
+  @ApiPropertyOptional() @IsDateString() @IsOptional() effectiveFrom?: string;
+}
+
+export class DeactivateFeePlanAssignmentDto {
+  @ApiPropertyOptional() @IsDateString() @IsOptional() effectiveUntil?: string;
+}
+
+export class ReplaceFeePlanAssignmentDto {
+  @ApiProperty() @IsString() @IsNotEmpty() feePlanId!: string;
+  @ApiProperty() @IsDateString() effectiveFrom!: string;
 }
 
 export class GenerateInvoiceDto {

@@ -23,6 +23,7 @@ import { useToast } from "@/lib/use-toast";
 import {
   useBillingRules, billingRuleLabel, createFeeItem, supersedeFeeItem,
   type BillingRule,
+  updateFeePlanMetadata,
 } from "@/lib/billing/fee-plan-config";
 
 function fmt(n: number) {
@@ -41,6 +42,9 @@ export default function FeePlanDetailPage({ params }: { params: { id: string } }
 
   const [showAddItem, setShowAddItem] = useState(false);
   const [supersedingId, setSupersedingId] = useState<string | null>(null);
+  const [editingMetadata, setEditingMetadata] = useState(false);
+  const [metadata, setMetadata] = useState({ name: "", grade: "", currency: "INR" });
+  const [savingMetadata, setSavingMetadata] = useState(false);
 
   const feeHeadName = (id?: string | null) => feeHeads?.find((h) => h.id === id)?.name ?? "—";
   const billingRuleById = (id?: string | null) => billingRules?.find((r) => r.id === id);
@@ -83,6 +87,22 @@ export default function FeePlanDetailPage({ params }: { params: { id: string } }
         showBack={false}
         action={<Badge label={plan.isActive ? "Active" : "Inactive"} variant={plan.isActive ? "success" : "neutral"} />}
       />
+      {editingMetadata ? (
+        <form className="bg-white rounded-xl border border-blue-100 p-4 mb-6 flex flex-wrap items-end gap-3" onSubmit={async (e) => {
+          e.preventDefault(); setSavingMetadata(true);
+          try { await updateFeePlanMetadata(plan.id, { name: metadata.name, grade: metadata.grade, currency: metadata.currency }); toast.success("Fee plan updated."); setEditingMetadata(false); refetch(); }
+          catch (err: any) { toast.error(err?.response?.data?.message ?? "Failed to update fee plan"); }
+          finally { setSavingMetadata(false); }
+        }}>
+          <label className="text-xs text-slate-500">Name<input required value={metadata.name} onChange={(e) => setMetadata({ ...metadata, name: e.target.value })} className="block mt-1 px-3 py-2 border rounded-lg text-sm" /></label>
+          <label className="text-xs text-slate-500">Grade<input value={metadata.grade} onChange={(e) => setMetadata({ ...metadata, grade: e.target.value })} className="block mt-1 px-3 py-2 border rounded-lg text-sm" /></label>
+          <label className="text-xs text-slate-500">Currency<select value={metadata.currency} onChange={(e) => setMetadata({ ...metadata, currency: e.target.value })} className="block mt-1 px-3 py-2 border rounded-lg text-sm">{["INR", "USD", "GBP", "EUR"].map((c) => <option key={c}>{c}</option>)}</select></label>
+          <button disabled={savingMetadata} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">{savingMetadata ? "Saving…" : "Save"}</button>
+          <button type="button" onClick={() => setEditingMetadata(false)} className="px-4 py-2 bg-slate-100 rounded-lg text-sm">Cancel</button>
+        </form>
+      ) : (
+        <button onClick={() => { setMetadata({ name: plan.name, grade: plan.grade ?? "", currency: plan.currency }); setEditingMetadata(true); }} className="mb-6 text-sm text-blue-600 hover:underline">Edit plan metadata</button>
+      )}
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
@@ -113,6 +133,7 @@ export default function FeePlanDetailPage({ params }: { params: { id: string } }
               <tr className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wide border-b border-slate-100">
                 <th className="px-5 py-2.5">Fee Head</th>
                 <th className="px-5 py-2.5">Billing Rule</th>
+                <th className="px-5 py-2.5">Effective</th>
                 <th className="px-5 py-2.5 text-right">Amount</th>
                 <th className="px-5 py-2.5 text-right">Actions</th>
               </tr>
@@ -152,6 +173,7 @@ function AddFeeItemForm({
   const [amount, setAmount] = useState("");
   const [feeHeadId, setFeeHeadId] = useState("");
   const [billingRuleId, setBillingRuleId] = useState("");
+  const [effectiveFrom, setEffectiveFrom] = useState("");
   const [saving, setSaving] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
@@ -159,9 +181,9 @@ function AddFeeItemForm({
     if (!feeHeadId || !billingRuleId) { toast.error("Select a Fee Head and Billing Rule"); return; }
     setSaving(true);
     try {
-      await createFeeItem(feePlanId, { name, amount: parseFloat(amount), feeHeadId, billingRuleId });
+      await createFeeItem(feePlanId, { name, amount: parseFloat(amount), feeHeadId, billingRuleId, ...(effectiveFrom ? { effectiveFrom: new Date(`${effectiveFrom}T00:00:00`).toISOString() } : {}) });
       toast.success("Fee item added.");
-      setName(""); setAmount(""); setFeeHeadId(""); setBillingRuleId("");
+      setName(""); setAmount(""); setFeeHeadId(""); setBillingRuleId(""); setEffectiveFrom("");
       onDone();
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Failed to add fee item");
@@ -169,11 +191,15 @@ function AddFeeItemForm({
   };
 
   return (
-    <form onSubmit={submit} className="px-5 py-4 border-b border-slate-100 bg-slate-50 grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+    <form onSubmit={submit} className="px-5 py-4 border-b border-slate-100 bg-slate-50 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
       <div>
         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Name *</label>
         <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Tuition Fee"
           className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Effective From</label>
+        <input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
       </div>
       <div>
         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Fee Head *</label>
@@ -222,6 +248,8 @@ function FeeItemRow({
   const [name, setName] = useState(item.name);
   const [amount, setAmount] = useState(String(item.amount));
   const [billingRuleId, setBillingRuleId] = useState(item.billingRuleId ?? "");
+  const [effectiveFrom, setEffectiveFrom] = useState("");
+  const [effectiveUntil, setEffectiveUntil] = useState("");
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
@@ -230,6 +258,8 @@ function FeeItemRow({
     try {
       await supersedeFeeItem(item.id, {
         name, amount: parseFloat(amount), feeHeadId: item.feeHeadId, billingRuleId,
+        ...(effectiveFrom ? { effectiveFrom: new Date(`${effectiveFrom}T00:00:00`).toISOString() } : {}),
+        ...(effectiveUntil ? { effectiveUntil: new Date(`${effectiveUntil}T00:00:00`).toISOString() } : {}),
       });
       toast.success("Fee item superseded.");
       onDone();
@@ -245,6 +275,9 @@ function FeeItemRow({
           <input value={name} onChange={(e) => setName(e.target.value)}
             className="w-full px-2 py-1 text-sm border border-slate-200 rounded" />
           <p className="text-[11px] text-slate-400 mt-1">Fee Head: {feeHeadLabel} (fixed — supersede can't change the head)</p>
+        </td>
+        <td className="px-5 py-3">
+          <div className="flex gap-1"><input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} className="w-28 px-1 py-1 text-xs border rounded" /><input type="date" value={effectiveUntil} onChange={(e) => setEffectiveUntil(e.target.value)} className="w-28 px-1 py-1 text-xs border rounded" /></div>
         </td>
         <td className="px-5 py-3">
           <select value={billingRuleId} onChange={(e) => setBillingRuleId(e.target.value)}
@@ -268,8 +301,9 @@ function FeeItemRow({
 
   return (
     <tr className="border-b border-slate-50">
-      <td className="px-5 py-3 text-slate-700">{item.name} <span className="text-slate-400">({feeHeadLabel})</span></td>
+      <td className="px-5 py-3 text-slate-700">{item.name} <span className="text-slate-400">({feeHeadLabel})</span><div className="text-[11px] text-slate-400">{item.effectiveFrom ? `From ${new Date(item.effectiveFrom).toLocaleDateString("en-IN")}` : "Always"}{item.effectiveUntil ? ` · Until ${new Date(item.effectiveUntil).toLocaleDateString("en-IN")}` : ""}</div></td>
       <td className="px-5 py-3 text-slate-500">{ruleLabel}</td>
+      <td className="px-5 py-3 text-xs text-slate-400">{item.effectiveFrom ? new Date(item.effectiveFrom).toLocaleDateString("en-IN") : "Always"}{item.effectiveUntil ? ` – ${new Date(item.effectiveUntil).toLocaleDateString("en-IN")}` : ""}</td>
       <td className="px-5 py-3 text-right font-medium text-slate-800">{fmt(Number(item.amount))}</td>
       <td className="px-5 py-3 text-right">
         <button onClick={onStartSupersede} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium ml-auto">

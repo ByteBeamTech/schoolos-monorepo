@@ -111,6 +111,8 @@ model FeePlanAssignment {
                                  // set = narrower override, wins over the
                                  // class-level row (enforced in the
                                  // resolution service, not the schema)
+  effectiveFrom DateTime?
+  effectiveUntil DateTime?
   createdAt   DateTime @default(now())
   createdById String?
 

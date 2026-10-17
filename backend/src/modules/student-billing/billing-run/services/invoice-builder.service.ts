@@ -55,13 +55,13 @@ export class InvoiceBuilderService {
     if (!session) throw new Error('No current AcademicSession configured for this tenant.');
 
     const assignment = await this.feePlanAssignments.resolveForClassSection(
-      tenantId, branchId, session.id, classId, sectionId,
+      tenantId, branchId, session.id, classId, sectionId, periodDate,
     );
     if (!assignment) return { feePlanId: null, invoiceId: null }; // §7: no resolvable plan, a valid outcome
 
     const plan = await tx.feePlan.findUnique({
       where:   { id: assignment.feePlanId },
-      include: { feeItems: { where: { isOptional: false }, orderBy: { sortOrder: 'asc' } } },
+      include: { feeItems: { where: { isOptional: false, AND: [{ OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: periodDate } }] }, { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: periodDate } }] }] }, orderBy: { sortOrder: 'asc' } } },
     });
     if (!plan) return { feePlanId: assignment.feePlanId, invoiceId: null };
 

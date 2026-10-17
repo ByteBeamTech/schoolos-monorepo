@@ -254,6 +254,8 @@ export interface FeeItem {
   feeHeadId?: string | null;
   billingRuleId?: string | null;
   sortOrder?: number;
+  effectiveFrom?: string | null;
+  effectiveUntil?: string | null;
 }
 export interface FeePlan {
   id: string; name: string; academicYear: string; grade?: string;

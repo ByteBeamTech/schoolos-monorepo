@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAcademicSessions, useClasses, useFeePlans } from "@/lib/hooks";
 import { useToast } from "@/lib/use-toast";
-import { useFeePlanAssignments, createFeePlanAssignment } from "@/lib/billing/fee-plan-config";
+import { useFeePlanAssignments, createFeePlanAssignment, replaceFeePlanAssignment, deactivateFeePlanAssignment } from "@/lib/billing/fee-plan-config";
 
 export function AssignmentsTab() {
   const { toast } = useToast();
@@ -34,6 +34,7 @@ export function AssignmentsTab() {
   const { data: assignments, loading, refetch } = useFeePlanAssignments(currentSession?.id);
 
   const [showForm, setShowForm] = useState(false);
+  const [replacingId, setReplacingId] = useState<string | null>(null);
 
   const classNameById = (id: string) => classes?.find((c) => c.id === id)?.name ?? id;
   const sectionNameById = (classId: string, sectionId: string | null) => {
@@ -91,11 +92,67 @@ export function AssignmentsTab() {
                   <span className="text-slate-300">→</span>
                   <span>{planNameById(a.feePlanId)}</span>
                 </div>
+                <div>
+                  {a.effectiveUntil ? (
+                    <span className="text-xs text-slate-400">Ended {new Date(a.effectiveUntil).toLocaleDateString("en-IN")}</span>
+                  ) : replacingId === a.id ? (
+                    <ReplaceAssignmentForm
+                      plans={feePlans ?? []}
+                      onCancel={() => setReplacingId(null)}
+                      onDone={() => { setReplacingId(null); refetch(); }}
+                      assignmentId={a.id}
+                    />
+                  ) : (
+                    <div className="flex gap-3">
+                      <button onClick={() => setReplacingId(a.id)} className="text-xs text-blue-600 hover:underline">Replace</button>
+                      <button onClick={async () => {
+                        if (!window.confirm("Retire this assignment without replacement? Historical invoices are preserved.")) return;
+                        try { await deactivateFeePlanAssignment(a.id); toast.success("Assignment retired."); refetch(); }
+                        catch (err: any) { toast.error(err?.response?.data?.message ?? "Failed to retire assignment"); }
+                      }} className="text-xs text-rose-600 hover:underline">Retire</button>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
         </div>
       )}
     </div>
+  );
+}
+
+function ReplaceAssignmentForm({
+  assignmentId, plans, onCancel, onDone,
+}: {
+  assignmentId: string; plans: Array<{ id: string; name: string }>;
+  onCancel: () => void; onDone: () => void;
+}) {
+  const { toast } = useToast();
+  const [feePlanId, setFeePlanId] = useState("");
+  const [effectiveFrom, setEffectiveFrom] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!feePlanId || !effectiveFrom) return;
+    setSaving(true);
+    try {
+      await replaceFeePlanAssignment(assignmentId, { feePlanId, effectiveFrom: new Date(`${effectiveFrom}T00:00:00`).toISOString() });
+      toast.success("Fee plan assignment replaced.");
+      onDone();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Failed to replace assignment");
+    } finally { setSaving(false); }
+  };
+  return (
+    <form onSubmit={submit} className="flex items-center gap-2">
+      <select required value={feePlanId} onChange={(e) => setFeePlanId(e.target.value)} className="text-xs border rounded px-2 py-1">
+        <option value="">New plan…</option>
+        {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+      <input required type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} className="text-xs border rounded px-2 py-1" />
+      <button disabled={saving} className="text-xs text-blue-600 hover:underline">{saving ? "Saving…" : "Save"}</button>
+      <button type="button" onClick={onCancel} className="text-xs text-slate-400 hover:underline">Cancel</button>
+    </form>
   );
 }
 
@@ -112,6 +169,7 @@ function AssignmentForm({
   const [sectionId, setSectionId] = useState(""); // "" = All Sections (class-wide)
   const [feePlanId, setFeePlanId] = useState("");
   const [saving, setSaving] = useState(false);
+  const [effectiveFrom, setEffectiveFrom] = useState("");
 
   const selectedClass = classes.find((c) => c.id === classId);
 
@@ -123,9 +181,11 @@ function AssignmentForm({
       await createFeePlanAssignment({
         sessionId, classId, feePlanId,
         sectionId: sectionId || undefined, // "" -> undefined -> class-wide (sectionId: null on the backend)
+        ...(effectiveFrom ? { effectiveFrom: new Date(`${effectiveFrom}T00:00:00`).toISOString() } : {}),
       });
       toast.success("Fee plan assignment created.");
       setClassId(""); setSectionId(""); setFeePlanId("");
+      setEffectiveFrom("");
       onDone();
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Failed to create assignment");
@@ -141,6 +201,11 @@ function AssignmentForm({
           <option value="">Select…</option>
           {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Effective From</label>
+        <input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)}
+          className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg" />
       </div>
       <div>
         <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Section</label>

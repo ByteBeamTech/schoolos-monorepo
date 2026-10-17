@@ -6,7 +6,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../../core/compliance/audit.service';
-import { CreateFeePlanAssignmentDto } from '../../dto/billing.dto';
+import { CreateFeePlanAssignmentDto, ReplaceFeePlanAssignmentDto, DeactivateFeePlanAssignmentDto } from '../../dto/billing.dto';
 
 @Injectable()
 export class FeePlanAssignmentService {
@@ -48,8 +48,12 @@ export class FeePlanAssignmentService {
     // migration) -- this check exists to return a clear, specific error
     // rather than a raw constraint-violation message, not as the only
     // guard.
+    const effectiveFrom = dto.effectiveFrom ? new Date(dto.effectiveFrom) : new Date();
     const existing = await this.prisma.feePlanAssignment.findFirst({
-      where: { tenantId, sessionId: dto.sessionId, classId: dto.classId, sectionId: dto.sectionId ?? null },
+      where: {
+        tenantId, sessionId: dto.sessionId, classId: dto.classId, sectionId: dto.sectionId ?? null,
+        OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: effectiveFrom } }],
+      },
     });
     if (existing) {
       throw new ConflictException(
@@ -66,6 +70,7 @@ export class FeePlanAssignmentService {
         feePlanId: dto.feePlanId,
         classId:   dto.classId,
         sectionId: dto.sectionId ?? null,
+        effectiveFrom,
         createdById: actorId,
       },
     });
@@ -75,6 +80,50 @@ export class FeePlanAssignmentService {
       after: { feePlanId: dto.feePlanId, classId: dto.classId, sectionId: dto.sectionId ?? null },
     });
     return assignment;
+  }
+
+  async replace(
+    tenantId: string, branchId: string, id: string,
+    dto: ReplaceFeePlanAssignmentDto, actorId: string,
+  ) {
+    const current = await this.prisma.feePlanAssignment.findFirst({ where: { id, tenantId, branchId, effectiveUntil: null } });
+    if (!current) throw new NotFoundException('Active fee plan assignment not found.');
+    const effectiveFrom = new Date(dto.effectiveFrom);
+    if (effectiveFrom <= (current.effectiveFrom ?? current.createdAt)) {
+      throw new ConflictException('Replacement date must be after the current assignment start date.');
+    }
+
+    const plan = await this.prisma.feePlan.findFirst({
+      where: { id: dto.feePlanId, tenantId, branchId, sessionId: current.sessionId },
+    });
+    if (!plan) throw new NotFoundException('Fee plan not found in this branch/session.');
+    const replacement = await this.prisma.$transaction(async (tx) => {
+      await tx.feePlanAssignment.update({ where: { id: current.id }, data: { effectiveUntil: effectiveFrom } });
+      return tx.feePlanAssignment.create({
+        data: {
+          tenantId, branchId, sessionId: current.sessionId, feePlanId: dto.feePlanId,
+          classId: current.classId, sectionId: current.sectionId,
+          effectiveFrom, createdById: actorId,
+        },
+      });
+    });
+    await this.audit.logCreate({
+      tenantId, actorId, entityType: 'FeePlanAssignment', entityId: replacement.id,
+      after: { replacedAssignmentId: current.id, feePlanId: dto.feePlanId, effectiveFrom },
+    });
+    return replacement;
+  }
+
+  async deactivate(tenantId: string, branchId: string, id: string, dto: DeactivateFeePlanAssignmentDto, actorId: string) {
+    const current = await this.prisma.feePlanAssignment.findFirst({ where: { id, tenantId, branchId, effectiveUntil: null } });
+    if (!current) throw new NotFoundException('Active fee plan assignment not found.');
+    const until = dto.effectiveUntil ? new Date(dto.effectiveUntil) : new Date();
+    if (until <= (current.effectiveFrom ?? current.createdAt)) {
+      throw new ConflictException('Retirement date must be after the assignment start date.');
+    }
+    const updated = await this.prisma.feePlanAssignment.update({ where: { id: current.id }, data: { effectiveUntil: until } });
+    await this.audit.logUpdate({ tenantId, actorId, entityType: 'FeePlanAssignment', entityId: id, before: { effectiveUntil: null }, after: { effectiveUntil: until, retired: true } });
+    return updated;
   }
 
   async findAll(tenantId: string, branchId: string, sessionId?: string) {
@@ -93,15 +142,20 @@ export class FeePlanAssignmentService {
    */
   async resolveForClassSection(
     tenantId: string, branchId: string, sessionId: string, classId: string, sectionId: string | null,
+    asOf = new Date(),
   ) {
     if (sectionId) {
       const sectionMatch = await this.prisma.feePlanAssignment.findFirst({
-        where: { tenantId, branchId, sessionId, classId, sectionId },
+        where: { tenantId, branchId, sessionId, classId, sectionId,
+          AND: [{ OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: asOf } }] },
+            { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: asOf } }] }] },
       });
       if (sectionMatch) return sectionMatch;
     }
     return this.prisma.feePlanAssignment.findFirst({
-      where: { tenantId, branchId, sessionId, classId, sectionId: null },
+      where: { tenantId, branchId, sessionId, classId, sectionId: null,
+        AND: [{ OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: asOf } }] },
+          { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: asOf } }] }] },
     });
   }
 }

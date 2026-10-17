@@ -23,9 +23,10 @@ describe('FeePlanAssignmentService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findMany:  jest.fn().mockResolvedValue([]),
         create:    jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'fpa-new', ...data })),
+        update:    jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'fpa-existing', ...data })),
       },
     };
-    audit = { logCreate: jest.fn() };
+    audit = { logCreate: jest.fn(), logUpdate: jest.fn() };
     const module = await Test.createTestingModule({
       providers: [
         FeePlanAssignmentService,
@@ -132,6 +133,17 @@ describe('FeePlanAssignmentService', () => {
       prisma.feePlanAssignment.findFirst.mockResolvedValue(null);
       const result = await service.resolveForClassSection('t-1', 'b-1', 's-1', 'c-1', 'sec-1');
       expect(result).toBeNull();
+    });
+
+    it('retires an assignment without deleting its historical row', async () => {
+      const started = new Date('2025-04-01');
+      prisma.feePlanAssignment.findFirst.mockResolvedValue({ id: 'fpa-existing', effectiveFrom: started, createdAt: started });
+      const result = await service.deactivate('t-1', 'b-1', 'fpa-existing', {} as any, 'u-1');
+      expect(prisma.feePlanAssignment.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'fpa-existing' }, data: expect.objectContaining({ effectiveUntil: expect.any(Date) }) }),
+      );
+      expect(result.id).toBe('fpa-existing');
+      expect(audit.logUpdate).toHaveBeenCalled();
     });
   });
 });

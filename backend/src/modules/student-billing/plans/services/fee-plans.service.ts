@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService }  from '../../../../core/compliance/audit.service';
-import { CreateFeePlanDto, CreateFeeItemDto, SupersedeFeeItemDto } from '../../dto/billing.dto';
+import { CreateFeePlanDto, UpdateFeePlanDto, CreateFeeItemDto, SupersedeFeeItemDto } from '../../dto/billing.dto';
 import { FeePlanAssignmentService } from './fee-plan-assignment.service';
 
 @Injectable()
@@ -72,6 +72,9 @@ export class FeePlansService {
     });
     if (!billingRule) throw new NotFoundException(`Billing rule not found, or not usable by this branch: ${dto.billingRuleId}`);
 
+    const effectiveFrom = dto.effectiveFrom ? new Date(dto.effectiveFrom) : new Date();
+    const effectiveUntil = dto.effectiveUntil ? new Date(dto.effectiveUntil) : null;
+    if (effectiveUntil && effectiveUntil <= effectiveFrom) throw new ConflictException('effectiveUntil must be after effectiveFrom.');
     const item = await this.prisma.feeItem.create({
       data: {
         feePlanId,
@@ -84,12 +87,30 @@ export class FeePlansService {
         gstRate:    dto.gstRate ?? null,
         gstCode:    dto.gstCode ?? null,
         sortOrder:  dto.sortOrder ?? 0,
-        effectiveFrom: new Date(),
+        effectiveFrom, effectiveUntil,
       },
     });
 
     await this.audit.logCreate({ tenantId, actorId, entityType: 'FeeItem', entityId: item.id, after: { name: item.name, feePlanId } });
     return item;
+  }
+
+  async updateMetadata(tenantId: string, branchId: string, id: string, dto: UpdateFeePlanDto, actorId: string) {
+    const existing = await this.prisma.feePlan.findFirst({ where: { id, tenantId, branchId } });
+    if (!existing) throw new NotFoundException(`Fee plan not found: ${id}`);
+    if (dto.name && dto.name !== existing.name) {
+      const duplicate = await this.prisma.feePlan.findFirst({
+        where: { tenantId, branchId, academicYear: existing.academicYear, name: dto.name, NOT: { id } },
+      });
+      if (duplicate) throw new ConflictException(`Fee plan "${dto.name}" already exists.`);
+    }
+    const updated = await this.prisma.feePlan.update({
+      where: { id },
+      data: { ...(dto.name !== undefined && { name: dto.name }), ...(dto.grade !== undefined && { grade: dto.grade || null }), ...(dto.currency !== undefined && { currency: dto.currency }) },
+      include: { feeItems: { orderBy: { sortOrder: 'asc' } } },
+    });
+    await this.audit.logUpdate({ tenantId, actorId, entityType: 'FeePlan', entityId: id, before: { name: existing.name, grade: existing.grade, currency: existing.currency }, after: dto });
+    return updated;
   }
 
   /**
@@ -100,7 +121,7 @@ export class FeePlansService {
    */
   async supersedeFeeItem(tenantId: string, branchId: string, feeItemId: string, dto: SupersedeFeeItemDto, actorId: string) {
     const existing = await this.prisma.feeItem.findFirst({
-      where: { id: feeItemId, feePlan: { tenantId, branchId } },
+      where: { id: feeItemId, effectiveUntil: null, feePlan: { tenantId, branchId } },
     });
     if (!existing) throw new NotFoundException(`Fee item not found: ${feeItemId}`);
 
@@ -119,7 +140,9 @@ export class FeePlansService {
     });
     if (!billingRule) throw new NotFoundException(`Billing rule not found, or not usable by this branch: ${dto.billingRuleId}`);
 
-    const now = new Date();
+    const now = dto.effectiveFrom ? new Date(dto.effectiveFrom) : new Date();
+    const effectiveUntil = dto.effectiveUntil ? new Date(dto.effectiveUntil) : null;
+    if (effectiveUntil && effectiveUntil <= now) throw new ConflictException('effectiveUntil must be after effectiveFrom.');
     const [, superseded] = await this.prisma.$transaction([
       this.prisma.feeItem.update({
         where: { id: feeItemId },
@@ -137,7 +160,7 @@ export class FeePlansService {
           gstRate:    dto.gstRate ?? null,
           gstCode:    dto.gstCode ?? null,
           sortOrder:  dto.sortOrder ?? existing.sortOrder,
-          effectiveFrom: now,
+          effectiveFrom: now, effectiveUntil,
         },
       }),
     ]);
@@ -202,7 +225,7 @@ export class FeePlansService {
 
     const plan = await this.prisma.feePlan.findFirst({
       where: { id: assignment.feePlanId, tenantId },
-      include: { feeItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { feeItems: { where: { AND: [{ OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: new Date() } }] }, { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: new Date() } }] }] }, orderBy: { sortOrder: 'asc' } } },
     });
     return plan ? [plan] : [];
   }
@@ -220,7 +243,7 @@ export class FeePlansService {
     let totalFees = 0;
     const breakdown: any[] = [];
     for (const plan of plans) {
-      const items = plan.feeItems.map((i: any) => ({ name: i.name, amount: Number(i.amount) }));
+      const items = plan.feeItems.filter((i: any) => (!i.effectiveFrom || i.effectiveFrom <= new Date()) && (!i.effectiveUntil || i.effectiveUntil > new Date())).map((i: any) => ({ name: i.name, amount: Number(i.amount) }));
       totalFees += items.reduce((s: number, i: any) => s + i.amount, 0);
       breakdown.push({ planName: plan.name, items });
     }

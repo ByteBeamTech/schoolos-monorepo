@@ -21,6 +21,7 @@ import { overdueWhere, isInvoiceOverdue } from '../overdue.util';
 import { financialYearFor } from '../../ledger/financial-year.util';
 import { LedgerService } from '../../ledger/services/ledger.service';
 import { FeePlanAssignmentService } from '../../plans/services/fee-plan-assignment.service';
+import { resolveClassSectionAsOf } from '../../plans/utils/student-resolution.util';
 import { derivePaymentRefundState, refundedAmountFor } from '../../refund/refund-status.util';
 
 
@@ -132,14 +133,31 @@ export class InvoiceService {
 
   // ── Generate ──────────────────────────────────────────────────────────────
   async generate(tenantId: string, dto: GenerateInvoiceDto, actorId: string) {
+    const dueDate = new Date(dto.dueDate);
     const plan = await this.prisma.feePlan.findFirst({
       where:   { id: dto.feePlanId, tenantId },
-      include: { feeItems: { where: { isOptional: false }, orderBy: { sortOrder: 'asc' } } },
+      include: { feeItems: { where: { isOptional: false, AND: [{ OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: dueDate } }] }, { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: dueDate } }] }] }, orderBy: { sortOrder: 'asc' } } },
     });
     if (!plan) throw new NotFoundException(`Fee plan not found: ${dto.feePlanId}`);
 
     const student = await this.prisma.student.findFirst({ where: { id: dto.studentId, tenantId } });
     if (!student) throw new NotFoundException(`Student not found: ${dto.studentId}`);
+
+    // Manual generation must use the historical class/section placement at
+    // the invoice due date, not the student's current placement. Rejecting
+    // a stale or mismatched plan prevents bypassing assignment versioning.
+    // The classId guard keeps old isolated service fixtures (which predate
+    // class-aware billing) valid while all persisted students take this path.
+    if ((student as any).classId && (plan as any).sessionId) {
+      const placement = await resolveClassSectionAsOf(this.prisma as any, tenantId, student.id, dueDate);
+      const resolved = await this.feePlanAssignments.resolveForClassSection(
+        tenantId, student.branchId, (plan as any).sessionId, placement.classId, placement.sectionId, dueDate,
+      );
+      if (!resolved) throw new BadRequestException('No fee plan assignment applies to this student on the invoice due date.');
+      if (resolved.feePlanId !== dto.feePlanId) {
+        throw new BadRequestException('The supplied fee plan does not match the student assignment on the invoice due date.');
+      }
+    }
 
     if (!plan.feeItems.length) throw new BadRequestException('Fee plan has no items.');
 
@@ -207,7 +225,7 @@ export class InvoiceService {
         status: 'DRAFT', currency: plan.currency,
         subtotal, discountAmount: totalDiscount, gstAmount: gstTotal,
         totalAmount, paidAmount: 0, dueAmount: totalAmount,
-        dueDate: new Date(dto.dueDate), notes: dto.notes ?? null,
+        dueDate, notes: dto.notes ?? null,
         items: { create: itemData },
       },
       include: {

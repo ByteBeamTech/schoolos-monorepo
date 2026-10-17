@@ -72,6 +72,8 @@ export interface FeePlanAssignment {
   sectionId: string | null; // null = class-wide/default; set = section-specific override
   createdAt: string;
   createdById: string | null;
+  effectiveFrom: string | null;
+  effectiveUntil: string | null;
 }
 
 export interface CreateFeePlanAssignmentInput {
@@ -79,6 +81,7 @@ export interface CreateFeePlanAssignmentInput {
   feePlanId: string;
   classId: string;
   sectionId?: string; // omit/undefined = class-wide
+  effectiveFrom?: string;
 }
 
 export async function listFeePlanAssignments(sessionId?: string): Promise<FeePlanAssignment[]> {
@@ -97,6 +100,15 @@ export async function createFeePlanAssignment(input: CreateFeePlanAssignmentInpu
   return res.data;
 }
 
+export async function replaceFeePlanAssignment(id: string, input: { feePlanId: string; effectiveFrom: string }) {
+  const res = await apiClient.patch(`/billing/fee-plans/assignments/${id}/replace`, input);
+  return res.data as FeePlanAssignment;
+}
+export async function deactivateFeePlanAssignment(id: string, effectiveUntil?: string) {
+  const res = await apiClient.patch(`/billing/fee-plans/assignments/${id}/deactivate`, effectiveUntil ? { effectiveUntil } : {});
+  return res.data as FeePlanAssignment;
+}
+
 // ── FeeItem create / supersede ───────────────────────────────────────────
 // Real DTOs, confirmed directly (backend/src/modules/student-billing/
 // dto/billing.dto.ts) -- feeHeadId and billingRuleId are both required
@@ -112,6 +124,8 @@ export interface CreateFeeItemInput {
   gstRate?: number;
   gstCode?: string;
   sortOrder?: number;
+  effectiveFrom?: string;
+  effectiveUntil?: string;
 }
 
 export async function createFeeItem(feePlanId: string, input: CreateFeeItemInput) {
@@ -131,6 +145,13 @@ export interface SupersedeFeeItemInput {
   gstRate?: number;
   gstCode?: string;
   sortOrder?: number;
+  effectiveFrom?: string;
+  effectiveUntil?: string;
+}
+
+export async function updateFeePlanMetadata(id: string, input: { name?: string; grade?: string; currency?: string }) {
+  const res = await apiClient.patch(`/billing/fee-plans/${id}`, input);
+  return res.data;
 }
 
 export async function supersedeFeeItem(feeItemId: string, input: SupersedeFeeItemInput) {

@@ -3,7 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger'
 import { FeePlansService }   from '../services/fee-plans.service';
 import { FeePlanAssignmentService } from '../services/fee-plan-assignment.service';
 import { StudentBillingAccessService } from '../../access/student-billing-access.service';
-import { CreateFeePlanDto, CreateFeePlanAssignmentDto, CreateFeeItemDto, SupersedeFeeItemDto } from '../../dto/billing.dto';
+import { CreateFeePlanDto, UpdateFeePlanDto, CreateFeePlanAssignmentDto, ReplaceFeePlanAssignmentDto, DeactivateFeePlanAssignmentDto, CreateFeeItemDto, SupersedeFeeItemDto } from '../../dto/billing.dto';
 import { JwtGuard }          from '../../../../core/auth/guards/jwt.guard';
 import { RolesGuard }        from '../../../../core/roles/roles.guard';
 import { Roles }             from '../../../../core/roles/roles.decorator';
@@ -26,6 +26,13 @@ export class FeePlansController {
   @ApiOperation({ summary: 'Create fee plan with items' })
   create(@Body() dto: CreateFeePlanDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.create(  user.tenantId,  user.branchId,  dto,  user.id,); 
+  }
+
+  @Patch(':id')
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Update fee plan metadata' })
+  update(@Param('id') id: string, @Body() dto: UpdateFeePlanDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.updateMetadata(user.tenantId, user.branchId, id, dto, user.id);
   }
 
   @Get()
@@ -71,6 +78,19 @@ export class FeePlansController {
   @ApiOperation({ summary: 'Assign a fee plan to a class or section (Phase 3: Class/Section scoped -- there is no student-level assignment)' })
   createAssignment(@Body() dto: CreateFeePlanAssignmentDto, @CurrentUser() user: AuthenticatedUser) {
     return this.assignments.create(user.tenantId, user.branchId, dto, user.id);
+  }
+
+  @Patch('assignments/:id/replace')
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  replaceAssignment(@Param('id') id: string, @Body() dto: ReplaceFeePlanAssignmentDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.assignments.replace(user.tenantId, user.branchId, id, dto, user.id);
+  }
+
+  @Patch('assignments/:id/deactivate')
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @ApiOperation({ summary: 'Retire a fee plan assignment without replacement' })
+  deactivateAssignment(@Param('id') id: string, @Body() dto: DeactivateFeePlanAssignmentDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.assignments.deactivate(user.tenantId, user.branchId, id, dto, user.id);
   }
 
   @Get('assignments')
