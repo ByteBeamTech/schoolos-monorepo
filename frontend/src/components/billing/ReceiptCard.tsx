@@ -51,14 +51,14 @@ export function ReceiptCard({
           <button
             onClick={onPrevious}
             disabled={!hasPrevious}
-            className="text-blue-600 hover:underline disabled:text-slate-300 disabled:no-underline"
+            className="print:hidden text-blue-600 hover:underline disabled:text-slate-300 disabled:no-underline"
           >
             ‹ Previous Receipt
           </button>
           <button
             onClick={onNext}
             disabled={!hasNext}
-            className="text-blue-600 hover:underline disabled:text-slate-300 disabled:no-underline"
+            className="print:hidden text-blue-600 hover:underline disabled:text-slate-300 disabled:no-underline"
           >
             Next Receipt ›
           </button>
@@ -79,14 +79,14 @@ export function ReceiptCard({
           <span style={{ color: "var(--text-primary)" }}>{receipt.periodLabel}</span>
           <button
             onClick={() => onViewInvoice(receipt.invoiceId)}
-            className="ml-2 text-blue-600 hover:underline text-xs"
+            className="print:hidden ml-2 text-blue-600 hover:underline text-xs"
           >
             › View Invoice ({receipt.invoiceNumber})
           </button>
           {onViewProfile && (
             <button
               onClick={onViewProfile}
-              className="ml-2 text-blue-600 hover:underline text-xs"
+              className="print:hidden ml-2 text-blue-600 hover:underline text-xs"
             >
               › Student Profile
             </button>
@@ -101,7 +101,7 @@ export function ReceiptCard({
 
         <button
           onClick={() => onPrint(receipt.receiptId)}
-          className="text-sm text-blue-600 hover:underline"
+          className="print:hidden text-sm text-blue-600 hover:underline"
         >
           Print
         </button>
