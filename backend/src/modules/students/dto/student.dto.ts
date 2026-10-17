@@ -56,6 +56,19 @@ category?: Category;
   @ApiPropertyOptional({ example: 'O+' })
   @IsString() @IsOptional()
   bloodGroup?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() nationality?: string;
+
+  @ApiPropertyOptional() @IsString() @IsOptional() email?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() phone?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() address?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() apaarId?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() boardRegistrationNumber?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() previousSchool?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() previousClass?: string;
+  @ApiPropertyOptional() @IsString() @IsOptional() previousSchoolTcNumber?: string;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() heightCm?: number;
+  @ApiPropertyOptional() @IsNumber() @IsOptional() weightKg?: number;
+  @ApiPropertyOptional() @IsDateString() @IsOptional() lastHealthCheck?: string;
 
   @ApiPropertyOptional({ description: 'Section ID' })
   @IsString() @IsOptional()

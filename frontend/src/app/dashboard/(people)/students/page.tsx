@@ -26,6 +26,7 @@ export default function StudentsPage() {
   const [page,  setPage]  = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [saving,   setSaving]   = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
  
    const { getParam } = useFilterParams();
 
@@ -117,11 +118,64 @@ const studentFilterSchema = {
     // Guardian
     guardianFirstName: "", guardianLastName: "",
     guardianPhone: "", guardianEmail: "", guardianRelation: "FATHER", guardianAadhaar: "", studentAadhaar: "",
+    bloodGroup: "", nationality: "Indian", email: "", phone: "", address: "", apaarId: "",
+    boardRegistrationNumber: "", previousSchool: "", previousClass: "",
+    previousSchoolTcNumber: "", heightCm: "", weightKg: "", lastHealthCheck: "",
   });
-  const f = (k: string) => (e: any) => setForm(p => ({ ...p, [k]: e.target.value }));
+  const f = (k: string) => (e: any) => {
+    const value = e.target.value;
+    setForm(p => ({ ...p, [k]: value }));
+    setFormErrors((errors) => {
+      if (!errors[k]) return errors;
+      const next = { ...errors };
+      delete next[k];
+      return next;
+    });
+  };
+
+  const numericField = (key: string, maxLength?: number, allowDecimal = false) => (e: any) => {
+    const raw = e.target.value;
+    const value = raw
+      .replace(allowDecimal ? /[^\d.]/g : /\D/g, "")
+      .replace(allowDecimal ? /^(\d*\.\d{0,2}).*$/ : /$^/, "$1")
+      .slice(0, maxLength);
+    setForm(p => ({ ...p, [key]: value }));
+    setFormErrors((errors) => {
+      const next = { ...errors };
+      if (raw !== value) next[key] = "Numbers only";
+      else if (key.toLowerCase().includes("phone") && value.length > 10) next[key] = "Maximum 10 digits";
+      else delete next[key];
+      return next;
+    });
+  };
+
+  const validateForm = () => {
+    const errors: Record<string, string> = {};
+    if (form.phone && !/^\d{10}$/.test(form.phone)) {
+      errors.phone = "Enter exactly 10 digits";
+    }
+    if (form.guardianPhone && !/^\d{10}$/.test(form.guardianPhone)) {
+      errors.guardianPhone = "Enter exactly 10 digits";
+    }
+    if (form.heightCm && !/^\d+(\.\d{1,2})?$/.test(form.heightCm)) {
+      errors.heightCm = "Enter a valid number";
+    }
+    if (form.weightKg && !/^\d+(\.\d{1,2})?$/.test(form.weightKg)) {
+      errors.weightKg = "Enter a valid number";
+    }
+    if (form.apaarId && !/^\d+$/.test(form.apaarId)) {
+      errors.apaarId = "Numbers only";
+    }
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   const createStudent = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) {
+      toast.error("Please correct the highlighted fields");
+      return;
+    }
     setSaving(true);
     try {
 	   if (!form.classId) {
@@ -141,6 +195,19 @@ const studentFilterSchema = {
         lastName:        form.lastName,
         dateOfBirth:     form.dateOfBirth || undefined,
         gender:          form.gender,
+        bloodGroup:      form.bloodGroup || undefined,
+        nationality:     form.nationality || undefined,
+        email:           form.email || undefined,
+        phone:           form.phone || undefined,
+        address:         form.address || undefined,
+        apaarId:         form.apaarId || undefined,
+        boardRegistrationNumber: form.boardRegistrationNumber || undefined,
+        previousSchool:  form.previousSchool || undefined,
+        previousClass:   form.previousClass || undefined,
+        previousSchoolTcNumber: form.previousSchoolTcNumber || undefined,
+        heightCm:        form.heightCm ? Number(form.heightCm) : undefined,
+        weightKg:        form.weightKg ? Number(form.weightKg) : undefined,
+        lastHealthCheck: form.lastHealthCheck || undefined,
 	classId:         form.classId,
         sectionId:       form.sectionId   || undefined,
               academicYear:    form.academicYear || currentSession?.name,
@@ -179,7 +246,10 @@ setForm({
   sectionId:"", academicYear: currentSession?.name ?? "",
   branchId: "", classId:"",
   guardianFirstName:"", guardianLastName:"", guardianPhone:"", guardianEmail:"", 
-  guardianRelation:"FATHER", guardianAadhaar:"", studentAadhaar:"" 
+  guardianRelation:"FATHER", guardianAadhaar:"", studentAadhaar:"",
+  bloodGroup:"", nationality:"Indian", email:"", phone:"", address:"", apaarId:"",
+  boardRegistrationNumber:"", previousSchool:"", previousClass:"",
+  previousSchoolTcNumber:"", heightCm:"", weightKg:"", lastHealthCheck:""
 });	
       refetch();
     } catch (err: any) {
@@ -327,6 +397,52 @@ setForm({
 </div>
 </div>
 
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Contact & Health</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+              {[
+                { label: "Student Phone", key: "phone", type: "tel" },
+                { label: "Student Email", key: "email", type: "email" },
+                { label: "Nationality", key: "nationality" },
+                { label: "Blood Group", key: "bloodGroup" },
+                { label: "Height (cm)", key: "heightCm", type: "number" },
+                { label: "Weight (kg)", key: "weightKg", type: "number" },
+                { label: "Last Health Check", key: "lastHealthCheck", type: "date" },
+                { label: "APAAR ID", key: "apaarId" },
+                { label: "Board Registration No.", key: "boardRegistrationNumber" },
+              ].map(({ label, key, type }) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
+                  <input type={type ?? "text"} value={(form as any)[key]}
+                    onChange={["phone", "heightCm", "weightKg", "apaarId"].includes(key) ? numericField(key, key === "phone" ? undefined : undefined, key === "heightCm" || key === "weightKg") : f(key)}
+                    inputMode={["phone", "heightCm", "weightKg", "apaarId"].includes(key) ? "numeric" : undefined}
+                    maxLength={undefined}
+                    aria-invalid={Boolean(formErrors[key])}
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  {formErrors[key] && <p className="mt-1 text-xs text-red-600">{formErrors[key]}</p>}
+                </div>
+              ))}
+              <div className="col-span-2 md:col-span-4">
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Address</label>
+                <textarea value={form.address} onChange={f("address")} rows={2}
+                  className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            </div>
+
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Previous School</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
+              {[
+                { label: "Previous School", key: "previousSchool" },
+                { label: "Previous Class", key: "previousClass" },
+                { label: "Transfer Certificate No.", key: "previousSchoolTcNumber" },
+              ].map(({ label, key }) => (
+                <div key={key}>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
+                  <input value={(form as any)[key]} onChange={f(key)}
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              ))}
+            </div>
+
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Guardian (Optional)</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
               {[
@@ -337,8 +453,13 @@ setForm({
               ].map(({ label, key, type }) => (
                 <div key={key}>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
-                  <input type={type ?? "text"} value={(form as any)[key]} onChange={f(key)}
+                  <input type={type ?? "text"} value={(form as any)[key]}
+                    onChange={key === "guardianPhone" ? numericField(key) : f(key)}
+                    inputMode={key === "guardianPhone" ? "numeric" : undefined}
+                    maxLength={undefined}
+                    aria-invalid={Boolean(formErrors[key])}
                     className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  {formErrors[key] && <p className="mt-1 text-xs text-red-600">{formErrors[key]}</p>}
                 </div>
               ))}
               <div>

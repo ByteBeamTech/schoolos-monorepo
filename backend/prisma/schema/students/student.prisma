@@ -21,6 +21,7 @@ model Student {
   dateOfBirth DateTime?
   gender      Gender?
   bloodGroup  BloodGroup?
+  nationality String?     @default("Indian")
   religion    Religion?
   category    Category?
   photoUrl    String?
