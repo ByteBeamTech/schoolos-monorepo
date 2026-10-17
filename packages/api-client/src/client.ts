@@ -29,6 +29,9 @@ export function initApiClient(baseURL: string) {
       if (tenant) config.headers['x-tenant-id'] = tenant;
       if (branch) config.headers['x-branch-id'] = branch;
     }
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
     return config;
   });
 

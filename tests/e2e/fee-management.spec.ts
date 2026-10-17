@@ -59,13 +59,37 @@ test.describe('local SchoolOS browser smoke tests', () => {
     await page.goto('/dashboard/students');
     await page.getByRole('button', { name: /Add Student/ }).last().click();
 
-    const inputs = page.locator('input');
+    const inputs = page.locator('input:not([type="file"])');
     await inputs.nth(0).fill('Browser');
     await inputs.nth(1).fill('Validation');
     await inputs.nth(3).fill('12345678901');
     await inputs.nth(3).blur();
 
     await expect(page.getByText(/10 digits|valid phone/i).first()).toBeVisible();
+  });
+
+  test('student profile accepts a document upload', async ({ page }) => {
+    await signIn(page);
+    await page.goto('/dashboard/students');
+    const firstStudent = page.locator('tbody tr').first();
+    await expect(firstStudent).toBeVisible();
+    await firstStudent.click();
+    await page.getByRole('link', { name: /Open Full Profile/ }).click();
+    await expect(page).toHaveURL(/\/dashboard\/students\/[^/]+$/);
+
+    await page.locator('select').filter({ has: page.locator('option[value="TRANSFER_CERTIFICATE"]') }).selectOption('TRANSFER_CERTIFICATE');
+    const uploadResponse = page.waitForResponse((response) =>
+      response.request().method() === 'POST' &&
+      response.url().includes('/api/v1/students/') && response.url().endsWith('/files'),
+    );
+    await page.locator('input[type="file"]').last().setInputFiles({
+      name: 'transfer-certificate.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('not-a-real-png-but-a-multipart-image-upload-fixture'),
+    });
+    const response = await uploadResponse;
+    expect(response.status(), await response.text()).toBe(201);
+    await expect(page.getByText(/TRANSFER CERTIFICATE.*transfer-certificate\.png/i).first()).toBeVisible();
   });
 
   test('billing and student routes load without redirecting', async ({ page }) => {
