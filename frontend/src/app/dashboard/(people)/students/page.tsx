@@ -412,12 +412,25 @@ setForm({
               ].map(({ label, key, type }) => (
                 <div key={key}>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">{label}</label>
-                  <input type={type ?? "text"} value={(form as any)[key]}
+                  {key === "bloodGroup" ? (
+                    <select
+                      value={(form as any)[key]}
+                      onChange={f(key)}
+                      className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select Blood Group</option>
+                      {[
+                        ["A_POS", "A+"], ["A_NEG", "A-"], ["B_POS", "B+"], ["B_NEG", "B-"],
+                        ["AB_POS", "AB+"], ["AB_NEG", "AB-"], ["O_POS", "O+"], ["O_NEG", "O-"],
+                        ["UNKNOWN", "Unknown"],
+                      ].map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+                    </select>
+                  ) : <input type={type ?? "text"} value={(form as any)[key]}
                     onChange={["phone", "heightCm", "weightKg", "apaarId"].includes(key) ? numericField(key, key === "phone" ? undefined : undefined, key === "heightCm" || key === "weightKg") : f(key)}
                     inputMode={["phone", "heightCm", "weightKg", "apaarId"].includes(key) ? "numeric" : undefined}
                     maxLength={undefined}
                     aria-invalid={Boolean(formErrors[key])}
-                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />}
                   {formErrors[key] && <p className="mt-1 text-xs text-red-600">{formErrors[key]}</p>}
                 </div>
               ))}

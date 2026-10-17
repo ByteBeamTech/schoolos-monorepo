@@ -134,17 +134,7 @@ const invoices = invoiceResponse?.data ?? [];
       : "",
 
     gender: student?.gender ?? "MALE",
-    bloodGroup:
-  ({
-    A_POS: "A+",
-    A_NEG: "A-",
-    B_POS: "B+",
-    B_NEG: "B-",
-    AB_POS: "AB+",
-    AB_NEG: "AB-",
-    O_POS: "O+",
-    O_NEG: "O-",
-  } as any)[student?.bloodGroup] ?? "",
+    bloodGroup: student?.bloodGroup ?? "",
     classId: student?.classId ?? "",
     sectionId: student?.sectionId ?? "",
 
@@ -505,20 +495,12 @@ setBehaviorForm({
     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
   >
     <option value="">Select Blood Group</option>
-
     {[
-      "A+",
-      "A-",
-      "B+",
-      "B-",
-      "AB+",
-      "AB-",
-      "O+",
-      "O-",
-    ].map((bg) => (
-      <option key={bg} value={bg}>
-        {bg}
-      </option>
+      ["A_POS", "A+"], ["A_NEG", "A-"], ["B_POS", "B+"], ["B_NEG", "B-"],
+      ["AB_POS", "AB+"], ["AB_NEG", "AB-"], ["O_POS", "O+"], ["O_NEG", "O-"],
+      ["UNKNOWN", "Unknown"],
+    ].map(([value, label]) => (
+      <option key={value} value={value}>{label}</option>
     ))}
   </select>
 </div>
