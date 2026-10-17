@@ -27,6 +27,11 @@ export default function StudentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving,   setSaving]   = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [studentPhoto, setStudentPhoto] = useState<File | null>(null);
+  const [studentDocuments, setStudentDocuments] = useState<Record<string, File | null>>({
+    AADHAAR: null, APAAR: null, TRANSFER_CERTIFICATE: null, MARKSHEET: null,
+  });
+  const [photoPreview, setPhotoPreview] = useState("");
  
    const { getParam } = useFilterParams();
 
@@ -215,6 +220,19 @@ const studentFilterSchema = {
       });
       const studentId = (res as any).id ?? (res as any).data?.id;
 
+      const uploads = [
+        studentPhoto ? ["STUDENT_PHOTO", studentPhoto] as const : null,
+        ...Object.entries(studentDocuments)
+          .filter(([, file]) => file)
+          .map(([type, file]) => [type, file!] as const),
+      ].filter(Boolean) as Array<readonly [string, File]>;
+      for (const [type, file] of uploads) {
+        const body = new FormData();
+        body.append("file", file);
+        body.append("type", type);
+        await apiClient.post(`/students/${studentId}/files`, body);
+      }
+
       // Create guardian if name provided
       // Create guardian if name provided
 if (form.guardianFirstName && studentId) {
@@ -333,6 +351,29 @@ setForm({
         <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-6 mb-6">
           <h3 className="font-semibold text-slate-900 mb-4">Add New Student</h3>
           <form onSubmit={createStudent}>
+            <div className="mb-5 flex flex-wrap items-center gap-5 rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div className="h-24 w-24 overflow-hidden rounded-full border-2 border-white bg-slate-200 shadow-sm">
+                {photoPreview ? <img src={photoPreview} alt="Student preview" className="h-full w-full object-cover" /> : <span className="flex h-full items-center justify-center text-xs text-slate-400">Photo</span>}
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Student photo</label>
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="mt-2 text-sm"
+                  onChange={(e) => { const file = e.target.files?.[0] ?? null; setStudentPhoto(file); setPhotoPreview(file ? URL.createObjectURL(file) : ""); }} />
+                <p className="mt-1 text-xs text-slate-400">JPG, PNG, or WEBP; maximum 5 MB.</p>
+              </div>
+              <div className="min-w-[260px]">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Documents</label>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                  {Object.keys(studentDocuments).map((type) => (
+                    <label key={type} className="flex items-center gap-1">
+                      <span className="truncate">{type.replaceAll("_", " ")}</span>
+                      <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="max-w-[110px]"
+                        onChange={(e) => setStudentDocuments((current) => ({ ...current, [type]: e.target.files?.[0] ?? null }))} />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Student Info</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
               {[

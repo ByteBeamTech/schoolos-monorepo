@@ -1,6 +1,11 @@
 // /apps/schoolos/backend/src/modules/students/controllers/students.controller.ts
 
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { randomUUID } from 'crypto';
+import { DocumentType } from '@prisma/client';
+import { StorageService } from '../../../infra/storage/storage.service';
 import { StudentsService } from '../services/students.service';
 import {
   CreateStudentDto,
@@ -17,7 +22,7 @@ import { AuthenticatedUser } from '@core/auth/interfaces/authenticated-user.inte
 @Controller('students')
 @UseGuards(JwtGuard, RolesGuard)
 export class StudentsController {
-  constructor(private readonly service: StudentsService) {}
+  constructor(private readonly service: StudentsService, private readonly storage: StorageService) {}
 
   @Post()
   @Roles('SCHOOL_ADMIN','SCHOOL_OWNER', 'PRINCIPAL')
@@ -84,6 +89,40 @@ export class StudentsController {
     if (!user.branchId) throw new Error('Branch validation ownership verification failed.');
     // 🟢 FIX #1: Aligned strictly to convention guidelines order: tenantId, branchId, resourceId
     return this.service.update(user.tenantId, user.branchId, id, dto, user.id);
+  }
+
+  @Post(':id/files')
+  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_request, file, callback) => {
+      const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+      callback(null, allowed.includes(file.mimetype));
+    },
+  }))
+  async uploadFile(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('type') type: DocumentType,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!user.branchId) throw new BadRequestException('Branch context is mandatory for file upload.');
+    if (!file) throw new BadRequestException('Upload a JPG, PNG, WEBP, or PDF file.');
+    if (!Object.values(DocumentType).includes(type)) {
+      throw new BadRequestException('Invalid student document type.');
+    }
+    if (type === DocumentType.STUDENT_PHOTO && !file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Student photo must be an image.');
+    }
+    return this.service.uploadStudentFile(user.tenantId, user.branchId, id, type, file, user.id, this.storage, randomUUID());
+  }
+
+  @Get(':id/files')
+  @Roles('SCHOOL_ADMIN', 'SCHOOL_OWNER', 'PRINCIPAL', 'TEACHER', 'ACCOUNTANT', 'PARENT')
+  async listFiles(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    if (!user.branchId) throw new BadRequestException('Branch context is mandatory for file listing.');
+    return this.service.listStudentFiles(user.tenantId, user.branchId, id, this.storage);
   }
 
   @Post(':id/guardians')

@@ -59,11 +59,14 @@ const invoices = invoiceResponse?.data ?? [];
   );
   const { data: behaviorRecords, refetch: refetchBehavior } = useApi<BehaviorRecord[]>(`/behavior/student/${id}`, [id]);
   const { data: guardians, refetch: refetchGuardians } =  useApi<any[]>(`/students/${id}/guardians`, [id]);
+  const { data: studentFiles, refetch: refetchStudentFiles } = useApi<any[]>(`/students/${id}/files`, [id]);
 
   const { toast } = useToast();
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadType, setUploadType] = useState("STUDENT_PHOTO");
   const [showBehaviorForm, setShowBehaviorForm] = useState(false);
   const [savingBehavior, setSavingBehavior] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -288,6 +291,23 @@ setEditing(false);
     }
   };
 
+  const uploadStudentFile = async (file: File, type: string) => {
+    setUploadingFile(true);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("type", type);
+      await apiClient.post(`/students/${id}/files`, body);
+      toast.success("Document uploaded.");
+      refetch();
+      refetchStudentFiles();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Failed to upload document");
+    } finally {
+      setUploadingFile(false);
+    }
+  };
+
   const saveBehavior = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingBehavior(true);
@@ -347,8 +367,8 @@ setBehaviorForm({
       <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6 mb-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xl font-bold flex-shrink-0">
-              {student.firstName[0]}{student.lastName[0]}
+            <div className="w-14 h-14 overflow-hidden rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xl font-bold flex-shrink-0">
+              {student.photoUrl ? <img src={student.photoUrl} alt={`${student.firstName} ${student.lastName}`} className="h-full w-full object-cover" /> : `${student.firstName[0]}${student.lastName[0]}`}
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900">{student.firstName} {student.lastName}</h1>
@@ -393,6 +413,32 @@ setBehaviorForm({
             )}
           </div>
         </div>
+	</div>
+	<div className="bg-white rounded-xl border border-slate-100 shadow-sm p-5 mb-5">
+	  <div className="flex flex-wrap items-start justify-between gap-4">
+	    <div>
+	      <h2 className="text-sm font-semibold text-slate-800">Student photo and documents</h2>
+	      <p className="mt-1 text-xs text-slate-400">Upload the student photo, identity documents, and previous-school transfer certificate.</p>
+	    </div>
+	    <label className="cursor-pointer rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700">
+	      {uploadingFile ? "Uploading..." : "Upload file"}
+	      <input type="file" className="hidden" accept="image/jpeg,image/png,image/webp,application/pdf"
+	        disabled={uploadingFile}
+	        onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadStudentFile(file, uploadType); e.currentTarget.value = ""; }} />
+	    </label>
+	  </div>
+	  <select value={uploadType} onChange={(e) => setUploadType(e.target.value)} className="mt-3 rounded-lg border border-slate-200 px-3 py-2 text-xs">
+	    {["STUDENT_PHOTO", "AADHAAR", "APAAR", "TRANSFER_CERTIFICATE", "MARKSHEET", "OTHER"].map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}
+	  </select>
+	  <div className="mt-4 grid grid-cols-1 gap-2 text-sm">
+	    {(studentFiles ?? []).map((file: any) => (
+	      <a key={file.id} href={file.fileUrl} target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-blue-700 hover:bg-blue-50">
+	        <span>{file.type.replaceAll("_", " ")} · {file.fileName ?? "Document"}</span>
+	        <span className="text-xs text-slate-400">Open</span>
+	      </a>
+	    ))}
+	    {!studentFiles?.length && <p className="text-xs text-slate-400">No documents uploaded yet.</p>}
+	  </div>
 	</div>
 {editing && (
 <div className="mt-5 pt-5 border-t border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">

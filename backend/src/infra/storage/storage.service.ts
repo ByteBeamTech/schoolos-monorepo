@@ -83,6 +83,21 @@ export class StorageService {
       this.logger.error(`[S3] Signed URL failed: ${err.message}`);
       return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
     }
+
+  }
+
+  async readLocalFile(key: string): Promise<{ body: Buffer; contentType: string }> {
+    if (!this.devMode) throw new Error('Local file reads are only available in local storage mode.');
+    const localPath = path.join(this.localDir, key.replaceAll('/', path.sep));
+    const resolvedRoot = path.resolve(this.localDir);
+    const resolvedPath = path.resolve(localPath);
+    if (!resolvedPath.startsWith(`${resolvedRoot}${path.sep}`)) throw new Error('Invalid storage key.');
+    return { body: await fs.promises.readFile(resolvedPath), contentType: this.contentTypeForPath(resolvedPath) };
+  }
+
+  private contentTypeForPath(filePath: string): string {
+    const extension = path.extname(filePath).toLowerCase();
+    return ({ '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.pdf': 'application/pdf' } as Record<string, string>)[extension] ?? 'application/octet-stream';
   }
 
   async delete(key: string): Promise<void> {

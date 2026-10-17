@@ -5,10 +5,11 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { Prisma, BloodGroup, Gender, Student } from '@prisma/client';
+import { Prisma, BloodGroup, Gender, Student, DocumentType } from '@prisma/client';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../core/compliance/audit.service';
 import { EntitlementResolver } from '@core/license/entitlement-resolver.service';
+import { StorageService } from '../../../infra/storage/storage.service';
 import {
   CreateStudentDto,
   UpdateStudentDto,
@@ -59,6 +60,43 @@ export class StudentsService {
       throw new BadRequestException(`Invalid blood group value: ${bg}`);
     }
     return matched;
+  }
+
+  async uploadStudentFile(
+    tenantId: string, branchId: string, studentId: string, type: DocumentType,
+    file: Express.Multer.File, actorId: string, storage: StorageService, token: string,
+  ) {
+    const student = await this.prisma.student.findFirst({ where: { id: studentId, tenantId, branchId } });
+    if (!student) throw new NotFoundException('Student not found');
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const fileKey = await storage.upload({
+      tenantId, year: new Date().getFullYear(), category: 'documents',
+      filename: `${studentId}/${token}-${safeName}`, body: file.buffer, contentType: file.mimetype,
+    });
+    const fileUrl = await storage.getSignedDownloadUrl(fileKey);
+    const document = await this.prisma.document.create({
+      data: {
+        tenantId, branchId, studentId, type, fileUrl, fileKey,
+        fileName: file.originalname, fileSize: file.size, mimeType: file.mimetype,
+        uploadedById: actorId,
+      },
+    });
+    if (type === DocumentType.STUDENT_PHOTO) {
+      await this.prisma.student.update({ where: { id: studentId }, data: { photoUrl: fileUrl } });
+    }
+    return document;
+  }
+
+  async listStudentFiles(tenantId: string, branchId: string, studentId: string, storage: StorageService) {
+    const student = await this.prisma.student.findFirst({ where: { id: studentId, tenantId, branchId }, select: { id: true } });
+    if (!student) throw new NotFoundException('Student not found');
+    const documents = await this.prisma.document.findMany({
+      where: { tenantId, branchId, studentId, isDeleted: false }, orderBy: { createdAt: 'desc' },
+    });
+    return Promise.all(documents.map(async (document) => ({
+      ...document,
+      fileUrl: document.fileKey ? await storage.getSignedDownloadUrl(document.fileKey) : document.fileUrl,
+    })));
   }
 
   /**
