@@ -73,6 +73,24 @@ describe('StudentsService', () => {
     expect(service).toBeDefined();
   });
 
+  describe('blood group mapping', () => {
+    it.each([
+      ['A_POS', 'A_POS'],
+      ['B_POS', 'B_POS'],
+      ['AB_NEG', 'AB_NEG'],
+      ['O-', 'O_NEG'],
+      ['UNKNOWN', 'UNKNOWN'],
+    ])('accepts %s as %s', (input, expected) => {
+      expect((service as any).mapBloodGroup(input)).toBe(expected);
+    });
+
+    it('rejects unsupported values with a professional validation error', () => {
+      expect(() => (service as any).mapBloodGroup('B_POSITIVE')).toThrow(
+        'Invalid blood group value: B_POSITIVE',
+      );
+    });
+  });
+
   describe('create', () => {
     it('should successfully register a student profile context matching institutional guidelines', async () => {
       mockPrismaService.class.findFirst.mockResolvedValue({ id: 'cl-1', tenantId: 't-1', branchId: 'br-1' });

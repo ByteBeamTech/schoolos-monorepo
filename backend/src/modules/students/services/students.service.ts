@@ -43,6 +43,11 @@ export class StudentsService {
   private mapBloodGroup(bg: string): BloodGroup | null {
     if (!bg) return null;
     const map: Record<string, BloodGroup> = {
+      A_POS: BloodGroup.A_POS, A_NEG: BloodGroup.A_NEG,
+      B_POS: BloodGroup.B_POS, B_NEG: BloodGroup.B_NEG,
+      AB_POS: BloodGroup.AB_POS, AB_NEG: BloodGroup.AB_NEG,
+      O_POS: BloodGroup.O_POS, O_NEG: BloodGroup.O_NEG,
+      UNKNOWN: BloodGroup.UNKNOWN,
       'A+': BloodGroup.A_POS, 'A-': BloodGroup.A_NEG,
       'B+': BloodGroup.B_POS, 'B-': BloodGroup.B_NEG,
       'AB+': BloodGroup.AB_POS, 'AB-': BloodGroup.AB_NEG,
@@ -51,7 +56,7 @@ export class StudentsService {
 
     const matched = map[bg];
     if (!matched) {
-      throw new BadRequestException(`Bhai, invalid Blood Group value [${bg}] pass hui hai!`);
+      throw new BadRequestException(`Invalid blood group value: ${bg}`);
     }
     return matched;
   }
