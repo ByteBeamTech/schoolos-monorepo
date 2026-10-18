@@ -612,7 +612,7 @@ setForm({
                         ) : <span className="text-slate-400">—</span>}
                       </td>
                       <td className="px-6 py-4">
-                        <Badge label={s.status} variant={statusVariant(s.status)} />
+                        <Badge label={s.status ?? (s.isActive ? "ACTIVE" : "INACTIVE")} variant={statusVariant(s.status ?? (s.isActive ? "ACTIVE" : "INACTIVE"))} />
                       </td>
                     </tr>
                   );

@@ -260,6 +260,18 @@ const generatedAdmissionNumber =
               class: { select: { id: true, name: true } }
             }
           },
+          guardianLinks: {
+            include: {
+              guardian: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  phone: true,
+                },
+              },
+            },
+            orderBy: { isPrimary: 'desc' },
+          },
         },
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
         skip: (page - 1) * limit,
@@ -269,7 +281,10 @@ const generatedAdmissionNumber =
     ]);
 
     return {
-      data: data.map(s => sanitizeStudent(s as unknown as Student)),
+      data: data.map(s => ({
+        ...sanitizeStudent(s as unknown as Student),
+        status: s.isActive ? 'ACTIVE' : 'INACTIVE',
+      })),
       meta: { total, page, limit, lastPage: Math.ceil(total / limit) },
     };
   }

@@ -122,6 +122,7 @@ export interface Student {
 export function useStudents(
   page = 1,
   filters: Record<string, string> = {},
+  limit = 20,
 ) {
 
   const params =
@@ -134,7 +135,7 @@ export function useStudents(
 
   params.set(
     "limit",
-    "20",
+    String(limit),
   );
 
   Object.entries(filters).forEach(

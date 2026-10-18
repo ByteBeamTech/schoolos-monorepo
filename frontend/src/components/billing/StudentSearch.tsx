@@ -15,8 +15,8 @@
 // size). Implemented here against what works; the remainder is called out
 // for a product decision, not silently dropped.
 
-import { useEffect, useRef, useState } from "react";
-import { Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useStudents, type Student } from "@/lib/hooks";
 
@@ -27,6 +27,7 @@ interface StudentSearchProps {
 export function StudentSearch({ onSelect }: StudentSearchProps) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
+  const [directoryOpen, setDirectoryOpen] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // FR-SEARCH-02: debounced type-ahead, not Enter-to-search.
@@ -36,7 +37,20 @@ export function StudentSearch({ onSelect }: StudentSearchProps) {
   }, [query]);
 
   const { data, loading } = useStudents(1, debounced ? { search: debounced } : {});
+  const { data: directoryData, loading: directoryLoading } = useStudents(1, {}, 1000);
   const results = debounced ? data?.data ?? [] : [];
+  const classGroups = useMemo(() => {
+    const groups = new Map<string, { className: string; students: Student[] }>();
+    for (const student of directoryData?.data ?? []) {
+      const className = student.section
+        ? `${student.section.class.name} · Section ${student.section.name}`
+        : "Unassigned";
+      const existing = groups.get(className);
+      if (existing) existing.students.push(student);
+      else groups.set(className, { className, students: [student] });
+    }
+    return [...groups.values()].sort((a, b) => a.className.localeCompare(b.className));
+  }, [directoryData]);
 
   // FR-SEARCH-05: auto-refocus is driven by the parent (Collect Fee page)
   // remounting/resetting this component after a completed transaction --
@@ -47,7 +61,7 @@ export function StudentSearch({ onSelect }: StudentSearchProps) {
   const clear = () => { setQuery(""); setDebounced(""); inputRef.current?.focus(); };
 
   return (
-    <div className="relative">
+    <div className="space-y-3">
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
         <Input
@@ -68,6 +82,50 @@ export function StudentSearch({ onSelect }: StudentSearchProps) {
           </button>
         )}
       </div>
+
+      {!debounced && (
+        <div className="rounded-lg border bg-white" style={{ borderColor: "var(--border-light)" }}>
+          <button
+            type="button"
+            onClick={() => setDirectoryOpen((open) => !open)}
+            className="w-full flex items-center justify-between px-4 py-3 text-left"
+          >
+            <span className="text-sm font-medium text-slate-700">Choose by class</span>
+            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${directoryOpen ? "rotate-180" : ""}`} />
+          </button>
+          {directoryOpen && (
+            <div className="border-t px-3 py-3 space-y-2 max-h-96 overflow-y-auto" style={{ borderColor: "var(--border-light)" }}>
+              {directoryLoading ? (
+                <p className="px-2 py-3 text-sm text-slate-400">Loading classes…</p>
+              ) : classGroups.length === 0 ? (
+                <p className="px-2 py-3 text-sm text-slate-400">No students found.</p>
+              ) : classGroups.map((group) => (
+                <details key={group.className} className="rounded-md border border-slate-100">
+                  <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium text-slate-700">
+                    {group.className}
+                    <span className="ml-2 text-xs font-normal text-slate-400">{group.students.length} students</span>
+                  </summary>
+                  <div className="border-t border-slate-100">
+                    {group.students.map((student) => (
+                      <button
+                        key={student.id}
+                        type="button"
+                        onClick={() => onSelect(student)}
+                        className="w-full flex items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="font-medium text-slate-700">
+                          {student.firstName} {student.lastName}
+                        </span>
+                        <span className="text-xs text-slate-400">{student.admissionNumber}</span>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* FR-SEARCH-03/04: multi-match disambiguation and zero-result states,
           both distinct from the summary card itself. */}
