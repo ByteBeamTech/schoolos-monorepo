@@ -25,8 +25,13 @@ export class AnalyticsService {
    * right fields, just from data nothing ever populated. It is correct now
    * that those fields are written.
    */
-  async getOverview(tenantId: string, authorizedBranchIds?: string[] | null) {
+  async getOverview(
+    tenantId: string,
+    authorizedBranchIds?: string[] | null,
+    academicYear?: string,
+  ) {
     const branchFilter = authorizedBranchIds != null ? { branchId: { in: authorizedBranchIds } } : {};
+    const academicYearFilter = academicYear ? { academicYear } : {};
 
     const [
       invoices,
@@ -37,7 +42,7 @@ export class AnalyticsService {
       overdueInvoices,
     ] = await Promise.all([
       this.prisma.invoice.aggregate({
-        where: { tenantId, ...branchFilter },
+        where: { tenantId, ...branchFilter, ...academicYearFilter },
         _sum: {
           totalAmount: true,
           paidAmount: true,
@@ -97,6 +102,7 @@ export class AnalyticsService {
           tenantId,
           ...overdueWhere(),
           ...branchFilter,
+          ...academicYearFilter,
         },
       }),
     ]);

@@ -2,7 +2,7 @@
 // frontend/src/app/dashboard/(finance)/billing/analytics/page.tsx
 // Billing analytics — collection KPIs + monthly chart + fee head breakdown
 
-import { useState }        from "react";
+import { useMemo, useState }        from "react";
 import {
   TrendingUp, TrendingDown, DollarSign,
   Users, BarChart3, RefreshCw, Percent,
@@ -76,10 +76,41 @@ export default function BillingAnalyticsPage() {
     [activeYear]
   );
 
-  const kpis         = analytics?.kpis         ?? {};
-  const monthly      = analytics?.monthly      ?? [];
-  const feeHeadBreak = analytics?.feeHeadBreakdown ?? [];
-  const defaulters   = analytics?.defaulters   ?? {};
+  const { data: invoiceResponse, loading: invoicesLoading } = useApi<any>(
+    `/billing/invoices?limit=1000${activeYear ? `&academicYear=${encodeURIComponent(activeYear)}` : ""}`,
+    [activeYear],
+  );
+  const { data: defaulterRows, loading: defaultersLoading } = useApi<any[]>(
+    "/billing/invoices/defaulters",
+    [],
+  );
+  const invoices = invoiceResponse?.data ?? [];
+  const kpis = analytics ?? {};
+  const monthly = useMemo(() => {
+    const byMonth = new Map<string, { collected: number; outstanding: number }>();
+    for (const invoice of invoices) {
+      const month = new Date(invoice.dueDate ?? invoice.createdAt).toLocaleDateString("en-IN", { month: "short" });
+      const current = byMonth.get(month) ?? { collected: 0, outstanding: 0 };
+      current.collected += Number(invoice.paidAmount ?? 0);
+      current.outstanding += Number(invoice.dueAmount ?? 0);
+      byMonth.set(month, current);
+    }
+    return [...byMonth.entries()].map(([month, values]) => ({ month, ...values }));
+  }, [invoices]);
+  const feeHeadBreak = useMemo(() => {
+    const byHead = new Map<string, number>();
+    for (const invoice of invoices) {
+      for (const item of invoice.items ?? []) {
+        const name = item.name || "Other";
+        byHead.set(name, (byHead.get(name) ?? 0) + Number(item.netAmount ?? item.amount ?? 0));
+      }
+    }
+    return [...byHead.entries()].map(([name, collected]) => ({ name, collected }));
+  }, [invoices]);
+  const defaulters = {
+    count: defaulterRows?.length ?? 0,
+    totalAmount: (defaulterRows ?? []).reduce((sum: number, row: any) => sum + Number(row.outstandingAmount ?? 0), 0),
+  };
 
   // Build monthly bar data
   const monthlyData = monthly.map((m: any) => ({
@@ -93,7 +124,7 @@ export default function BillingAnalyticsPage() {
     color: "bg-red-400",
   }));
 
-  const collectionRate = kpis.collectionRate ?? 0;
+  const collectionRate = Number(kpis.collectionRate ?? 0);
   const totalInvoiced  = Number(kpis.totalInvoiced  ?? 0);
   const totalCollected = Number(kpis.totalCollected ?? 0);
   const outstanding    = Number(kpis.outstanding    ?? 0);
@@ -133,7 +164,7 @@ export default function BillingAnalyticsPage() {
           loading={loading}
           sub={collectionRate >= 80 ? "Excellent" : collectionRate >= 60 ? "Needs attention" : "Critical"}
         />
-        <StatCard label="Defaulters"       value={defaulters.count ?? 0} color="red"  icon={<Users         className="w-5 h-5" />} loading={loading}
+        <StatCard label="Defaulters"       value={defaulters.count ?? 0} color="red"  icon={<Users         className="w-5 h-5" />} loading={loading || defaultersLoading}
           sub={defaulters.totalAmount ? fmt(defaulters.totalAmount) : undefined} />
       </div>
 

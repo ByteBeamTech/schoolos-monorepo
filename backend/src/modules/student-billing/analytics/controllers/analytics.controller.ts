@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
@@ -28,10 +29,12 @@ export class AnalyticsController {
   )
   getOverview(
     @CurrentUser() user: any,
+    @Query('academicYear') academicYear?: string,
   ) {
     return this.analytics.getOverview(
       user.tenantId,
       this.access.resolveAuthorizedBranchIds(user),
+      academicYear,
     );
   }
 }
