@@ -52,14 +52,22 @@ export function useDashboardStats(sessionId?: string) {
   const today = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
+    if (!sessionId) {
+      setStats(null);
+      setError(null);
+      setLoading(true);
+      return;
+    }
+
     const load = async () => {
       setError(null);
+      setLoading(true);
       try {
         const [studentsRes, notifRes, attendanceRes, billingRes] = await Promise.all([
-          apiClient.get(`/students/stats?academicYear=${sessionId ?? ""}`),
+          apiClient.get(`/students/stats?academicYear=${encodeURIComponent(sessionId)}`),
           apiClient.get("/notifications/stats"),
           apiClient.get(`/attendance/stats?date=${today}`),
-          apiClient.get(`/billing/invoices/stats${sessionId ? `?academicYear=${sessionId}` : ""}`),
+          apiClient.get(`/billing/invoices/stats?academicYear=${encodeURIComponent(sessionId)}`),
         ]);
 
         setStats({
