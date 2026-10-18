@@ -90,6 +90,25 @@ test.describe('local SchoolOS browser smoke tests', () => {
     const response = await uploadResponse;
     expect(response.status(), await response.text()).toBe(201);
     await expect(page.getByText(/TRANSFER CERTIFICATE.*transfer-certificate\.png/i).first()).toBeVisible();
+    const documentLink = page.getByRole('link', { name: /TRANSFER CERTIFICATE/ }).first();
+    const documentResponse = await page.request.get(await documentLink.getAttribute('href') as string);
+    expect(documentResponse.status()).toBe(200);
+
+    await page.locator('select').filter({ has: page.locator('option[value="STUDENT_PHOTO"]') }).selectOption('STUDENT_PHOTO');
+    const photoUploadResponse = page.waitForResponse((candidate) =>
+      candidate.request().method() === 'POST' &&
+      candidate.url().includes('/api/v1/students/') && candidate.url().endsWith('/files'),
+    );
+    await page.locator('input[type="file"]').last().setInputFiles({
+      name: 'student-photo.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    });
+    expect((await photoUploadResponse).status()).toBe(201);
+    await expect(page.locator('img[alt="Rohan Gupta"]')).toBeVisible();
   });
 
   test('billing and student routes load without redirecting', async ({ page }) => {

@@ -133,7 +133,7 @@ export class InvoiceService {
 
   // ── Generate ──────────────────────────────────────────────────────────────
   async generate(tenantId: string, dto: GenerateInvoiceDto, actorId: string) {
-    const dueDate = new Date(dto.dueDate);
+    const dueDate = dto.dueDate ? new Date(dto.dueDate) : new Date();
     const plan = await this.prisma.feePlan.findFirst({
       where:   { id: dto.feePlanId, tenantId },
       include: { feeItems: { where: { isOptional: false, AND: [{ OR: [{ effectiveFrom: null }, { effectiveFrom: { lte: dueDate } }] }, { OR: [{ effectiveUntil: null }, { effectiveUntil: { gt: dueDate } }] }] }, orderBy: { sortOrder: 'asc' } } },
@@ -159,13 +159,28 @@ export class InvoiceService {
       }
     }
 
-    if (!plan.feeItems.length) throw new BadRequestException('Fee plan has no items.');
+    const ruleIds = [...new Set(plan.feeItems
+      .map((item: any) => item.billingRuleId)
+      .filter((id: string | null | undefined): id is string => Boolean(id)))];
+    const rules = ruleIds.length
+      ? await this.prisma.billingRule.findMany({ where: { id: { in: ruleIds }, tenantId } })
+      : [];
+    const ruleById = new Map(rules.map((rule: any) => [rule.id, rule]));
+    const billableItems = plan.feeItems.filter((item: any) => {
+      if (!item.billingRuleId) return true; // legacy items remain manually billable
+      const rule = ruleById.get(item.billingRuleId);
+      return Boolean(rule?.billingMonths?.includes(dueDate.getMonth() + 1));
+    });
+
+    if (!billableItems.length) {
+      throw new BadRequestException('No fee items are scheduled for the selected billing month.');
+    }
 
     // Build academic items. Money arithmetic in Decimal end-to-end (D-9):
     // GST is a percentage of the amount, the exact case where float drifts.
     // Round GST explicitly to 2dp (paise) with Decimal rather than the old
     // Math.round(x*rate/100*100)/100 float dance.
-    const itemData: any[] = plan.feeItems.map((item: any) => {
+    const itemData: any[] = billableItems.map((item: any) => {
       const amount    = new Prisma.Decimal(item.amount);
       const gstRate   = new Prisma.Decimal(item.gstRate ?? 0);
       const gstAmount = amount.times(gstRate).dividedBy(100).toDecimalPlaces(2);
@@ -278,7 +293,8 @@ export class InvoiceService {
       if (resolved?.feePlanId !== dto.feePlanId) continue; // superseded by a more specific section override
 
       try {
-        await this.generate(tenantId, { studentId: student.id, feePlanId: dto.feePlanId, dueDate: dto.dueDate }, actorId);
+        const invoice = await this.generate(tenantId, { studentId: student.id, feePlanId: dto.feePlanId, dueDate: dto.dueDate }, actorId);
+        await this.send(tenantId, invoice.id, actorId);
         results.generated++;
       } catch (err: any) {
         results.skipped++;

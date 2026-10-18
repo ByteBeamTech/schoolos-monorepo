@@ -181,6 +181,7 @@ export class AppModule implements NestModule {
         { path: 'health', method: RequestMethod.GET },
         'auth/(.*)',
 	'superadmin/(.*)',
+        'storage/(.*)',
         'webhooks/(.*)', // Webhooks tenant-agnostic hote hain, isliye exclude zaroori hai
         // PR-5B fix: onboarding/(.*) missing tha yahan -- POST
         // onboarding/tenant is inherently tenant-agnostic (it CREATES a
@@ -206,6 +207,7 @@ export class AppModule implements NestModule {
         { path: 'health', method: RequestMethod.GET },
         'auth/(.*)',
         'superadmin/(.*)',
+        'storage/(.*)',
         'webhooks/(.*)',
         'onboarding/(.*)', // same rationale as TenantMiddleware's exclusion above
       )

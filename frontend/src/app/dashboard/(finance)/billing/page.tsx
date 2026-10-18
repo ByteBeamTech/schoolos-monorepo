@@ -206,15 +206,18 @@ export default function BillingPage() {
   // ── Generate invoice ─────────────────────────────────────────────────────
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [savingInvoice,   setSavingInvoice]   = useState(false);
-  const [invoiceForm, setInvoiceForm] = useState({ studentId: "", feePlanId: "", dueDate: "" });
+  const defaultDueDate = new Date().toISOString().slice(0, 10);
+  const [invoiceForm, setInvoiceForm] = useState({ studentId: "", feePlanId: "", dueDate: defaultDueDate });
 
   const generateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingInvoice(true);
     try {
-      await apiClient.post("/billing/invoices/generate", invoiceForm);
+      const generated = await apiClient.post("/billing/invoices/generate", invoiceForm);
+      await apiClient.patch(`/billing/invoices/${generated.data.id}/send`);
       setShowInvoiceForm(false);
-      setInvoiceForm({ studentId: "", feePlanId: "", dueDate: "" });
+      setInvoiceForm({ studentId: "", feePlanId: "", dueDate: defaultDueDate });
+      toast.success("Monthly fee generated and reminder sent.");
       refetchInvoices();
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Failed to generate invoice");
@@ -230,7 +233,7 @@ export default function BillingPage() {
   // as an explicit "this may take a moment" note, not implied instant.
   const [showBulkForm, setShowBulkForm] = useState(false);
   const [savingBulk, setSavingBulk] = useState(false);
-  const [bulkForm, setBulkForm] = useState({ feePlanId: "", dueDate: "" });
+  const [bulkForm, setBulkForm] = useState({ feePlanId: "", dueDate: defaultDueDate });
   const [bulkResult, setBulkResult] = useState<{ generated: number; skipped: number; errors: string[] } | null>(null);
 
   const bulkGenerateInvoices = async (e: React.FormEvent) => {
@@ -241,7 +244,7 @@ export default function BillingPage() {
       const res = await apiClient.post("/billing/invoices/bulk-generate", bulkForm);
       setBulkResult(res.data);
       setShowBulkForm(false);
-      setBulkForm({ feePlanId: "", dueDate: "" });
+      setBulkForm({ feePlanId: "", dueDate: defaultDueDate });
       refetchInvoices();
     } catch (err: any) {
       toast.error(err?.response?.data?.message ?? "Failed to bulk generate invoices");

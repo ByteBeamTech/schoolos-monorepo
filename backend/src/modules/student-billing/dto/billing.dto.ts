@@ -101,13 +101,13 @@ export class ReplaceFeePlanAssignmentDto {
 export class GenerateInvoiceDto {
   @ApiProperty() @IsString() @IsNotEmpty() studentId!: string;
   @ApiProperty() @IsString() @IsNotEmpty() feePlanId!: string;
-  @ApiProperty() @IsDateString() dueDate!: string;
+  @ApiPropertyOptional() @IsDateString() @IsOptional() dueDate?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() notes?: string;
 }
 
 export class BulkGenerateInvoicesDto {
   @ApiProperty() @IsString() @IsNotEmpty() feePlanId!: string;
-  @ApiProperty() @IsDateString() dueDate!: string;
+  @ApiPropertyOptional() @IsDateString() @IsOptional() dueDate?: string;
 }
 
 export enum PaymentGateway {
