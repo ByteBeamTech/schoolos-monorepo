@@ -8,7 +8,7 @@
 // flagged during the Sprint 1 reuse audit as something to do once this
 // page existed; this commit is that replacement.
 
-import { use, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -24,8 +24,8 @@ import { DISCOUNT_CATEGORIES, DISCOUNT_TYPES } from "@/lib/billing/discount-opti
 import { apiClient } from "@/lib/api";
 import { useToast } from "@/lib/use-toast";
 
-export default function StudentFinancialProfilePage({ params }: { params: Promise<{ studentId: string }> }) {
-  const { studentId } = use(params);
+export default function StudentFinancialProfilePage({ params }: { params: { studentId: string } }) {
+  const { studentId } = params;
   const router = useRouter();
 
   const { data: student, loading: studentLoading } = useStudent(studentId);

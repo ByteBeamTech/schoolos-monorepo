@@ -88,12 +88,16 @@ function deriveLateFee(invoice: Invoice): number {
   if (!fees || fees.length === 0) return 0;
   return fees
     .filter((f) => f.status !== "WAIVED" && f.status !== "REVERSED")
-    .reduce((sum, f) => sum + Math.max(0, (f.amount ?? 0) - (f.amountWaived ?? 0)), 0);
+    .reduce(
+      (sum, f) =>
+        sum + Math.max(0, Number(f.amount ?? 0) - Number(f.amountWaived ?? 0)),
+      0,
+    );
 }
 
 function deriveDiscount(invoice: Invoice): number {
   const items = (invoice.items ?? []) as Array<{ discountAmount?: number }>;
-  return items.reduce((sum, item) => sum + (item.discountAmount ?? 0), 0);
+  return items.reduce((sum, item) => sum + Number(item.discountAmount ?? 0), 0);
 }
 
 /**
@@ -105,11 +109,12 @@ function deriveDiscount(invoice: Invoice): number {
 export function toFeePeriod(invoice: Invoice): FeePeriod {
   const lateFee = deriveLateFee(invoice);
   const discount = deriveDiscount(invoice);
-  const amount = invoice.totalAmount - discount; // totalAmount already reflects billed amount; discount is shown separately per FR-CARD-01
-  const remaining = Math.max(0, invoice.dueAmount + lateFee);
+  const amount = Number(invoice.totalAmount ?? 0) - discount; // totalAmount already reflects billed amount; discount is shown separately per FR-CARD-01
+  const dueAmount = Number(invoice.dueAmount ?? 0);
+  const remaining = Math.max(0, dueAmount + lateFee);
 
   let status: FeePeriodStatus;
-  if (invoice.status === "PAID" || invoice.dueAmount <= 0) {
+  if (invoice.status === "PAID" || dueAmount <= 0) {
     status = "PAID";
   } else if (invoice.isOverdue) {
     status = "OVERDUE";
