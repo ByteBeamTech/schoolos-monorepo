@@ -3,7 +3,6 @@
 import { Test } from '@nestjs/testing';
 import { InvoiceBuilderService } from './invoice-builder.service';
 import { InvoiceService } from '../../invoice/services/invoice.service';
-import { LedgerService } from '../../ledger/services/ledger.service';
 import { FeePlanAssignmentService } from '../../plans/services/fee-plan-assignment.service';
 import { MODULE_CHARGE_PROVIDERS } from '../providers/module-charge-provider.interface';
 
@@ -11,7 +10,6 @@ describe('InvoiceBuilderService', () => {
   let service: InvoiceBuilderService;
   let tx: any;
   let invoiceService: any;
-  let ledger: any;
   let feePlanAssignments: any;
   let moduleProviders: any[];
 
@@ -33,10 +31,12 @@ describe('InvoiceBuilderService', () => {
       feePlan:  { findUnique: jest.fn().mockResolvedValue(plan) },
       billingRule: { findMany: jest.fn().mockResolvedValue([rule]) },
       discount: { findMany: jest.fn().mockResolvedValue([]) },
-      invoice:  { create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'inv-new', ...data })) },
+      invoice:  {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'inv-new', ...data })),
+      },
     };
     invoiceService = { generateInvoiceNumber: jest.fn().mockResolvedValue('INV-0001') };
-    ledger = { recordInvoiceIssued: jest.fn() };
     feePlanAssignments = { resolveForClassSection: jest.fn().mockResolvedValue(assignment) };
     moduleProviders = [];
 
@@ -44,7 +44,6 @@ describe('InvoiceBuilderService', () => {
       providers: [
         InvoiceBuilderService,
         { provide: InvoiceService, useValue: invoiceService },
-        { provide: LedgerService, useValue: ledger },
         { provide: FeePlanAssignmentService, useValue: feePlanAssignments },
         { provide: MODULE_CHARGE_PROVIDERS, useValue: moduleProviders },
       ],
@@ -57,7 +56,6 @@ describe('InvoiceBuilderService', () => {
     expect(result.feePlanId).toBe('fp-1');
     expect(result.invoiceId).toBe('inv-new');
     expect(tx.invoice.create).toHaveBeenCalledTimes(1);
-    expect(ledger.recordInvoiceIssued).toHaveBeenCalledTimes(1);
   });
 
   it('a component NOT due this period (month not in billingMonths) produces no invoice -- a valid, successful outcome', async () => {

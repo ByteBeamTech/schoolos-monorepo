@@ -10,7 +10,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { InvoiceService } from '../../invoice/services/invoice.service';
-import { LedgerService } from '../../ledger/services/ledger.service';
 import { FeePlanAssignmentService } from '../../plans/services/fee-plan-assignment.service';
 import { resolveClassSectionAsOf } from '../../plans/utils/student-resolution.util';
 import { lastDayOfMonth } from '../../plans/utils/billing-period.util';
@@ -25,7 +24,6 @@ export interface BuildForStudentResult {
 export class InvoiceBuilderService {
   constructor(
     private readonly invoiceService: InvoiceService,
-    private readonly ledger: LedgerService,
     private readonly feePlanAssignments: FeePlanAssignmentService,
     @Inject(MODULE_CHARGE_PROVIDERS) private readonly moduleProviders: ModuleChargeProvider[],
   ) {}
@@ -113,6 +111,19 @@ export class InvoiceBuilderService {
 
     if (!itemData.length) return { feePlanId: assignment.feePlanId, invoiceId: null }; // §7: nothing due, a valid outcome
 
+    const periodStart = new Date(periodYear, periodMonth - 1, 1);
+    const periodEnd = new Date(periodYear, periodMonth, 1);
+    const existing = await tx.invoice.findFirst({
+      where: {
+        tenantId, branchId, studentId,
+        dueDate: { gte: periodStart, lt: periodEnd },
+        status: { not: 'CANCELLED' },
+      },
+      orderBy: [{ dueAmount: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true },
+    });
+    if (existing) return { feePlanId: assignment.feePlanId, invoiceId: existing.id };
+
     // Discounts -- identical query to InvoiceService.generate(), same
     // conventions, not reinterpreted.
     const approvedDiscounts = await tx.discount.findMany({
@@ -155,16 +166,6 @@ export class InvoiceBuilderService {
         dueDate,
         items: { create: itemData },
       },
-    });
-
-    // Closes the long-standing InvoiceItem.feeHeadId gap as a side
-    // effect of this engine populating it correctly from the start --
-    // not a separate fix, per Phase 5's own finding.
-    await this.ledger.recordInvoiceIssued(tx, {
-      tenantId, branchId, studentId,
-      occurredAt: new Date(),
-      amount: totalAmount,
-      referenceId: invoice.id,
     });
 
     return { feePlanId: assignment.feePlanId, invoiceId: invoice.id };

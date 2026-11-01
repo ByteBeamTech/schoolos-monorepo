@@ -122,7 +122,7 @@ export function FeePeriodCard({
       {/* Remaining + Actions (FR-CARD-02; FR-COLLECT-07's carved-out click zone) */}
       <div className="text-right flex-shrink-0">
         <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
-          {fmt(period.remaining)}
+          {fmt(period.status === "PAID" ? period.paidAmount : period.remaining)}
         </p>
         <button
           type="button"

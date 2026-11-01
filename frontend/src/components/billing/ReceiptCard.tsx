@@ -20,6 +20,10 @@ export interface ReceiptCardData {
   periodLabel: string;
   invoiceId: string;
   invoiceNumber: string;
+  studentName?: string;
+  admissionNumber?: string;
+  className?: string;
+  academicYear?: string;
 }
 
 interface ReceiptCardProps {
@@ -45,9 +49,9 @@ export function ReceiptCard({
   const methodLabel = PAYMENT_METHODS.find((m) => m.value === receipt.method)?.label ?? receipt.method;
 
   return (
-    <div className="rounded-lg border bg-white" style={{ borderColor: "var(--border-light)" }}>
+    <article className="receipt-card overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm print:rounded-none print:border-slate-300 print:shadow-none">
       {(onPrevious || onNext) && (
-        <div className="flex items-center justify-between px-4 py-2 border-b text-xs" style={{ borderColor: "var(--border-light)" }}>
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5 text-xs">
           <button
             onClick={onPrevious}
             disabled={!hasPrevious}
@@ -65,51 +69,93 @@ export function ReceiptCard({
         </div>
       )}
 
-      <div className="px-4 py-4 space-y-3">
-        <div>
-          <p className="font-semibold" style={{ color: "var(--text-primary)" }}>Receipt {receipt.receiptNumber}</p>
-          <p className="text-sm text-slate-500 mt-0.5">
-            {fmt(receipt.amount)}{methodLabel ? ` · ${methodLabel}` : ""} · {fmtDateTime(receipt.paidAt)}
-          </p>
-          {receipt.payerLabel && <p className="text-sm text-slate-500">Paid by: {receipt.payerLabel}</p>}
-        </div>
+      <div className="receipt-content">
+        <header className="relative overflow-hidden bg-slate-950 px-6 py-6 text-white print:bg-slate-950">
+          <div className="absolute -right-10 -top-16 h-40 w-40 rounded-full bg-blue-500/20" />
+          <div className="relative flex items-start justify-between gap-6">
+            <div>
+              <div className="mb-3 flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500 text-lg font-bold">S</span>
+                <div>
+                  <p className="text-lg font-bold tracking-tight">SchoolOS</p>
+                  <p className="text-[10px] uppercase tracking-[0.22em] text-slate-400">School management platform</p>
+                </div>
+              </div>
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-blue-300">Official fee receipt</p>
+            </div>
+            <div className="text-right">
+              <p className="font-mono text-lg font-bold">{receipt.receiptNumber}</p>
+              <p className="mt-1 text-xs text-slate-400">{fmtDateTime(receipt.paidAt)}</p>
+            </div>
+          </div>
+        </header>
 
-        <div className="text-sm">
-          <span className="text-slate-400">For: </span>
-          <span style={{ color: "var(--text-primary)" }}>{receipt.periodLabel}</span>
-          <button
-            onClick={() => onViewInvoice(receipt.invoiceId)}
-            className="print:hidden ml-2 text-blue-600 hover:underline text-xs"
-          >
-            › View Invoice ({receipt.invoiceNumber})
-          </button>
-          {onViewProfile && (
-            <button
-              onClick={onViewProfile}
-              className="print:hidden ml-2 text-blue-600 hover:underline text-xs"
-            >
-              › Student Profile
-            </button>
+        <div className="space-y-5 px-6 py-6">
+          <div className="flex items-end justify-between gap-4 border-b border-slate-100 pb-5">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Amount received</p>
+              <p className="mt-1 text-3xl font-bold tracking-tight text-slate-950">{fmt(receipt.amount)}</p>
+            </div>
+            <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+              ✓ Payment successful
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
+            <ReceiptField label="Student" value={receipt.studentName ?? "Student"} />
+            <ReceiptField label="Admission no." value={receipt.admissionNumber ?? "—"} />
+            <ReceiptField label="Fee period" value={receipt.periodLabel} />
+            <ReceiptField label="Academic year" value={receipt.academicYear ?? "—"} />
+            <ReceiptField label="Payment method" value={methodLabel ?? "—"} />
+            <ReceiptField label="Invoice" value={receipt.invoiceNumber} />
+          </div>
+
+          {receipt.payerLabel && (
+            <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm">
+              <span className="text-xs text-slate-400">Paid by</span>
+              <p className="mt-0.5 font-medium text-slate-800">{receipt.payerLabel}</p>
+            </div>
           )}
+
+          <div className="flex flex-wrap gap-2 print:hidden">
+            <button onClick={() => onViewInvoice(receipt.invoiceId)} className="text-xs font-medium text-blue-600 hover:underline">
+              View invoice →
+            </button>
+            {onViewProfile && (
+              <button onClick={onViewProfile} className="text-xs font-medium text-blue-600 hover:underline">
+                Student profile →
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* FR-RECEIPT-08: creation only -- print/reprint events are not
-            tracked by the backend today, so none are fabricated here. */}
-        <div className="text-xs text-slate-400 border-t pt-2" style={{ borderColor: "var(--border-light)" }}>
-          Created {fmtDateTime(receipt.paidAt)}
-        </div>
+        <footer className="border-t border-dashed border-slate-200 bg-slate-50 px-6 py-4 text-xs text-slate-500">
+          <div className="flex items-center justify-between gap-4">
+            <span>This is a computer-generated receipt.</span>
+            <span className="font-mono text-[10px] text-slate-400">ID {receipt.receiptId}</span>
+          </div>
+        </footer>
 
         <button
           onClick={() => onPrint(receipt.receiptId)}
-          className="print:hidden text-sm text-blue-600 hover:underline"
+          className="print:hidden mx-6 mb-5 text-sm font-medium text-blue-600 hover:underline"
         >
-          Print
+          Print receipt
         </button>
         {/* FDD Section 25 / prior review: no receipt-PDF network route
             exists today (ReceiptService.getReceiptUrl() has no controller)
             -- Download is deliberately omitted rather than shown as a dead
             button. Print uses the browser's own print of this card. */}
       </div>
+    </article>
+  );
+}
+
+function ReceiptField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+      <p className="mt-1 font-medium text-slate-800">{value}</p>
     </div>
   );
 }

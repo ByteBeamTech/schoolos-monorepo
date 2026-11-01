@@ -34,6 +34,8 @@ export interface FeePeriod {
   discount: number;
   /** FR-CARD-02: amount + lateFee - discount - already paid. */
   remaining: number;
+  /** Amount actually collected for this invoice, used by Paid rows. */
+  paidAmount: number;
   dueDate: string;
   status: FeePeriodStatus;
   daysOverdue: number;
@@ -111,6 +113,11 @@ export function toFeePeriod(invoice: Invoice): FeePeriod {
   const discount = deriveDiscount(invoice);
   const amount = Number(invoice.totalAmount ?? 0) - discount; // totalAmount already reflects billed amount; discount is shown separately per FR-CARD-01
   const dueAmount = Number(invoice.dueAmount ?? 0);
+  const recordedPaidAmount = Number(invoice.paidAmount ?? 0);
+  const successfulPayments = (invoice.payments ?? [])
+    .filter((payment) => payment.status === "SUCCESS")
+    .reduce((sum, payment) => sum + Number(payment.amount ?? 0), 0);
+  const paidAmount = recordedPaidAmount > 0 ? recordedPaidAmount : successfulPayments;
   const remaining = Math.max(0, dueAmount + lateFee);
 
   let status: FeePeriodStatus;
@@ -133,6 +140,7 @@ export function toFeePeriod(invoice: Invoice): FeePeriod {
     lateFee,
     discount,
     remaining,
+    paidAmount,
     dueDate: invoice.dueDate,
     status,
     daysOverdue: invoice.isOverdue ? daysOverdue(invoice.dueDate) : 0,
@@ -155,7 +163,30 @@ export function groupFeePeriods(invoices: Invoice[]): GroupedFeePeriods {
   const relevant = invoices.filter(
     (inv) => inv.status !== "DRAFT" && inv.status !== "CANCELLED",
   );
-  const periods = relevant.map(toFeePeriod);
+  // Legacy/manual generation could create two invoices for the same student
+  // and month. Render one canonical period: prefer the invoice with money
+  // still outstanding, otherwise keep the newest paid invoice.
+  const canonical = new Map<string, Invoice>();
+  for (const invoice of relevant) {
+    const date = new Date(invoice.dueDate);
+    const category = deriveCategory(invoice);
+    const key = `${date.getFullYear()}-${date.getMonth()}-${category}`;
+    const current = canonical.get(key);
+    if (!current) {
+      canonical.set(key, invoice);
+      continue;
+    }
+    const currentOutstanding = Number(current.dueAmount ?? 0);
+    const nextOutstanding = Number(invoice.dueAmount ?? 0);
+    if (
+      nextOutstanding > currentOutstanding ||
+      (nextOutstanding === currentOutstanding &&
+        new Date(invoice.createdAt).getTime() > new Date(current.createdAt).getTime())
+    ) {
+      canonical.set(key, invoice);
+    }
+  }
+  const periods = [...canonical.values()].map(toFeePeriod);
 
   const due = periods
     .filter((p) => p.status === "DUE" || p.status === "OVERDUE")

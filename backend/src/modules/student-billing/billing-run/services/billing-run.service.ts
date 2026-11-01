@@ -6,6 +6,7 @@ import { Injectable, NotFoundException, ConflictException, Logger } from '@nestj
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../../core/compliance/audit.service';
 import { InvoiceBuilderService } from './invoice-builder.service';
+import { InvoiceService } from '../../invoice/services/invoice.service';
 import { BILLABLE_STUDENT_STATUSES, isStudentEligibleForPeriod } from '../../plans/utils/student-resolution.util';
 import { formatPeriodLabel } from '../../plans/utils/billing-period.util';
 import { BillingRunTrigger, AttemptStatus, Prisma } from '@prisma/client';
@@ -18,6 +19,7 @@ export class BillingRunService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly invoiceBuilder: InvoiceBuilderService,
+    private readonly invoiceService: InvoiceService,
   ) {}
 
   // Same advisory-lock pattern already established in invoice.service.ts/
@@ -125,14 +127,14 @@ export class BillingRunService {
     for (const attempt of attempts) {
       const lockKey = this.lockKeyFor(billingRunId, attempt.studentId);
       try {
-        await this.prisma.$transaction(async (tx) => {
+        const result = await this.prisma.$transaction(async (tx) => {
           await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock($1)`, lockKey);
 
           // Re-read inside the lock -- a concurrent execute() call may
           // have already claimed this attempt between the outer findMany
           // and this transaction starting.
           const current = await tx.billingRunAttempt.findUnique({ where: { id: attempt.id } });
-          if (!current || current.status === 'SUCCEEDED') return;
+          if (!current || current.status === 'SUCCEEDED') return null;
 
           await tx.billingRunAttempt.update({ where: { id: attempt.id }, data: { status: 'PROCESSING' } });
 
@@ -147,7 +149,18 @@ export class BillingRunService {
               completedAt: new Date(), errorMessage: null,
             },
           });
+          return result;
         });
+        if (result?.invoiceId) {
+          try {
+            await this.invoiceService.send(run.tenantId, result.invoiceId, 'system');
+          } catch (error: any) {
+            // The invoice and attempt are already committed. Keep them
+            // successful so a notification/send retry cannot create a
+            // duplicate invoice on the next billing run.
+            this.logger.error(`Invoice ${result.invoiceId} was generated but could not be issued: ${error?.message ?? error}`);
+          }
+        }
       } catch (err: any) {
         // Deliberately outside the transaction above -- the failed
         // transaction has already rolled back, so this write starts

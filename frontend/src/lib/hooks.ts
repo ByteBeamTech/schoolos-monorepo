@@ -339,6 +339,12 @@ export interface Invoice {
   payments?: Array<{
     id: string; amount: number; status: string; paidAt?: string; paymentMethod?: string;
     payerId?: string; payerName?: string;
+    payer?: { firstName: string; lastName: string } | null;
+    refunds?: Array<{
+      id: string; amount: number; reason: string; status: string;
+      gatewayRefundId?: string | null; initiatedBy: string;
+      processedAt?: string | null; createdAt: string;
+    }>;
     // M6: derived field, replaces the removed PaymentStatus.REFUNDED/
     // PARTIALLY_REFUNDED values -- see refund/refund-status.util.ts (backend).
     refundState?: "NONE" | "PARTIAL" | "FULL";
@@ -355,7 +361,7 @@ export interface InvoiceStats {
 // -- the last of these resolves the previously-unverified "is Transport
 // route data reachable" question (FDD Section 24, item 12) for real.
 export interface StudentDetail extends Student {
-  transportAssignment?: { route?: { id: string; name: string } } | null;
+  transportAssignment?: { route?: { id: string; name: string; feeAmount?: number } } | null;
 }
 export function useStudent(id?: string) {
   return useApi<StudentDetail>(id ? `/students/${id}` : "", [id]);
@@ -367,7 +373,7 @@ export function useInvoices(filters: { studentId?: string; status?: string; acad
   if (filters.status)      params.set("status",      filters.status);
   if (filters.academicYear) params.set("academicYear", filters.academicYear);
   const q = params.toString();
-  return useApi<Invoice[]>(`/billing/invoices${q ? `?${q}` : ""}`, [q]);
+  return useApi<PaginatedInvoices>(`/billing/invoices${q ? `?${q}` : ""}`, [q]);
 }
 // Single-invoice fetch (Receipt Detail Sprint 3, and Invoice Detail later)
 // -- reuses the exact same GET /billing/invoices/:id findById() the

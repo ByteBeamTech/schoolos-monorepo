@@ -143,6 +143,23 @@ export class InvoiceService {
     const student = await this.prisma.student.findFirst({ where: { id: dto.studentId, tenantId } });
     if (!student) throw new NotFoundException(`Student not found: ${dto.studentId}`);
 
+    // A student can have at most one active invoice for a fee period. This
+    // guard covers both manual generation and a scheduler/manual-run race;
+    // the billing-run path performs the same check inside its transaction.
+    const periodStart = new Date(dueDate.getFullYear(), dueDate.getMonth(), 1);
+    const periodEnd = new Date(dueDate.getFullYear(), dueDate.getMonth() + 1, 1);
+    const existing = await this.prisma.invoice.findFirst({
+      where: {
+        tenantId,
+        branchId: student.branchId,
+        studentId: student.id,
+        dueDate: { gte: periodStart, lt: periodEnd },
+        status: { not: 'CANCELLED' },
+      },
+      orderBy: [{ dueAmount: 'desc' }, { createdAt: 'desc' }],
+    });
+    if (existing) return existing;
+
     // Manual generation must use the historical class/section placement at
     // the invoice due date, not the student's current placement. Rejecting
     // a stale or mismatched plan prevents bypassing assignment versioning.
@@ -329,6 +346,14 @@ export class InvoiceService {
         where,
         include: {
           items:   { orderBy: { sortOrder: 'asc' } },
+          payments: {
+            orderBy: { createdAt: 'desc' },
+            include: {
+              refunds: true,
+              payer: { select: { firstName: true, lastName: true } },
+            },
+          },
+          receipts: { orderBy: { createdAt: 'desc' } },
           student: {
             select: {
               id: true,
@@ -350,7 +375,14 @@ export class InvoiceService {
     // without this field, every "Overdue" badge and filter that reads
     // invoice.status === 'OVERDUE' directly would silently stop matching.
     return {
-      data: data.map((inv) => ({ ...inv, isOverdue: isInvoiceOverdue(inv) })),
+      data: data.map((inv: any) => ({
+        ...inv,
+        isOverdue: isInvoiceOverdue(inv),
+        payments: (inv.payments ?? []).map((p: any) => ({
+          ...p,
+          refundState: derivePaymentRefundState(p, refundedAmountFor(p.refunds ?? [])),
+        })),
+      })),
       meta: { total, page, limit, lastPage: Math.ceil(total / limit) },
     };
   }
@@ -375,7 +407,13 @@ export class InvoiceService {
         // can be derived below -- replaces the removed PaymentStatus.
         // REFUNDED/PARTIALLY_REFUNDED values this frontend page's payment
         // badges used to read directly.
-        payments: { orderBy: { createdAt: 'desc' }, include: { refunds: true } },
+        payments: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            refunds: true,
+            payer: { select: { firstName: true, lastName: true } },
+          },
+        },
         // FEE-1: an invoice now has many receipts (one per payment), so this
         // returns an ARRAY where it previously returned a single object or
         // null. Ordered newest-first to match the sibling payments include.

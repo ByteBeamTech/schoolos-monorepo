@@ -34,10 +34,10 @@ export default function FeeStructurePage() {
       <PageHeader title="Fee Structure" subtitle="Fee plans, fee heads, and class/section assignments" />
       <Tabs defaultValue="plans">
         <TabsList>
-          <TabsTrigger value="plans">Fee Plans</TabsTrigger>
           <TabsTrigger value="heads">Fee Heads</TabsTrigger>
           <TabsTrigger value="rules">Billing Rules</TabsTrigger>
           <TabsTrigger value="assignments">Assignments</TabsTrigger>
+          <TabsTrigger value="plans">Fee Plans</TabsTrigger>
         </TabsList>
         <TabsContent value="plans"><FeePlansTab /></TabsContent>
         <TabsContent value="heads"><FeeHeadsTab /></TabsContent>

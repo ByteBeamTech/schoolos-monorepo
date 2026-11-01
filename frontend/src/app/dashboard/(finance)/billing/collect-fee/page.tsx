@@ -13,7 +13,7 @@ import { StudentSummaryCard } from "@/components/billing/StudentSummaryCard";
 import { DueUpcomingPaidSections } from "@/components/billing/DueUpcomingPaidSections";
 import { PaymentPanel } from "@/components/billing/PaymentPanel";
 import { ReceiptCard, type ReceiptCardData } from "@/components/billing/ReceiptCard";
-import { useStudentBilling, useStudent, type Student } from "@/lib/hooks";
+import { useStudentBilling, useStudent, type Student, type StudentDetail } from "@/lib/hooks";
 import { groupFeePeriods, computeOutstandingSummary, type FeePeriod } from "@/lib/billing/fee-period";
 import { submitCollection, type CollectionInput, type CollectionResult } from "@/lib/billing/collect";
 import type { AllocationLine } from "@/lib/billing/allocation";
@@ -23,7 +23,7 @@ export default function CollectFeePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
-  const [student, setStudent] = useState<Student | null>(null);
+  const [student, setStudent] = useState<StudentDetail | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [lastResult, setLastResult] = useState<CollectionResult | null>(null);
@@ -152,6 +152,7 @@ export default function CollectFeePage() {
                     outstanding={outstanding}
                     discounts={discounts}
                     feePlans={feePlans}
+                    transportFeeAmount={student.transportAssignment?.route?.feeAmount}
                     onViewProfile={() => router.push(`/dashboard/students/${student.id}`)}
                   />
 
@@ -209,6 +210,9 @@ function CollectionOutcome({
     periodLabel: r.label,
     invoiceId: r.invoiceId,
     invoiceNumber: r.invoiceNumber,
+    studentName: student ? `${student.firstName} ${student.lastName}` : undefined,
+    admissionNumber: student?.admissionNumber,
+    className: student?.section?.class?.name,
   }));
   const failures = result.results.filter((r) => r.status === "failed");
 

@@ -23,6 +23,13 @@
     width: 100%;
     padding: 0;
   }
+
+  .receipt-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin: 0 auto 24px;
+    max-width: 760px;
+  }
 }
 
 /* ── Google Fonts — Geist (clean, modern, legible at all sizes) ──────────── */

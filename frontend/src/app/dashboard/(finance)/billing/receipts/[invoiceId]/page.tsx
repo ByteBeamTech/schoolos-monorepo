@@ -29,10 +29,10 @@ export default function ReceiptDetailPage() {
   // sprint could avoid it if this page is reached with student context
   // already in memory (e.g. from Collect Fee), but a standalone/refreshed
   // visit has no such context to rely on.
-  const { data: siblingInvoices } = useInvoices({ studentId: invoice?.student.id });
+  const { data: siblingInvoiceResult } = useInvoices({ studentId: invoice?.student.id });
 
   const allReceipts: ReceiptCardData[] = useMemo(() => {
-    const source = siblingInvoices ?? (invoice ? [invoice] : []);
+    const source = siblingInvoiceResult?.data ?? (invoice ? [invoice] : []);
     return source
       .flatMap((inv) =>
         (inv.receipts ?? []).map((r) => {
@@ -43,20 +43,22 @@ export default function ReceiptDetailPage() {
             amount: r.amount,
             method: payment?.paymentMethod,
             paidAt: payment?.paidAt ?? r.createdAt,
-            // Honest fallback: a free-text payer name is shown directly;
-            // a guardian-linked payment has no resolvable name from this
-            // fetch alone (Invoice.student doesn't include guardianLinks)
-            // -- "Guardian" is a deliberate, generic placeholder, not a
-            // fabricated name.
-            payerLabel: payment?.payerName ?? (payment?.payerId ? "Guardian" : undefined),
+            payerLabel: payment?.payerName
+              ?? (payment?.payer
+                ? `${payment.payer.firstName} ${payment.payer.lastName}`.trim()
+                : undefined)
+              ?? (payment?.payerId ? "Guardian" : undefined),
             periodLabel: deriveLabel(inv),
             invoiceId: inv.id,
             invoiceNumber: inv.invoiceNumber,
+            studentName: `${inv.student.firstName} ${inv.student.lastName}`,
+            admissionNumber: inv.student.admissionNumber,
+            academicYear: inv.academicYear,
           };
         }),
       )
       .sort((a, b) => new Date(b.paidAt ?? 0).getTime() - new Date(a.paidAt ?? 0).getTime());
-  }, [siblingInvoices, invoice]);
+  }, [siblingInvoiceResult, invoice]);
 
   const currentIndex = useMemo(() => {
     if (requestedReceiptId) {

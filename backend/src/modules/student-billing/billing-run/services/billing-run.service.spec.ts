@@ -6,12 +6,14 @@ import { BillingRunService } from './billing-run.service';
 import { InvoiceBuilderService } from './invoice-builder.service';
 import { PrismaService } from '@infra/database/prisma.service';
 import { AuditService } from '../../../../core/compliance/audit.service';
+import { InvoiceService } from '../../invoice/services/invoice.service';
 
 describe('BillingRunService', () => {
   let service: BillingRunService;
   let prisma: any;
   let audit: any;
   let invoiceBuilder: any;
+  let invoiceService: any;
 
   const run = { id: 'run-1', tenantId: 't-1', branchId: 'b-1', periodLabel: 'April 2026', startedAt: null };
 
@@ -40,6 +42,7 @@ describe('BillingRunService', () => {
     };
     audit = { logCreate: jest.fn() };
     invoiceBuilder = { buildForStudent: jest.fn().mockResolvedValue({ feePlanId: 'fp-1', invoiceId: 'inv-1' }) };
+    invoiceService = { send: jest.fn().mockResolvedValue({}) };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -47,6 +50,7 @@ describe('BillingRunService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
         { provide: InvoiceBuilderService, useValue: invoiceBuilder },
+        { provide: InvoiceService, useValue: invoiceService },
       ],
     }).compile();
     service = module.get(BillingRunService);

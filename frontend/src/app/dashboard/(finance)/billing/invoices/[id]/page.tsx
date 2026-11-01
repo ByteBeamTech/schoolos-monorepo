@@ -2,7 +2,7 @@
 // frontend/src/app/dashboard/(finance)/billing/invoices/[id]/page.tsx
 // Invoice detail — line items, payments, receipt, activity, cancel
 
-import { use, useState }    from "react";
+import { useState }         from "react";
 import { useRouter }         from "next/navigation";
 import {
   ArrowLeft, Send, Printer, Download,
@@ -49,8 +49,8 @@ function paymentLabel(s: string, refundState?: string) {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id }   = use(params);
+export default function InvoiceDetailPage({ params }: { params: { id: string } }) {
+  const { id }   = params;
   const router   = useRouter();
   const { toast } = useToast();
 

@@ -84,6 +84,7 @@ export default function StudentFinancialProfilePage({ params }: { params: { stud
               discounts={discounts}
               feePlans={feePlans}
               transportRoute={transportRoute}
+              transportFeeAmount={student.transportAssignment?.route?.feeAmount}
               onViewProfile={() => router.push(`/dashboard/students/${studentId}`)}
             />
             <div className="flex gap-2">
@@ -115,9 +116,6 @@ export default function StudentFinancialProfilePage({ params }: { params: { stud
           } />
         </TabsContent>
 
-        {/* FR-PROFILE-02: labeled as incomplete, not presented as a
-            complete independent record -- no refund read endpoint exists
-            on the backend at all (Section 24 item 2). */}
         <TabsContent value="refunds">
           <RefundsTab invoices={invoices} />
         </TabsContent>
@@ -217,34 +215,49 @@ function ReceiptsTab({ invoices, onView }: { invoices: any[]; onView: (invoiceId
   );
 }
 
-/**
- * FR-PROFILE-02 / FDD Section 24 item 2: no refund read endpoint exists on
- * the backend at all. This tab shows only what's incidentally derivable
- * from payment.refundState -- never claims to be a complete refund
- * record, and says so plainly rather than implying more than it can back up.
- */
 function RefundsTab({ invoices }: { invoices: any[] }) {
-  const refundedPayments = invoices
-    .flatMap((inv) => (inv.payments ?? []).map((p: any) => ({ ...p, invoiceNumber: inv.invoiceNumber })))
-    .filter((p) => p.refundState && p.refundState !== "NONE");
+  const refunds = invoices
+    .flatMap((inv) =>
+      (inv.payments ?? []).flatMap((payment: any) =>
+        (payment.refunds ?? []).map((refund: any) => ({
+          ...refund,
+          paymentId: payment.id,
+          paymentMethod: payment.paymentMethod,
+          invoiceNumber: inv.invoiceNumber,
+        })),
+      ),
+    )
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  if (refunds.length === 0) {
+    return <p className="text-sm text-slate-400 text-center py-12">No refunds recorded for this student yet.</p>;
+  }
+
+  const statusVariant = (status: string) => {
+    if (status === "COMPLETED") return "success" as const;
+    if (status === "FAILED") return "error" as const;
+    return "warning" as const;
+  };
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-        This view is derived from payment records only — the backend has no dedicated refund record or refund history endpoint. It may not reflect every refund for this student.
-      </div>
-      {refundedPayments.length === 0 ? (
-        <p className="text-sm text-slate-400 text-center py-8">No refund activity found in this student's payment history.</p>
-      ) : (
-        <div className="rounded-lg border bg-white divide-y" style={{ borderColor: "var(--border-light)" }}>
-          {refundedPayments.map((p) => (
-            <div key={p.id} className="flex items-center justify-between px-4 py-3 text-sm">
-              <span>{fmt(p.amount)} · {p.invoiceNumber}</span>
-              <Badge label={p.refundState === "FULL" ? "Fully Refunded" : "Partially Refunded"} variant="warning" />
+    <div className="rounded-lg border bg-white divide-y" style={{ borderColor: "var(--border-light)" }}>
+      {refunds.map((refund) => (
+        <div key={refund.id} className="px-4 py-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-medium" style={{ color: "var(--text-primary)" }}>{fmt(refund.amount)}</p>
+              <p className="text-xs text-slate-400">
+                {refund.invoiceNumber} · {refund.paymentMethod ?? "Payment"} · {fmtDateTime(refund.processedAt ?? refund.createdAt)}
+              </p>
             </div>
-          ))}
+            <Badge label={refund.status} variant={statusVariant(refund.status)} />
+          </div>
+          <p className="text-xs text-slate-500 mt-1.5">{refund.reason}</p>
+          {refund.gatewayRefundId && (
+            <p className="text-xs text-slate-400 mt-1">Gateway reference: {refund.gatewayRefundId}</p>
+          )}
         </div>
-      )}
+      ))}
     </div>
   );
 }

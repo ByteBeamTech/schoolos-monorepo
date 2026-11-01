@@ -32,6 +32,7 @@ import { FeePlanAssignmentService } from './plans/services/fee-plan-assignment.s
 import { BillingRuleController }    from './billing-rules/controllers/billing-rule.controller';
 import { InvoiceBuilderService }    from './billing-run/services/invoice-builder.service';
 import { BillingRunService }        from './billing-run/services/billing-run.service';
+import { BillingCutoffScheduler }  from './billing-run/services/billing-cutoff.scheduler';
 import { BillingRunController }     from './billing-run/controllers/billing-run.controller';
 import { TransportChargeProvider }  from './billing-run/providers/transport-charge.provider';
 import { MODULE_CHARGE_PROVIDERS }  from './billing-run/providers/module-charge-provider.interface';
@@ -41,7 +42,7 @@ import { MODULE_CHARGE_PROVIDERS }  from './billing-run/providers/module-charge-
   imports: [ComplianceModule, StorageModule, AnalyticsModule,],
   providers: [FeePlansService, InvoiceService, PaymentService, DiscountService, ReconciliationService, ReceiptService, RefundService,
     LateFeeService, StandardDiscountService, GatewayFactory, StudentBillingAccessService, DiscountCategoryProvisioningService, LedgerService, FeeHeadService, PaymentAllocationService, RulesService, BillingRuleService, FeePlanAssignmentService,
-    InvoiceBuilderService, BillingRunService, TransportChargeProvider,
+    InvoiceBuilderService, BillingRunService, BillingCutoffScheduler, TransportChargeProvider,
     // Phase 4: Transport only, this phase's scope. Hostel/Activities
     // implement ModuleChargeProvider and are added to this same array
     // in their own future phase -- InvoiceBuilderService iterates

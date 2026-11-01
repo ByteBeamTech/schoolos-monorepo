@@ -32,10 +32,11 @@ interface StudentSummaryCardProps {
    *  omitted entirely from render when undefined, not shown as an empty
    *  placeholder. */
   transportRoute?: string;
+  transportFeeAmount?: number;
 }
 
 export function StudentSummaryCard({
-  student, outstanding, discounts, feePlans, siblings, onSelectSibling, onViewProfile, transportRoute,
+  student, outstanding, discounts, feePlans, siblings, onSelectSibling, onViewProfile, transportRoute, transportFeeAmount,
 }: StudentSummaryCardProps) {
   const primaryGuardian =
     student.guardianLinks?.find((l) => l.isPrimary) ??
@@ -52,8 +53,18 @@ export function StudentSummaryCard({
   // answer (currentPlan itself), never recomputed here.
   const { data: feeHeads } = useFeeHeads();
   const { data: billingRules } = useBillingRules();
-  const feeHeadName = (id?: string | null) => feeHeads?.find((h) => h.id === id)?.name ?? "—";
-  const billingRuleName = (id?: string | null) => billingRuleLabel(billingRules?.find((r) => r.id === id));
+  const feeHeadName = (item: { feeHeadId?: string | null; name?: string }) =>
+    feeHeads?.find((h) => h.id === item.feeHeadId)?.name ?? item.name ?? "Fee item";
+  const billingRuleName = (id?: string | null) =>
+    id
+      ? billingRuleLabel(billingRules?.find((r) => r.id === id)).replace("—", "Configured billing")
+      : "Manual billing";
+  const feeItems = [
+    ...(currentPlan?.feeItems ?? []),
+    ...(transportFeeAmount != null
+      ? [{ id: "transport-charge", name: "Transport Fee", amount: transportFeeAmount, isOptional: false }]
+      : []),
+  ];
 
   return (
     <div className="rounded-lg border bg-white" style={{ borderColor: "var(--border-light)" }}>
@@ -142,11 +153,11 @@ export function StudentSummaryCard({
                 Derived from: {student.section.class.name} → {student.section.name}
               </div>
             )}
-            {currentPlan.feeItems && currentPlan.feeItems.length > 0 && (
+            {feeItems.length > 0 && (
               <div className="pt-1 space-y-0.5">
-                {currentPlan.feeItems.map((item) => (
+                {feeItems.map((item) => (
                   <div key={item.id} className="flex justify-between gap-3">
-                    <span>{feeHeadName(item.feeHeadId)}</span>
+                    <span>{feeHeadName(item)}</span>
                     <span className="text-slate-400">{billingRuleName(item.billingRuleId)}</span>
                     <span className="font-medium text-slate-700">{fmt(Number(item.amount))}</span>
                   </div>
