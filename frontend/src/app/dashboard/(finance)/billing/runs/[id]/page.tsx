@@ -170,7 +170,14 @@ export default function BillingRunDetailPage({ params }: { params: { id: string 
             <div key={a.id} className={`flex items-center justify-between p-4 ${i > 0 ? "border-t border-slate-100" : ""}`}>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-mono text-slate-600">{a.studentId}</span>
+                  <span className="text-sm font-medium text-slate-700">
+                    {a.student?.admissionNumber ?? a.studentId}
+                  </span>
+                  {a.student && (
+                    <span className="text-xs text-slate-500">
+                      {a.student.firstName} {a.student.lastName}
+                    </span>
+                  )}
                   <Badge label={attemptStatusLabel[a.status]} variant={attemptStatusVariant(a.status)} />
                   {a.retryCount > 0 && <span className="text-xs text-slate-400">retried {a.retryCount}×</span>}
                 </div>

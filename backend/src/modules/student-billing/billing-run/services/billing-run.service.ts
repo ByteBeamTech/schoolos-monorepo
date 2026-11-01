@@ -217,9 +217,22 @@ export class BillingRunService {
   }
 
   async findAttempts(tenantId: string, billingRunId: string, status?: AttemptStatus) {
-    return this.prisma.billingRunAttempt.findMany({
+    const attempts = await this.prisma.billingRunAttempt.findMany({
       where: { tenantId, billingRunId, ...(status && { status }) },
     });
+    const studentIds = attempts.map((attempt) => attempt.studentId);
+    const students = studentIds.length
+      ? await this.prisma.student.findMany({
+          where: { tenantId, id: { in: studentIds } },
+          select: { id: true, admissionNumber: true, firstName: true, lastName: true },
+        })
+      : [];
+    const studentById = new Map(students.map((student) => [student.id, student]));
+
+    return attempts.map((attempt) => ({
+      ...attempt,
+      student: studentById.get(attempt.studentId) ?? null,
+    }));
   }
 
   private async finalizeRunStatus(billingRunId: string) {

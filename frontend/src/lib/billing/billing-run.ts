@@ -46,6 +46,12 @@ export interface BillingRunAttempt {
   errorMessage: string | null;
   invoiceId: string | null;
   completedAt: string | null;
+  student: {
+    id: string;
+    admissionNumber: string | null;
+    firstName: string;
+    lastName: string;
+  } | null;
 }
 
 export interface PaginatedBillingRuns {
