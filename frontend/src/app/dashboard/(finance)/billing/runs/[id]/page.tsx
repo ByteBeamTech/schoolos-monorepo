@@ -1,7 +1,7 @@
 "use client";
 // frontend/src/app/dashboard/(finance)/billing/runs/[id]/page.tsx
 
-import { use, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { PlayCircle, RotateCcw, Users, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -27,8 +27,8 @@ const attemptStatusLabel: Record<AttemptStatus, string> = {
   PENDING: "Pending", PROCESSING: "Processing", SUCCEEDED: "Succeeded", FAILED: "Failed",
 };
 
-export default function BillingRunDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function BillingRunDetailPage({ params }: { params: { id: string } }) {
+  const { id } = params;
   const { toast } = useToast();
   const [attemptFilter, setAttemptFilter] = useState<AttemptStatus | "ALL">("ALL");
   const [confirmAction, setConfirmAction] = useState<"execute" | "retry" | null>(null);
