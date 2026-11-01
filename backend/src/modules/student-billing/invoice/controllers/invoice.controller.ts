@@ -16,10 +16,16 @@ import { RolesGuard }        from '../../../../core/roles/roles.guard';
 import { Roles }             from '../../../../core/roles/roles.decorator';
 import { CurrentUser }       from '../../../../core/auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../../../core/auth/guards/jwt.strategy';
-import { IsString, IsNotEmpty } from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsNumber, IsPositive } from 'class-validator';
 import { ApiProperty }       from '@nestjs/swagger';
 
 class CancelInvoiceDto {
+  @ApiProperty() @IsString() @IsNotEmpty() reason!: string;
+}
+enum DirectDiscountType { PERCENTAGE = 'PERCENTAGE', FIXED = 'FIXED' }
+class DirectDiscountDto {
+  @ApiProperty({ enum: DirectDiscountType }) @IsEnum(DirectDiscountType) type!: DirectDiscountType;
+  @ApiProperty() @IsNumber() @IsPositive() value!: number;
   @ApiProperty() @IsString() @IsNotEmpty() reason!: string;
 }
 
@@ -140,5 +146,13 @@ export class InvoiceController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.cancel(user.tenantId, id, dto.reason, user.id);
+  }
+
+  @Patch(':id/direct-discount')
+  @Roles('SUPER_ADMIN', 'SCHOOL_OWNER', 'SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Apply a one-time discount to an unpaid invoice' })
+  directDiscount(@Param('id') id: string, @Body() dto: DirectDiscountDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.applyDirectDiscount(user.tenantId, id, dto.type, dto.value, dto.reason, user.id);
   }
 }

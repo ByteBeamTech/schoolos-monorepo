@@ -540,6 +540,7 @@ export class InvoiceService {
         if (current.payments.length) {
           throw new BadRequestException('Cannot cancel an invoice with successful payments. Issue a refund first.');
         }
+
         if (current.status === 'PAID')      throw new ConflictException('Cannot cancel a paid invoice.');
         if (current.status === 'CANCELLED') throw new ConflictException('Invoice is already cancelled.');
         throw new ConflictException(`Invoice could not be cancelled; its state changed concurrently (now ${current.status}).`);
@@ -554,6 +555,42 @@ export class InvoiceService {
       before: { status: previousStatus }, after: { status: 'CANCELLED', reason },
     });
     this.logger.log(`Invoice cancelled: ${updated.invoiceNumber} reason="${reason}" by ${actorId}`);
+    return updated;
+  }
+
+  async applyDirectDiscount(
+    tenantId: string, id: string, type: 'PERCENTAGE' | 'FIXED',
+    value: number, reason: string, actorId: string,
+  ) {
+    const invoice = await this.prisma.invoice.findFirst({ where: { id, tenantId } });
+    if (!invoice) throw new NotFoundException(`Invoice not found: ${id}`);
+    if (['PAID', 'CANCELLED'].includes(invoice.status)) {
+      throw new ConflictException('Only unpaid, active invoices can receive a direct discount.');
+    }
+    if (new Prisma.Decimal(invoice.paidAmount).greaterThan(0)) {
+      throw new ConflictException('Direct discounts cannot be applied after a payment has been recorded.');
+    }
+    const base = new Prisma.Decimal(invoice.subtotal).plus(invoice.gstAmount);
+    const requested = type === 'PERCENTAGE'
+      ? base.times(value).dividedBy(100).toDecimalPlaces(2)
+      : new Prisma.Decimal(value);
+    const currentDiscount = new Prisma.Decimal(invoice.discountAmount);
+    const totalDiscount = Prisma.Decimal.min(base, currentDiscount.plus(requested));
+    const totalAmount = base.minus(totalDiscount);
+    const updated = await this.prisma.invoice.update({
+      where: { id },
+      data: {
+        discountAmount: totalDiscount,
+        totalAmount,
+        dueAmount: totalAmount,
+        notes: [invoice.notes, `Direct discount: ${requested.toFixed(2)} (${reason})`].filter(Boolean).join('\n'),
+      },
+    });
+    await this.audit.logUpdate({
+      tenantId, actorId, entityType: 'Invoice', entityId: id,
+      before: { totalAmount: invoice.totalAmount, discountAmount: invoice.discountAmount },
+      after: { totalAmount, discountAmount: totalDiscount, directDiscount: requested, reason },
+    });
     return updated;
   }
 

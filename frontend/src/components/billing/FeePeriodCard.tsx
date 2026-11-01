@@ -24,6 +24,7 @@ interface FeePeriodCardProps {
   showCheckbox: boolean;
   onToggleSelect: (invoiceId: string) => void;
   onViewDetails: (invoiceId: string) => void;
+  onApplyDiscount?: (invoiceId: string) => void;
   /** FDD 12.4.1 "Collapsed": default for Upcoming and Paid rows -- Header,
    *  Status, and Remaining only, no Late Fee/Discount breakdown. */
   collapsed?: boolean;
@@ -31,7 +32,7 @@ interface FeePeriodCardProps {
 
 export function FeePeriodCard({
   period, selected, selectable, showCheckbox,
-  onToggleSelect, onViewDetails, collapsed = false,
+  onToggleSelect, onViewDetails, onApplyDiscount, collapsed = false,
 }: FeePeriodCardProps) {
   const StatusIcon = feePeriodStatusIcon(period.status);
   const statusLabel = feePeriodStatusLabel(period.status, period.daysOverdue);
@@ -131,6 +132,12 @@ export function FeePeriodCard({
         >
           View Details
         </button>
+        {onApplyDiscount && period.status !== "PAID" && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); onApplyDiscount(period.invoiceId); }}
+            className="block text-xs text-emerald-700 hover:underline mt-1 ml-auto">
+            Apply discount
+          </button>
+        )}
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StudentSearch } from "@/components/billing/StudentSearch";
 import { StudentSummaryCard } from "@/components/billing/StudentSummaryCard";
 import { DueUpcomingPaidSections } from "@/components/billing/DueUpcomingPaidSections";
+import { DirectDiscountForm } from "@/components/billing/DirectDiscountForm";
 import { PaymentPanel } from "@/components/billing/PaymentPanel";
 import { ReceiptCard, type ReceiptCardData } from "@/components/billing/ReceiptCard";
 import { useStudentBilling, useStudent, type Student, type StudentDetail } from "@/lib/hooks";
@@ -27,6 +28,7 @@ export default function CollectFeePage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [lastResult, setLastResult] = useState<CollectionResult | null>(null);
+  const [discountInvoiceId, setDiscountInvoiceId] = useState<string | null>(null);
 
   // FDD Section 14.4: the Profile page's "Collect Fee" action jumps here
   // pre-loaded with a specific student, via ?studentId=. Fetched through
@@ -129,6 +131,7 @@ export default function CollectFeePage() {
       {lastResult && lastResult.anySucceeded ? (
         <CollectionOutcome
           result={lastResult}
+          student={student}
           onViewInvoice={(id) => router.push(`/dashboard/billing/invoices/${id}`)}
           onViewProfile={() => student && router.push(`/dashboard/students/${student.id}`)}
           onCollectAnother={handleCollectAnother}
@@ -161,12 +164,20 @@ export default function CollectFeePage() {
                     selectedIds={selectedIds}
                     onSelectionChange={setSelectedIds}
                     onViewDetails={handleViewDetails}
+                    onApplyDiscount={setDiscountInvoiceId}
                     // Counter collection is an internal finance workflow, so
                     // staff may collect an issued invoice before its due date.
                     // Upcoming invoices are therefore selectable alongside
                     // due and overdue invoices.
                     advancePaymentAllowed={true}
                   />
+                  {discountInvoiceId && (
+                    <DirectDiscountForm
+                      invoiceId={discountInvoiceId}
+                      onApplied={() => { setDiscountInvoiceId(null); setSelectedIds(new Set()); refetch(); }}
+                      onCancel={() => setDiscountInvoiceId(null)}
+                    />
+                  )}
 
                   <PaymentPanel
                     selectedPeriods={selectedPeriods}
@@ -192,9 +203,10 @@ export default function CollectFeePage() {
  * to just this block, not the rest of the app shell.
  */
 function CollectionOutcome({
-  result, onViewInvoice, onViewProfile, onCollectAnother,
+  result, student, onViewInvoice, onViewProfile, onCollectAnother,
 }: {
   result: CollectionResult;
+  student: Student | null;
   onViewInvoice: (invoiceId: string) => void;
   onViewProfile: () => void;
   onCollectAnother: () => void;

@@ -13,6 +13,7 @@ import { Badge }             from "@/components/ui/badge";
 import { useApi }            from "@/lib/hooks";
 import { apiClient }         from "@/lib/api";
 import { useToast }          from "@/lib/use-toast";
+import { DirectDiscountForm } from "@/components/billing/DirectDiscountForm";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(n: number | string, currency = "INR") {
@@ -66,6 +67,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [showCancel, setShowCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling]     = useState(false);
+  const [showDiscount, setShowDiscount] = useState(false);
 
   const cancelInvoice = async () => {
     if (!cancelReason.trim()) { toast.error("Reason is required"); return; }
@@ -156,6 +158,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               <CreditCard className="w-4 h-4" /> Collect Fee
             </button>
           )}
+          {canPay && (
+            <button onClick={() => setShowDiscount(p => !p)}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-sm rounded-lg font-medium transition-colors">
+              Apply Discount
+            </button>
+          )}
           {canSend && (
             <button onClick={sendInvoice}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium transition-colors">
@@ -204,6 +212,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 className="px-4 py-2 bg-slate-100 text-slate-600 text-sm rounded-lg hover:bg-slate-200 transition-colors">Dismiss</button>
             </div>
           </div>
+        )}
+        {showDiscount && canPay && (
+          <DirectDiscountForm invoiceId={id} onApplied={() => { setShowDiscount(false); refetch(); }} onCancel={() => setShowDiscount(false)} />
         )}
       </div>
 

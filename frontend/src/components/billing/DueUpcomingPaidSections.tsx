@@ -15,6 +15,7 @@ interface DueUpcomingPaidSectionsProps {
   selectedIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
   onViewDetails: (invoiceId: string) => void;
+  onApplyDiscount?: (invoiceId: string) => void;
   /** FDD Section 8.10 / Section 24 item 7: whether advance payment is
    *  permitted is a school-level setting whose backend mechanism is
    *  unverified. The Collect Fee page passes false here until that is
@@ -25,7 +26,7 @@ interface DueUpcomingPaidSectionsProps {
 }
 
 export function DueUpcomingPaidSections({
-  grouped, selectedIds, onSelectionChange, onViewDetails, advancePaymentAllowed,
+  grouped, selectedIds, onSelectionChange, onViewDetails, onApplyDiscount, advancePaymentAllowed,
 }: DueUpcomingPaidSectionsProps) {
   const [upcomingOpen, setUpcomingOpen] = useState(false);
   const [paidOpen, setPaidOpen] = useState(false);
@@ -79,6 +80,7 @@ export function DueUpcomingPaidSections({
               showCheckbox
               onToggleSelect={toggle}
               onViewDetails={onViewDetails}
+              onApplyDiscount={onApplyDiscount}
             />
           ))
         )}
@@ -118,6 +120,7 @@ export function DueUpcomingPaidSections({
                   collapsed
                   onToggleSelect={toggle}
                   onViewDetails={onViewDetails}
+                  onApplyDiscount={onApplyDiscount}
                 />
               ))
             )}
