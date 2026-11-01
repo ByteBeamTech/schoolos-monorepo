@@ -61,18 +61,20 @@ export class SupersedeFeeItemDto {
   @ApiPropertyOptional() @IsDateString() @IsOptional() effectiveUntil?: string;
 }
 
-// Phase 2: BillingRule is create-only (frozen business rule -- never
-// changes under an active plan), so this is the only DTO it needs. No
-// UpdateBillingRuleDto exists, deliberately -- there is nothing for one
-// to do.
 export class CreateBillingRuleDto {
   @ApiProperty({ enum: BillingFrequency }) @IsEnum(BillingFrequency) frequency!: BillingFrequency;
-  @ApiProperty({ type: [Number] }) @IsArray() @ArrayMinSize(1) @IsInt({ each: true }) @Min(1, { each: true }) billingMonths!: number[];
-  @ApiProperty() @IsInt() @Min(1) dueDayOfMonth!: number;
+  @ApiProperty({ type: [Number] }) @IsArray() @ArrayMinSize(1) @IsInt({ each: true }) @Min(1, { each: true }) @Max(12, { each: true }) billingMonths!: number[];
+  @ApiProperty() @IsInt() @Min(1) @Max(31) dueDayOfMonth!: number;
   @ApiPropertyOptional({ enum: ProrationRule }) @IsEnum(ProrationRule) @IsOptional() prorationRule?: ProrationRule;
   // Corrective fix: null/omitted = tenant-wide default, usable by every
   // branch. Set = scoped to exactly one branch.
   @ApiPropertyOptional() @IsString() @IsOptional() branchId?: string;
+}
+
+export class UpdateBillingRuleDto {
+  @IsInt() @Min(1) @Max(31) @IsOptional() dueDayOfMonth?: number;
+  @IsArray() @ArrayMinSize(1) @IsInt({ each: true }) @Min(1, { each: true }) @Max(12, { each: true }) @IsOptional()
+  billingMonths?: number[];
 }
 
 // Phase 3: AssignFeePlanDto retired -- student-level plan assignment

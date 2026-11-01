@@ -63,20 +63,18 @@ export class InvoiceBuilderService {
     });
     if (!plan) return { feePlanId: assignment.feePlanId, invoiceId: null };
 
-    // Items without a billingRuleId predate Phase 2 or were created
-    // outside the new flow -- they have nothing to check billingMonths
-    // against, so they are not compatible with BillingRun-driven
-    // generation. They remain billable via the pre-existing
-    // InvoiceService.generate() path; this engine simply does not
-    // consider them.
+    // Items without a billingRuleId are legacy/manual-plan items. They are
+    // still part of the student's configured fee plan and must not disappear
+    // from an automatically generated invoice. Only an explicitly configured
+    // rule can limit a fee item to particular months.
     const ruleIds = [...new Set(plan.feeItems.map((i) => i.billingRuleId).filter((id): id is string => !!id))];
     const rules = ruleIds.length ? await tx.billingRule.findMany({ where: { id: { in: ruleIds } } }) : [];
     const ruleById = new Map(rules.map((r) => [r.id, r]));
 
     const dueItems = plan.feeItems.filter((item) => {
-      if (!item.billingRuleId) return false;
+      if (!item.billingRuleId) return true;
       const rule = ruleById.get(item.billingRuleId);
-      return rule ? rule.billingMonths.includes(periodMonth) : false;
+      return !rule || rule.billingMonths.includes(periodMonth);
     });
 
     // Money arithmetic in Decimal end-to-end, matching InvoiceService.

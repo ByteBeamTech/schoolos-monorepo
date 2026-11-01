@@ -73,10 +73,11 @@ describe('InvoiceBuilderService', () => {
     expect(result).toEqual({ feePlanId: null, invoiceId: null });
   });
 
-  it('an item with no billingRuleId is skipped entirely -- not compatible with this engine', async () => {
+  it('includes an item with no billingRuleId as a recurring configured fee', async () => {
     tx.feePlan.findUnique.mockResolvedValue({ ...plan, feeItems: [{ ...feeItem, billingRuleId: null }] });
     const result = await service.buildForStudent('t-1', 'b-1', 'stu-1', 4, 2026, tx);
-    expect(result.invoiceId).toBeNull();
+    expect(result.invoiceId).toBe('inv-new');
+    expect(tx.invoice.create).toHaveBeenCalled();
   });
 
   it('throws when no current AcademicSession exists -- a tenant-wide misconfiguration, not a per-student outcome', async () => {

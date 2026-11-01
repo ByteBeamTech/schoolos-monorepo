@@ -48,6 +48,11 @@ export async function createBillingRule(input: CreateBillingRuleInput): Promise<
   return res.data;
 }
 
+export async function updateBillingRule(id: string, input: { dueDayOfMonth?: number; billingMonths?: number[] }): Promise<BillingRule> {
+  const res = await apiClient.patch(`/billing/billing-rules/${id}`, input);
+  return res.data;
+}
+
 // Real, current label -- BillingRule has no name field (frozen Phase 2
 // design, confirmed -- see billing-rule.service.ts's own header
 // comment), so "Monthly"/"Annual" etc. is derived from frequency here,

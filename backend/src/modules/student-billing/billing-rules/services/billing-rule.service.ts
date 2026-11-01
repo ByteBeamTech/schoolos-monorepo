@@ -11,7 +11,7 @@
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@infra/database/prisma.service';
-import { CreateBillingRuleDto } from '../../dto/billing.dto';
+import { CreateBillingRuleDto, UpdateBillingRuleDto } from '../../dto/billing.dto';
 
 @Injectable()
 export class BillingRuleService {
@@ -53,5 +53,16 @@ export class BillingRuleService {
     const rule = await this.prisma.billingRule.findFirst({ where: { id, tenantId } });
     if (!rule) throw new NotFoundException(`Billing rule not found: ${id}`);
     return rule;
+  }
+
+  async update(tenantId: string, id: string, dto: UpdateBillingRuleDto) {
+    await this.findById(tenantId, id);
+    return this.prisma.billingRule.update({
+      where: { id },
+      data: {
+        ...(dto.dueDayOfMonth !== undefined && { dueDayOfMonth: dto.dueDayOfMonth }),
+        ...(dto.billingMonths !== undefined && { billingMonths: dto.billingMonths }),
+      },
+    });
   }
 }

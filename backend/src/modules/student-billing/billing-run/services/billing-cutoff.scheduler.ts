@@ -19,6 +19,8 @@ export class BillingCutoffScheduler {
 
   @Cron(CronExpression.EVERY_HOUR)
   async processDueCutoffs() {
+    // Use the application's configured local timezone for month/day
+    // boundaries; UTC at midnight must not shift a local month backwards.
     const now = new Date();
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
@@ -48,14 +50,17 @@ export class BillingCutoffScheduler {
 
     for (const pair of tenantBranchPairs) {
       const [tenantId, branchId] = pair.split(':');
-      const completed = await this.prisma.billingRun.findFirst({
-        where: { tenantId, branchId, periodLabel, status: 'COMPLETED' },
-        select: { id: true },
+      const existingRun = await this.prisma.billingRun.findFirst({
+        where: { tenantId, branchId, periodLabel },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, status: true },
       });
-      if (completed) continue;
+      if (existingRun?.status === 'COMPLETED') continue;
 
       try {
-        const run = await this.billingRuns.trigger(tenantId, branchId, month, year, 'SCHEDULED', 'system');
+        const run = existingRun
+          ? existingRun
+          : await this.billingRuns.trigger(tenantId, branchId, month, year, 'SCHEDULED', 'system');
         await this.billingRuns.execute(run.id);
         this.logger.log(`Processed fee cutoff for ${periodLabel} in branch ${branchId}`);
       } catch (error: any) {

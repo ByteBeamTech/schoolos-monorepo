@@ -21,7 +21,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useFeePlans, useAcademicSessions, useFeeHeads, useBranches, type FeeHead } from "@/lib/hooks";
 import { apiClient } from "@/lib/api";
 import { useToast } from "@/lib/use-toast";
-import { createFeePlan, createBillingRule, useBillingRules, billingRuleLabel, type BillingFrequency, type ProrationRule } from "@/lib/billing/fee-plan-config";
+import { createFeePlan, createBillingRule, updateBillingRule, useBillingRules, billingRuleLabel, type BillingFrequency, type ProrationRule } from "@/lib/billing/fee-plan-config";
 import { AssignmentsTab } from "@/components/billing/FeePlanAssignments";
 
 function fmt(n: number) {
@@ -75,6 +75,9 @@ function BillingRulesTab() {
   const [dueDay, setDueDay] = useState("10");
   const [prorationRule, setProrationRule] = useState<ProrationRule>("NO_PRORATION");
   const [branchId, setBranchId] = useState("");
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editingDueDay, setEditingDueDay] = useState("");
+  const [updating, setUpdating] = useState(false);
 
   const monthsForFrequency = (value: BillingFrequency) => {
     if (value === "ONE_TIME" || value === "ANNUAL") return [4];
@@ -124,12 +127,31 @@ function BillingRulesTab() {
     }
   };
 
+  const saveDueDay = async (ruleId: string) => {
+    const value = Number(editingDueDay);
+    if (!Number.isInteger(value) || value < 1 || value > 31) {
+      toast.error("Due day must be between 1 and 31");
+      return;
+    }
+    setUpdating(true);
+    try {
+      await updateBillingRule(ruleId, { dueDayOfMonth: value });
+      toast.success("Billing cutoff updated.");
+      setEditingRuleId(null);
+      refetch();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Failed to update billing rule");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <p className="text-xs text-slate-400 max-w-xl">
           Billing rules decide when a fee item is billed and how it is prorated.
-          Rules are immutable after creation; create a new rule for a policy change.
+          Rules control the monthly cutoff. You can change the cutoff day for an existing rule.
         </p>
         <button onClick={() => setShowForm((value) => !value)}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
@@ -202,7 +224,21 @@ function BillingRulesTab() {
                   Months: {rule.billingMonths.join(", ")} · Due day: {rule.dueDayOfMonth} · {PRORATION_RULES.find((item) => item.value === rule.prorationRule)?.label}
                 </p>
               </div>
-              <Badge label={rule.branchId ? "Branch scoped" : "All branches"} variant={rule.branchId ? "info" : "neutral"} />
+              <div className="flex items-center gap-3">
+                {editingRuleId === rule.id ? (
+                  <>
+                    <input type="number" min={1} max={31} value={editingDueDay}
+                      onChange={(e) => setEditingDueDay(e.target.value)}
+                      className="w-16 px-2 py-1 text-sm border rounded" />
+                    <button disabled={updating} onClick={() => saveDueDay(rule.id)} className="text-xs text-blue-600 hover:underline">Save</button>
+                    <button onClick={() => setEditingRuleId(null)} className="text-xs text-slate-500 hover:underline">Cancel</button>
+                  </>
+                ) : (
+                  <button onClick={() => { setEditingRuleId(rule.id); setEditingDueDay(String(rule.dueDayOfMonth)); }}
+                    className="text-xs text-blue-600 hover:underline">Change cutoff</button>
+                )}
+                <Badge label={rule.branchId ? "Branch scoped" : "All branches"} variant={rule.branchId ? "info" : "neutral"} />
+              </div>
             </div>
           ))}
         </div>

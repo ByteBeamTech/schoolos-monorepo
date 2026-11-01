@@ -13,6 +13,7 @@ describe('BillingRuleService', () => {
     prisma = {
       billingRule: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'br-new', ...data })),
+        update: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn(),
       },
@@ -72,8 +73,17 @@ describe('BillingRuleService', () => {
     await expect(service.findById('t-1', 'br-x')).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('has no update or supersede method -- create-only by design, not by omission', () => {
-    expect((service as any).update).toBeUndefined();
+  it('updates the cutoff day within the owning tenant', async () => {
+    prisma.billingRule.findFirst.mockResolvedValue({ id: 'br-1', tenantId: 't-1' });
+    prisma.billingRule.update.mockResolvedValue({ id: 'br-1', dueDayOfMonth: 15 });
+    await service.update('t-1', 'br-1', { dueDayOfMonth: 15 });
+    expect(prisma.billingRule.update).toHaveBeenCalledWith({
+      where: { id: 'br-1' },
+      data: { dueDayOfMonth: 15 },
+    });
+  });
+
+  it('does not expose supersede behavior', () => {
     expect((service as any).supersede).toBeUndefined();
   });
 });

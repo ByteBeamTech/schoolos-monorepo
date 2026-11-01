@@ -161,11 +161,11 @@ export default function CollectFeePage() {
                     selectedIds={selectedIds}
                     onSelectionChange={setSelectedIds}
                     onViewDetails={handleViewDetails}
-                    // FDD Section 8.10 / Section 24 item 7: advance-payment
-                    // permission's backend mechanism is unverified -- false
-                    // is the conservative default until that's confirmed,
-                    // not a final product decision made by this sprint.
-                    advancePaymentAllowed={false}
+                    // Counter collection is an internal finance workflow, so
+                    // staff may collect an issued invoice before its due date.
+                    // Upcoming invoices are therefore selectable alongside
+                    // due and overdue invoices.
+                    advancePaymentAllowed={true}
                   />
 
                   <PaymentPanel

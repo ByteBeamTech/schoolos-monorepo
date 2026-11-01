@@ -4,10 +4,10 @@
 // billing-rule.service.ts's own header comment. A permanent change is a
 // new FeePlan referencing a new rule, not an edit to this one.
 
-import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { BillingRuleService } from '../services/billing-rule.service';
-import { CreateBillingRuleDto } from '../../dto/billing.dto';
+import { CreateBillingRuleDto, UpdateBillingRuleDto } from '../../dto/billing.dto';
 import { JwtGuard }          from '../../../../core/auth/guards/jwt.guard';
 import { RolesGuard }        from '../../../../core/roles/roles.guard';
 import { Roles }             from '../../../../core/roles/roles.decorator';
@@ -26,6 +26,12 @@ export class BillingRuleController {
   @ApiOperation({ summary: 'Create a billing rule (create-only -- never edited once referenced by a plan)' })
   create(@Body() dto: CreateBillingRuleDto, @CurrentUser() user: AuthenticatedUser) {
     return this.service.create(user.tenantId, dto);
+  }
+
+  @Patch(':id')
+  @Roles('SCHOOL_ADMIN', 'PRINCIPAL', 'ACCOUNTANT')
+  update(@Param('id') id: string, @Body() dto: UpdateBillingRuleDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.update(user.tenantId, id, dto);
   }
 
   @Get()

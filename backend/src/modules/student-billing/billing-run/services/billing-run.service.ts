@@ -85,6 +85,7 @@ export class BillingRunService {
         where: {
           tenantId, studentId: student.id, status: 'SUCCEEDED', invoiceId: { not: null },
           billingRun: { branchId, periodLabel },
+          invoice: { status: { not: 'CANCELLED' } },
         },
       });
 
